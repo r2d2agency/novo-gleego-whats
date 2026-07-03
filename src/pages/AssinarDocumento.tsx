@@ -693,6 +693,163 @@ export default function AssinarDocumento() {
           </Card>
         )}
 
+        {/* Identity Validation Card (selfie + document front/back) */}
+        {requireIdentityValidation && (
+          <Card className={identityValidated ? 'border-green-500 bg-green-50 dark:bg-green-950/20' : 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ScanFace className="h-4 w-4" />
+                Validação de Identidade
+                {identityValidated && <Badge variant="default" className="gap-1 text-xs"><CheckCircle2 className="h-3 w-3" /> Validada</Badge>}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!identityValidated ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Para assinar este documento você precisa tirar uma <strong>selfie</strong> e enviar fotos do seu <strong>documento oficial (frente e verso)</strong>. A IA vai comparar seu rosto com o documento e conferir se o nome e CPF batem com os dados cadastrados.
+                  </p>
+
+                  {/* Selfie */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      <User className="h-4 w-4" /> 1. Selfie (rosto)
+                    </Label>
+                    <input
+                      ref={selfieInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="user"
+                      className="hidden"
+                      onChange={(e) => handleIdentityImageUpload(e, setSelfieImage, selfieInputRef)}
+                    />
+                    {selfieImage ? (
+                      <div className="relative">
+                        <img src={selfieImage} alt="Selfie" className="w-full max-h-52 object-contain rounded-lg border bg-background" />
+                        <Button variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7" onClick={() => { setSelfieImage(null); setIdentityResult(null); }}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button variant="outline" onClick={() => selfieInputRef.current?.click()} className="w-full gap-2">
+                        <Camera className="h-4 w-4" /> Tirar Selfie
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Doc front */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      <IdCard className="h-4 w-4" /> 2. Frente do Documento (RG, CNH ou similar)
+                    </Label>
+                    <input
+                      ref={docFrontInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={(e) => handleIdentityImageUpload(e, setDocFrontImage, docFrontInputRef)}
+                    />
+                    {docFrontImage ? (
+                      <div className="relative">
+                        <img src={docFrontImage} alt="Frente do documento" className="w-full max-h-52 object-contain rounded-lg border bg-background" />
+                        <Button variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7" onClick={() => { setDocFrontImage(null); setIdentityResult(null); }}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => docFrontInputRef.current?.click()} className="flex-1 gap-2">
+                          <Camera className="h-4 w-4" /> Tirar Foto
+                        </Button>
+                        <Button variant="outline" onClick={() => {
+                          if (docFrontInputRef.current) {
+                            docFrontInputRef.current.removeAttribute('capture');
+                            docFrontInputRef.current.click();
+                            setTimeout(() => docFrontInputRef.current?.setAttribute('capture', 'environment'), 100);
+                          }
+                        }} className="flex-1 gap-2">
+                          <Upload className="h-4 w-4" /> Enviar
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Doc back (optional) */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      <IdCard className="h-4 w-4" /> 3. Verso do Documento <span className="text-xs text-muted-foreground font-normal">(opcional)</span>
+                    </Label>
+                    <input
+                      ref={docBackInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={(e) => handleIdentityImageUpload(e, setDocBackImage, docBackInputRef)}
+                    />
+                    {docBackImage ? (
+                      <div className="relative">
+                        <img src={docBackImage} alt="Verso do documento" className="w-full max-h-52 object-contain rounded-lg border bg-background" />
+                        <Button variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7" onClick={() => { setDocBackImage(null); setIdentityResult(null); }}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => docBackInputRef.current?.click()} className="flex-1 gap-2">
+                          <Camera className="h-4 w-4" /> Tirar Foto
+                        </Button>
+                        <Button variant="outline" onClick={() => {
+                          if (docBackInputRef.current) {
+                            docBackInputRef.current.removeAttribute('capture');
+                            docBackInputRef.current.click();
+                            setTimeout(() => docBackInputRef.current?.setAttribute('capture', 'environment'), 100);
+                          }
+                        }} className="flex-1 gap-2">
+                          <Upload className="h-4 w-4" /> Enviar
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {identityResult && !identityResult.validated && (
+                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 space-y-1">
+                      <p className="text-sm text-destructive font-medium">❌ {identityResult.motivo || 'Dados não conferem'}</p>
+                      {identityResult.nome_documento && (
+                        <p className="text-xs text-muted-foreground">Nome extraído do documento: {identityResult.nome_documento}</p>
+                      )}
+                      <div className="flex flex-wrap gap-2 text-[10px] pt-1">
+                        <Badge variant={identityResult.face_match ? 'default' : 'destructive'}>Rosto: {identityResult.face_match ? 'OK' : 'Não confere'}</Badge>
+                        <Badge variant={identityResult.name_match ? 'default' : 'destructive'}>Nome: {identityResult.name_match ? 'OK' : 'Não confere'}</Badge>
+                        <Badge variant={identityResult.cpf_match ? 'default' : 'destructive'}>CPF: {identityResult.cpf_match ? 'OK' : 'Não confere'}</Badge>
+                        <Badge variant={identityResult.legible ? 'default' : 'destructive'}>Legibilidade: {identityResult.legible ? 'OK' : 'Ruim'}</Badge>
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={handleValidateIdentity}
+                    disabled={identityValidating || !selfieImage || !docFrontImage}
+                    className="w-full gap-2"
+                  >
+                    {identityValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                    {identityValidating ? 'Analisando com IA...' : 'Validar Identidade'}
+                  </Button>
+                </>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="h-8 w-8 text-green-500" />
+                  <div>
+                    <p className="font-medium text-green-700 dark:text-green-400">Identidade validada com sucesso!</p>
+                    <p className="text-xs text-muted-foreground">Selfie, documento, nome e CPF conferem com o cadastro.</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Dados do Signatário</CardTitle>
