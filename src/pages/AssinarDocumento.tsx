@@ -12,7 +12,7 @@ import { useDocSignatures, DocSigner, SignaturePosition } from '@/hooks/use-doc-
 import { resolveMediaUrl } from '@/lib/media';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { FileSignature, Loader2, CheckCircle2, RefreshCw, MapPin, Download, ShieldCheck, Mail, KeyRound, CreditCard, Camera, Upload, X, ExternalLink } from 'lucide-react';
+import { FileSignature, Loader2, CheckCircle2, RefreshCw, MapPin, Download, ShieldCheck, Mail, KeyRound, CreditCard, Camera, Upload, X, ExternalLink, ScanFace, User, IdCard } from 'lucide-react';
 
 export default function AssinarDocumento() {
   const { token } = useParams<{ token: string }>();
@@ -49,12 +49,33 @@ export default function AssinarDocumento() {
   const cnhInputRef = useRef<HTMLInputElement>(null);
   const viewStartTimeRef = useRef<number | null>(null);
 
+  // Identity validation state (selfie + document front/back)
+  const [requireIdentityValidation, setRequireIdentityValidation] = useState(false);
+  const [identityValidated, setIdentityValidated] = useState(false);
+  const [selfieImage, setSelfieImage] = useState<string | null>(null);
+  const [docFrontImage, setDocFrontImage] = useState<string | null>(null);
+  const [docBackImage, setDocBackImage] = useState<string | null>(null);
+  const [identityValidating, setIdentityValidating] = useState(false);
+  const [identityResult, setIdentityResult] = useState<{
+    validated: boolean;
+    motivo?: string;
+    nome_documento?: string;
+    tipo_documento?: string;
+    face_match?: boolean;
+    name_match?: boolean;
+    cpf_match?: boolean;
+    legible?: boolean;
+  } | null>(null);
+  const selfieInputRef = useRef<HTMLInputElement>(null);
+  const docFrontInputRef = useRef<HTMLInputElement>(null);
+  const docBackInputRef = useRef<HTMLInputElement>(null);
+
   // Terms acceptance
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsAcceptedAt, setTermsAcceptedAt] = useState<string | null>(null);
 
   const sigPadRef = useRef<SignatureCanvas>(null);
-  const { getPublicSigningData, submitSignature, getPublicSignedPdfUrl, requestOtp, verifyOtp, validateCnh, loading: submitting } = useDocSignatures();
+  const { getPublicSigningData, submitSignature, getPublicSignedPdfUrl, requestOtp, verifyOtp, validateCnh, validateIdentity, loading: submitting } = useDocSignatures();
 
   useEffect(() => {
     if (token) handleRequestOtp();
@@ -148,6 +169,8 @@ export default function AssinarDocumento() {
       if (data.document_description) setDocDescription(data.document_description);
       if (data.require_cnh_validation) setRequireCnhValidation(true);
       if (data.cnh_validated) setCnhValidated(true);
+      if (data.require_identity_validation) setRequireIdentityValidation(true);
+      if (data.identity_validated) setIdentityValidated(true);
       // Start tracking viewing time
       viewStartTimeRef.current = Date.now();
     } catch (err: any) {
