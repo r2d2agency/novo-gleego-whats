@@ -1699,7 +1699,12 @@ router.post('/:id/send-whatsapp', async (req, res) => {
       details: { sent_count: sent, total_signers: signersResult.rows.length }
     });
 
-    res.json({ success: true, sent });
+    res.json({
+      success: true,
+      sent,
+      total: signersResult.rows.length,
+      duplicate_phones: duplicatePhones.length > 0 ? [...new Set(duplicatePhones)] : undefined,
+    });
   } catch (error) {
     console.error('[doc-signatures] Send WhatsApp error:', error);
     res.status(500).json({ error: 'Erro ao enviar links via WhatsApp' });
