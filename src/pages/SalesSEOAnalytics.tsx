@@ -256,7 +256,7 @@ export default function SalesSEOAnalytics() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <Card>
             <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total de Leads</CardTitle>
@@ -323,6 +323,23 @@ export default function SalesSEOAnalytics() {
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">{analytics?.stats?.just_arrived || 0}</div>
               <p className="text-xs text-muted-foreground">Aguardando atendimento</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Perdas</CardTitle>
+              <TooltipUI>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground/50 cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Leads identificados como perda pelo sistema (churn ou desistência).</p>
+                </TooltipContent>
+              </TooltipUI>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{analytics?.stats?.lost || 0}</div>
+              <p className="text-xs text-muted-foreground">Taxa: {analytics?.stats?.total ? Math.round((analytics.stats.lost / analytics.stats.total) * 100) : 0}%</p>
             </CardContent>
           </Card>
         </div>
