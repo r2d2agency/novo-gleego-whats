@@ -243,8 +243,62 @@ export default function AssinarDocumento() {
     }
   };
 
+  const readImageFile = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Erro ao ler imagem'));
+    reader.readAsDataURL(file);
+  });
+
+  const handleIdentityImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (v: string | null) => void,
+    inputRef: React.RefObject<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Envie uma imagem'); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error('Imagem muito grande (máx 10MB)'); return; }
+    try {
+      const dataUrl = await readImageFile(file);
+      setter(dataUrl);
+      setIdentityResult(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao ler imagem');
+    } finally {
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  const handleValidateIdentity = async () => {
+    if (!token || !selfieImage || !docFrontImage) {
+      toast.error('Envie a selfie e a foto da frente do documento.');
+      return;
+    }
+    setIdentityValidating(true);
+    try {
+      const result = await validateIdentity(token, {
+        selfie: selfieImage,
+        doc_front: docFrontImage,
+        doc_back: docBackImage,
+      });
+      setIdentityResult(result);
+      if (result?.validated) {
+        setIdentityValidated(true);
+        toast.success('✅ Identidade validada com sucesso!');
+      } else {
+        toast.error(result?.motivo || 'Não foi possível validar sua identidade.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao validar identidade');
+    } finally {
+      setIdentityValidating(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (requireCnhValidation && !cnhValidated) { toast.error('A validação da CNH é obrigatória para assinar este documento.'); return; }
+    if (requireIdentityValidation && !identityValidated) { toast.error('A validação de identidade (selfie + documento) é obrigatória para assinar.'); return; }
     if (!geolocation) { toast.error('A geolocalização é obrigatória para assinar. Permita o acesso à localização no navegador e tente novamente.'); return; }
     if (!termsAccepted) { toast.error('Você precisa aceitar os termos do documento para assinar.'); return; }
     if (!sigPadRef.current || sigPadRef.current.isEmpty()) { toast.error('Desenhe sua assinatura'); return; }
