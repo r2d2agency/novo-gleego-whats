@@ -8,6 +8,36 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 
+// Detect ffmpeg availability once (used to shrink audio before Whisper)
+let FFMPEG_AVAILABLE = null;
+function hasFfmpeg() {
+  if (FFMPEG_AVAILABLE !== null) return FFMPEG_AVAILABLE;
+  try {
+    execSync('ffmpeg -version', { stdio: 'ignore', timeout: 5000 });
+    FFMPEG_AVAILABLE = true;
+  } catch {
+    FFMPEG_AVAILABLE = false;
+  }
+  return FFMPEG_AVAILABLE;
+}
+
+// Convert any input audio to a compact mono 16kHz MP3.
+// A 30-min mic recording becomes ~7 MB — Whisper's 25 MB limit stops being a problem.
+function transcodeToCompactMp3(inputPath) {
+  if (!hasFfmpeg()) return null;
+  const outPath = inputPath.replace(/\.[^.]+$/, '') + '.compact.mp3';
+  try {
+    execSync(
+      `ffmpeg -y -i "${inputPath}" -vn -ac 1 -ar 16000 -b:a 32k "${outPath}"`,
+      { stdio: 'ignore', timeout: 10 * 60 * 1000 }
+    );
+    return fs.existsSync(outPath) ? outPath : null;
+  } catch (err) {
+    logError('ffmpeg transcode failed', err);
+    return null;
+  }
+}
+
 const router = express.Router();
 
 const uploadDir = path.join(process.cwd(), 'uploads', 'telehealth');
