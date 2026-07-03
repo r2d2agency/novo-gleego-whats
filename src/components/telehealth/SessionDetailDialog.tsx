@@ -263,12 +263,16 @@ export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze
           </div>
         )}
 
-        {session.status === 'error' && (
+        {(session.status === 'error' || ((session.status === 'processing' || session.status === 'transcribing') && !session.transcript)) && (
           <div className="flex items-center gap-2 m-6 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
             <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
-            <p className="text-sm flex-1">{session.error_message || 'Erro no processamento'}</p>
+            <p className="text-sm flex-1">
+              {session.status === 'error'
+                ? (session.error_message || 'Erro no processamento')
+                : 'Processamento travado — clique para reprocessar com a IA da organização.'}
+            </p>
             <Button size="sm" variant="outline" onClick={() => onRetry(session.id)} className="gap-1">
-              <RefreshCw className="h-3 w-3" /> Tentar novamente
+              <RefreshCw className="h-3 w-3" /> Reprocessar
             </Button>
           </div>
         )}

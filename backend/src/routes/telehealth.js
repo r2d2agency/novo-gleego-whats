@@ -8,6 +8,36 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 
+// Detect ffmpeg availability once (used to shrink audio before Whisper)
+let FFMPEG_AVAILABLE = null;
+function hasFfmpeg() {
+  if (FFMPEG_AVAILABLE !== null) return FFMPEG_AVAILABLE;
+  try {
+    execSync('ffmpeg -version', { stdio: 'ignore', timeout: 5000 });
+    FFMPEG_AVAILABLE = true;
+  } catch {
+    FFMPEG_AVAILABLE = false;
+  }
+  return FFMPEG_AVAILABLE;
+}
+
+// Convert any input audio to a compact mono 16kHz MP3.
+// A 30-min mic recording becomes ~7 MB — Whisper's 25 MB limit stops being a problem.
+function transcodeToCompactMp3(inputPath) {
+  if (!hasFfmpeg()) return null;
+  const outPath = inputPath.replace(/\.[^.]+$/, '') + '.compact.mp3';
+  try {
+    execSync(
+      `ffmpeg -y -i "${inputPath}" -vn -ac 1 -ar 16000 -b:a 32k "${outPath}"`,
+      { stdio: 'ignore', timeout: 10 * 60 * 1000 }
+    );
+    return fs.existsSync(outPath) ? outPath : null;
+  } catch (err) {
+    logError('ffmpeg transcode failed', err);
+    return null;
+  }
+}
+
 const router = express.Router();
 
 const uploadDir = path.join(process.cwd(), 'uploads', 'telehealth');
@@ -236,12 +266,17 @@ router.post('/:id/retry', authenticate, async (req, res) => {
   try {
     const org = await getUserOrganization(req.userId);
     if (!org) return res.status(403).json({ error: 'Sem organização' });
+    // Allow retry for sessions that errored OR got stuck (still marked processing/transcribing without a transcript)
     const r = await query(
-      `UPDATE telehealth_sessions SET status = 'processing', error_message = NULL, retry_count = retry_count + 1, updated_at = NOW()
-       WHERE id = $1 AND organization_id = $2 AND status = 'error' RETURNING *`,
+      `UPDATE telehealth_sessions
+       SET status = 'processing', error_message = NULL, retry_count = retry_count + 1, updated_at = NOW()
+       WHERE id = $1 AND organization_id = $2
+         AND (status = 'error' OR (status IN ('processing','transcribing') AND transcript IS NULL))
+       RETURNING *`,
       [req.params.id, org.organization_id]
     );
-    if (!r.rows.length) return res.status(404).json({ error: 'Sessão não encontrada ou não está em erro' });
+    if (!r.rows.length) return res.status(404).json({ error: 'Sessão não pode ser reprocessada (já concluída ou inexistente)' });
+    if (!r.rows[0].audio_url) return res.status(400).json({ error: 'Sessão sem áudio para reprocessar' });
     await auditLog(r.rows[0].id, org.organization_id, req.userId, org.name, 'retry_processing');
     processSession(r.rows[0].id, req.userId, org.organization_id, org.name).catch(e => logError('Retry process error', e));
     res.json(r.rows[0]);
@@ -298,34 +333,48 @@ async function processSession(sessionId, userId, orgId, userName) {
     if (!fs.existsSync(audioPath)) throw new Error('Arquivo de áudio não encontrado no disco');
 
     const aiConfig = await getAIConfig(userId);
-    if (!aiConfig) throw new Error('Configuração de IA não encontrada. Configure o provedor de IA nas configurações da organização.');
+    // Fallback: if org has no AI config but the platform has LOVABLE_API_KEY, use it for transcription
+    const effectiveConfig = aiConfig || (process.env.LOVABLE_API_KEY ? { provider: 'lovable', apiKey: process.env.LOVABLE_API_KEY, model: null } : null);
+    if (!effectiveConfig) throw new Error('Configuração de IA não encontrada. Peça ao administrador para configurar um provedor de IA nas configurações da organização.');
+
+    // Pre-transcode to compact MP3 (mono 16kHz 32kbps) so 30-min recordings fit under Whisper's 25MB limit
+    let workingPath = audioPath;
+    const compact = transcodeToCompactMp3(audioPath);
+    if (compact) workingPath = compact;
 
     let transcript = '';
-
-    // Check file size - chunk if > 20MB
-    const stats = fs.statSync(audioPath);
-    if (stats.size > 20 * 1024 * 1024) {
-      const chunkDir = path.join(uploadDir, `chunks-${sessionId}`);
-      if (!fs.existsSync(chunkDir)) fs.mkdirSync(chunkDir, { recursive: true });
-      try {
-        execSync(`ffmpeg -i "${audioPath}" -f segment -segment_time 300 -c copy "${chunkDir}/chunk_%03d.webm"`, { timeout: 120000 });
-        const chunks = fs.readdirSync(chunkDir).sort();
-        for (const chunk of chunks) {
-          const chunkPath = path.join(chunkDir, chunk);
-          const chunkTranscript = await transcribeAudio(chunkPath, aiConfig);
-          transcript += chunkTranscript + ' ';
+    try {
+      const stats = fs.statSync(workingPath);
+      if (stats.size > 24 * 1024 * 1024 && hasFfmpeg()) {
+        // Still too big — chunk into 5-min MP3 segments (with re-encode to guarantee size)
+        const chunkDir = path.join(uploadDir, `chunks-${sessionId}`);
+        if (!fs.existsSync(chunkDir)) fs.mkdirSync(chunkDir, { recursive: true });
+        try {
+          execSync(
+            `ffmpeg -y -i "${workingPath}" -vn -ac 1 -ar 16000 -b:a 32k -f segment -segment_time 300 "${chunkDir}/chunk_%03d.mp3"`,
+            { stdio: 'ignore', timeout: 10 * 60 * 1000 }
+          );
+          const chunks = fs.readdirSync(chunkDir).sort();
+          for (const chunk of chunks) {
+            const chunkTranscript = await transcribeAudio(path.join(chunkDir, chunk), effectiveConfig);
+            transcript += chunkTranscript + ' ';
+          }
+        } finally {
+          fs.rmSync(chunkDir, { recursive: true, force: true });
         }
-      } finally {
-        fs.rmSync(chunkDir, { recursive: true, force: true });
+      } else {
+        transcript = await transcribeAudio(workingPath, effectiveConfig);
       }
-    } else {
-      transcript = await transcribeAudio(audioPath, aiConfig);
+    } finally {
+      if (compact && compact !== audioPath && fs.existsSync(compact)) {
+        try { fs.unlinkSync(compact); } catch {}
+      }
     }
 
     // Step 2: Speaker diarization via AI post-processing
     let diarizedTranscript = transcript;
     try {
-      diarizedTranscript = await identifySpeakers(transcript, aiConfig, session);
+      diarizedTranscript = await identifySpeakers(transcript, aiConfig || effectiveConfig, session);
     } catch (diarErr) {
       logError('Speaker diarization failed, using raw transcript', diarErr);
     }
@@ -348,13 +397,14 @@ async function processSession(sessionId, userId, orgId, userName) {
 }
 
 async function transcribeAudio(audioPath, aiConfig) {
-  if (aiConfig.provider === 'openai' || !aiConfig.provider) {
-    const audioBuffer = fs.readFileSync(audioPath);
-    const ext = path.extname(audioPath).replace('.', '') || 'webm';
-    const mimeMap = { webm: 'audio/webm', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4' };
-    const mime = mimeMap[ext] || 'audio/webm';
-    const audioFile = new File([audioBuffer], `recording.${ext}`, { type: mime });
+  const audioBuffer = fs.readFileSync(audioPath);
+  const ext = path.extname(audioPath).replace('.', '') || 'webm';
+  const mimeMap = { webm: 'audio/webm', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4' };
+  const mime = mimeMap[ext] || 'audio/webm';
 
+  // Path 1: OpenAI directly (org has openai key)
+  if (aiConfig.provider === 'openai' && aiConfig.apiKey) {
+    const audioFile = new File([audioBuffer], `recording.${ext}`, { type: mime });
     const form = new FormData();
     form.append('file', audioFile);
     form.append('model', 'whisper-1');
@@ -368,10 +418,8 @@ async function transcribeAudio(audioPath, aiConfig) {
       headers: { 'Authorization': `Bearer ${aiConfig.apiKey}` },
       body: form,
     });
-    if (!resp.ok) throw new Error(`Whisper error: ${resp.status} ${await resp.text()}`);
+    if (!resp.ok) throw new Error(`Whisper (OpenAI) ${resp.status}: ${await resp.text()}`);
     const data = await resp.json();
-    
-    // If verbose_json, format segments with timestamps for better diarization
     if (data.segments && data.segments.length > 0) {
       return data.segments.map(s => {
         const min = Math.floor(s.start / 60);
@@ -379,6 +427,23 @@ async function transcribeAudio(audioPath, aiConfig) {
         return `[${min}:${sec}] ${s.text.trim()}`;
       }).join('\n');
     }
+    return data.text || '';
+  }
+
+  // Path 2: Lovable AI Gateway (works for any org — uses platform LOVABLE_API_KEY)
+  const lovableKey = process.env.LOVABLE_API_KEY;
+  if (lovableKey) {
+    const audioFile = new File([audioBuffer], `recording.${ext}`, { type: mime });
+    const form = new FormData();
+    form.append('file', audioFile);
+    form.append('model', 'openai/gpt-4o-mini-transcribe');
+    const resp = await fetch('https://ai.gateway.lovable.dev/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${lovableKey}` },
+      body: form,
+    });
+    if (!resp.ok) throw new Error(`Transcrição (Lovable AI) ${resp.status}: ${await resp.text()}`);
+    const data = await resp.json();
     return data.text || '';
   }
 
