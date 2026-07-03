@@ -116,6 +116,14 @@ async function ensureTables() {
     await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS cnh_validated BOOLEAN DEFAULT false`);
     await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS cnh_image_url TEXT`);
 
+    // Add identity validation (selfie + document front + back)
+    await query(`ALTER TABLE doc_signature_documents ADD COLUMN IF NOT EXISTS require_identity_validation BOOLEAN DEFAULT false`);
+    await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS identity_validated BOOLEAN DEFAULT false`);
+    await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS selfie_image_url TEXT`);
+    await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS doc_front_image_url TEXT`);
+    await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS doc_back_image_url TEXT`);
+    await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS identity_validation_details JSONB`);
+
   } catch (e) {
     console.error('[doc-signatures] Table init error:', e.message);
   }
