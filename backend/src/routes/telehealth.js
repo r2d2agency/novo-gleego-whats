@@ -328,34 +328,48 @@ async function processSession(sessionId, userId, orgId, userName) {
     if (!fs.existsSync(audioPath)) throw new Error('Arquivo de áudio não encontrado no disco');
 
     const aiConfig = await getAIConfig(userId);
-    if (!aiConfig) throw new Error('Configuração de IA não encontrada. Configure o provedor de IA nas configurações da organização.');
+    // Fallback: if org has no AI config but the platform has LOVABLE_API_KEY, use it for transcription
+    const effectiveConfig = aiConfig || (process.env.LOVABLE_API_KEY ? { provider: 'lovable', apiKey: process.env.LOVABLE_API_KEY, model: null } : null);
+    if (!effectiveConfig) throw new Error('Configuração de IA não encontrada. Peça ao administrador para configurar um provedor de IA nas configurações da organização.');
+
+    // Pre-transcode to compact MP3 (mono 16kHz 32kbps) so 30-min recordings fit under Whisper's 25MB limit
+    let workingPath = audioPath;
+    const compact = transcodeToCompactMp3(audioPath);
+    if (compact) workingPath = compact;
 
     let transcript = '';
-
-    // Check file size - chunk if > 20MB
-    const stats = fs.statSync(audioPath);
-    if (stats.size > 20 * 1024 * 1024) {
-      const chunkDir = path.join(uploadDir, `chunks-${sessionId}`);
-      if (!fs.existsSync(chunkDir)) fs.mkdirSync(chunkDir, { recursive: true });
-      try {
-        execSync(`ffmpeg -i "${audioPath}" -f segment -segment_time 300 -c copy "${chunkDir}/chunk_%03d.webm"`, { timeout: 120000 });
-        const chunks = fs.readdirSync(chunkDir).sort();
-        for (const chunk of chunks) {
-          const chunkPath = path.join(chunkDir, chunk);
-          const chunkTranscript = await transcribeAudio(chunkPath, aiConfig);
-          transcript += chunkTranscript + ' ';
+    try {
+      const stats = fs.statSync(workingPath);
+      if (stats.size > 24 * 1024 * 1024 && hasFfmpeg()) {
+        // Still too big — chunk into 5-min MP3 segments (with re-encode to guarantee size)
+        const chunkDir = path.join(uploadDir, `chunks-${sessionId}`);
+        if (!fs.existsSync(chunkDir)) fs.mkdirSync(chunkDir, { recursive: true });
+        try {
+          execSync(
+            `ffmpeg -y -i "${workingPath}" -vn -ac 1 -ar 16000 -b:a 32k -f segment -segment_time 300 "${chunkDir}/chunk_%03d.mp3"`,
+            { stdio: 'ignore', timeout: 10 * 60 * 1000 }
+          );
+          const chunks = fs.readdirSync(chunkDir).sort();
+          for (const chunk of chunks) {
+            const chunkTranscript = await transcribeAudio(path.join(chunkDir, chunk), effectiveConfig);
+            transcript += chunkTranscript + ' ';
+          }
+        } finally {
+          fs.rmSync(chunkDir, { recursive: true, force: true });
         }
-      } finally {
-        fs.rmSync(chunkDir, { recursive: true, force: true });
+      } else {
+        transcript = await transcribeAudio(workingPath, effectiveConfig);
       }
-    } else {
-      transcript = await transcribeAudio(audioPath, aiConfig);
+    } finally {
+      if (compact && compact !== audioPath && fs.existsSync(compact)) {
+        try { fs.unlinkSync(compact); } catch {}
+      }
     }
 
     // Step 2: Speaker diarization via AI post-processing
     let diarizedTranscript = transcript;
     try {
-      diarizedTranscript = await identifySpeakers(transcript, aiConfig, session);
+      diarizedTranscript = await identifySpeakers(transcript, aiConfig || effectiveConfig, session);
     } catch (diarErr) {
       logError('Speaker diarization failed, using raw transcript', diarErr);
     }
