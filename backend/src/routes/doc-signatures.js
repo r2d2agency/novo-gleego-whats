@@ -12,6 +12,27 @@ import { logInfo, logError } from '../logger.js';
 
 const router = Router();
 
+// Save a base64 data URL image to /uploads/identity and return the public relative path
+function saveIdentityImage(dataUrl, signerId, kind) {
+  if (!dataUrl || typeof dataUrl !== 'string') return null;
+  try {
+    const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+    if (!match) return null;
+    const mime = match[1].toLowerCase();
+    const buffer = Buffer.from(match[2], 'base64');
+    const extMap = { 'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+    const ext = extMap[mime] || '.jpg';
+    const dir = path.join(process.cwd(), 'uploads', 'identity');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const filename = `${signerId}-${kind}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`;
+    fs.writeFileSync(path.join(dir, filename), buffer);
+    return `/uploads/identity/${filename}`;
+  } catch (err) {
+    console.error('[doc-signatures] saveIdentityImage failed:', err?.message);
+    return null;
+  }
+}
+
 // Helper: get org id for user
 async function getUserOrgId(userId) {
   const r = await query(
@@ -1154,6 +1175,15 @@ router.post('/sign/:token/validate-identity', async (req, res) => {
     };
 
     {
+      // Persist the actual images to disk for legal audit (kept alongside the signed PDF)
+      const selfieUrl = saveIdentityImage(selfie, signer.id, 'selfie');
+      const docFrontUrl = saveIdentityImage(doc_front, signer.id, 'doc-front');
+      const docBackUrl = doc_back ? saveIdentityImage(doc_back, signer.id, 'doc-back') : null;
+
+      details.selfie_url = selfieUrl;
+      details.doc_front_url = docFrontUrl;
+      details.doc_back_url = docBackUrl;
+
       await query(
         `UPDATE doc_signature_signers
          SET identity_validated = true,
@@ -1163,9 +1193,9 @@ router.post('/sign/:token/validate-identity', async (req, res) => {
              identity_validation_details = $4
          WHERE id = $5`,
         [
-          selfie.substring(0, 100) + '...stored',
-          doc_front.substring(0, 100) + '...stored',
-          doc_back ? doc_back.substring(0, 100) + '...stored' : null,
+          selfieUrl,
+          docFrontUrl,
+          docBackUrl,
           JSON.stringify(details),
           signer.id,
         ]
