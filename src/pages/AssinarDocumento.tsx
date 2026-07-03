@@ -12,7 +12,7 @@ import { useDocSignatures, DocSigner, SignaturePosition } from '@/hooks/use-doc-
 import { resolveMediaUrl } from '@/lib/media';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { FileSignature, Loader2, CheckCircle2, RefreshCw, MapPin, Download, ShieldCheck, Mail, KeyRound, CreditCard, Camera, Upload, X, ExternalLink } from 'lucide-react';
+import { FileSignature, Loader2, CheckCircle2, RefreshCw, MapPin, Download, ShieldCheck, Mail, KeyRound, CreditCard, Camera, Upload, X, ExternalLink, ScanFace, User, IdCard } from 'lucide-react';
 
 export default function AssinarDocumento() {
   const { token } = useParams<{ token: string }>();
@@ -49,12 +49,33 @@ export default function AssinarDocumento() {
   const cnhInputRef = useRef<HTMLInputElement>(null);
   const viewStartTimeRef = useRef<number | null>(null);
 
+  // Identity validation state (selfie + document front/back)
+  const [requireIdentityValidation, setRequireIdentityValidation] = useState(false);
+  const [identityValidated, setIdentityValidated] = useState(false);
+  const [selfieImage, setSelfieImage] = useState<string | null>(null);
+  const [docFrontImage, setDocFrontImage] = useState<string | null>(null);
+  const [docBackImage, setDocBackImage] = useState<string | null>(null);
+  const [identityValidating, setIdentityValidating] = useState(false);
+  const [identityResult, setIdentityResult] = useState<{
+    validated: boolean;
+    motivo?: string;
+    nome_documento?: string;
+    tipo_documento?: string;
+    face_match?: boolean;
+    name_match?: boolean;
+    cpf_match?: boolean;
+    legible?: boolean;
+  } | null>(null);
+  const selfieInputRef = useRef<HTMLInputElement>(null);
+  const docFrontInputRef = useRef<HTMLInputElement>(null);
+  const docBackInputRef = useRef<HTMLInputElement>(null);
+
   // Terms acceptance
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsAcceptedAt, setTermsAcceptedAt] = useState<string | null>(null);
 
   const sigPadRef = useRef<SignatureCanvas>(null);
-  const { getPublicSigningData, submitSignature, getPublicSignedPdfUrl, requestOtp, verifyOtp, validateCnh, loading: submitting } = useDocSignatures();
+  const { getPublicSigningData, submitSignature, getPublicSignedPdfUrl, requestOtp, verifyOtp, validateCnh, validateIdentity, loading: submitting } = useDocSignatures();
 
   useEffect(() => {
     if (token) handleRequestOtp();
@@ -148,6 +169,8 @@ export default function AssinarDocumento() {
       if (data.document_description) setDocDescription(data.document_description);
       if (data.require_cnh_validation) setRequireCnhValidation(true);
       if (data.cnh_validated) setCnhValidated(true);
+      if (data.require_identity_validation) setRequireIdentityValidation(true);
+      if (data.identity_validated) setIdentityValidated(true);
       // Start tracking viewing time
       viewStartTimeRef.current = Date.now();
     } catch (err: any) {
@@ -220,8 +243,62 @@ export default function AssinarDocumento() {
     }
   };
 
+  const readImageFile = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Erro ao ler imagem'));
+    reader.readAsDataURL(file);
+  });
+
+  const handleIdentityImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (v: string | null) => void,
+    inputRef: React.RefObject<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Envie uma imagem'); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error('Imagem muito grande (máx 10MB)'); return; }
+    try {
+      const dataUrl = await readImageFile(file);
+      setter(dataUrl);
+      setIdentityResult(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao ler imagem');
+    } finally {
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  const handleValidateIdentity = async () => {
+    if (!token || !selfieImage || !docFrontImage) {
+      toast.error('Envie a selfie e a foto da frente do documento.');
+      return;
+    }
+    setIdentityValidating(true);
+    try {
+      const result = await validateIdentity(token, {
+        selfie: selfieImage,
+        doc_front: docFrontImage,
+        doc_back: docBackImage,
+      });
+      setIdentityResult(result);
+      if (result?.validated) {
+        setIdentityValidated(true);
+        toast.success('✅ Identidade validada com sucesso!');
+      } else {
+        toast.error(result?.motivo || 'Não foi possível validar sua identidade.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao validar identidade');
+    } finally {
+      setIdentityValidating(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (requireCnhValidation && !cnhValidated) { toast.error('A validação da CNH é obrigatória para assinar este documento.'); return; }
+    if (requireIdentityValidation && !identityValidated) { toast.error('A validação de identidade (selfie + documento) é obrigatória para assinar.'); return; }
     if (!geolocation) { toast.error('A geolocalização é obrigatória para assinar. Permita o acesso à localização no navegador e tente novamente.'); return; }
     if (!termsAccepted) { toast.error('Você precisa aceitar os termos do documento para assinar.'); return; }
     if (!sigPadRef.current || sigPadRef.current.isEmpty()) { toast.error('Desenhe sua assinatura'); return; }
@@ -609,6 +686,163 @@ export default function AssinarDocumento() {
                   <div>
                     <p className="font-medium text-green-700 dark:text-green-400">Identidade validada com sucesso!</p>
                     <p className="text-xs text-muted-foreground">O nome e CPF da sua CNH conferem com os dados do signatário.</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Identity Validation Card (selfie + document front/back) */}
+        {requireIdentityValidation && (
+          <Card className={identityValidated ? 'border-green-500 bg-green-50 dark:bg-green-950/20' : 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ScanFace className="h-4 w-4" />
+                Validação de Identidade
+                {identityValidated && <Badge variant="default" className="gap-1 text-xs"><CheckCircle2 className="h-3 w-3" /> Validada</Badge>}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!identityValidated ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Para assinar este documento você precisa tirar uma <strong>selfie</strong> e enviar fotos do seu <strong>documento oficial (frente e verso)</strong>. A IA vai comparar seu rosto com o documento e conferir se o nome e CPF batem com os dados cadastrados.
+                  </p>
+
+                  {/* Selfie */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      <User className="h-4 w-4" /> 1. Selfie (rosto)
+                    </Label>
+                    <input
+                      ref={selfieInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="user"
+                      className="hidden"
+                      onChange={(e) => handleIdentityImageUpload(e, setSelfieImage, selfieInputRef)}
+                    />
+                    {selfieImage ? (
+                      <div className="relative">
+                        <img src={selfieImage} alt="Selfie" className="w-full max-h-52 object-contain rounded-lg border bg-background" />
+                        <Button variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7" onClick={() => { setSelfieImage(null); setIdentityResult(null); }}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button variant="outline" onClick={() => selfieInputRef.current?.click()} className="w-full gap-2">
+                        <Camera className="h-4 w-4" /> Tirar Selfie
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Doc front */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      <IdCard className="h-4 w-4" /> 2. Frente do Documento (RG, CNH ou similar)
+                    </Label>
+                    <input
+                      ref={docFrontInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={(e) => handleIdentityImageUpload(e, setDocFrontImage, docFrontInputRef)}
+                    />
+                    {docFrontImage ? (
+                      <div className="relative">
+                        <img src={docFrontImage} alt="Frente do documento" className="w-full max-h-52 object-contain rounded-lg border bg-background" />
+                        <Button variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7" onClick={() => { setDocFrontImage(null); setIdentityResult(null); }}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => docFrontInputRef.current?.click()} className="flex-1 gap-2">
+                          <Camera className="h-4 w-4" /> Tirar Foto
+                        </Button>
+                        <Button variant="outline" onClick={() => {
+                          if (docFrontInputRef.current) {
+                            docFrontInputRef.current.removeAttribute('capture');
+                            docFrontInputRef.current.click();
+                            setTimeout(() => docFrontInputRef.current?.setAttribute('capture', 'environment'), 100);
+                          }
+                        }} className="flex-1 gap-2">
+                          <Upload className="h-4 w-4" /> Enviar
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Doc back (optional) */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      <IdCard className="h-4 w-4" /> 3. Verso do Documento <span className="text-xs text-muted-foreground font-normal">(opcional)</span>
+                    </Label>
+                    <input
+                      ref={docBackInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={(e) => handleIdentityImageUpload(e, setDocBackImage, docBackInputRef)}
+                    />
+                    {docBackImage ? (
+                      <div className="relative">
+                        <img src={docBackImage} alt="Verso do documento" className="w-full max-h-52 object-contain rounded-lg border bg-background" />
+                        <Button variant="destructive" size="icon" className="absolute top-2 right-2 h-7 w-7" onClick={() => { setDocBackImage(null); setIdentityResult(null); }}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => docBackInputRef.current?.click()} className="flex-1 gap-2">
+                          <Camera className="h-4 w-4" /> Tirar Foto
+                        </Button>
+                        <Button variant="outline" onClick={() => {
+                          if (docBackInputRef.current) {
+                            docBackInputRef.current.removeAttribute('capture');
+                            docBackInputRef.current.click();
+                            setTimeout(() => docBackInputRef.current?.setAttribute('capture', 'environment'), 100);
+                          }
+                        }} className="flex-1 gap-2">
+                          <Upload className="h-4 w-4" /> Enviar
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {identityResult && !identityResult.validated && (
+                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 space-y-1">
+                      <p className="text-sm text-destructive font-medium">❌ {identityResult.motivo || 'Dados não conferem'}</p>
+                      {identityResult.nome_documento && (
+                        <p className="text-xs text-muted-foreground">Nome extraído do documento: {identityResult.nome_documento}</p>
+                      )}
+                      <div className="flex flex-wrap gap-2 text-[10px] pt-1">
+                        <Badge variant={identityResult.face_match ? 'default' : 'destructive'}>Rosto: {identityResult.face_match ? 'OK' : 'Não confere'}</Badge>
+                        <Badge variant={identityResult.name_match ? 'default' : 'destructive'}>Nome: {identityResult.name_match ? 'OK' : 'Não confere'}</Badge>
+                        <Badge variant={identityResult.cpf_match ? 'default' : 'destructive'}>CPF: {identityResult.cpf_match ? 'OK' : 'Não confere'}</Badge>
+                        <Badge variant={identityResult.legible ? 'default' : 'destructive'}>Legibilidade: {identityResult.legible ? 'OK' : 'Ruim'}</Badge>
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    onClick={handleValidateIdentity}
+                    disabled={identityValidating || !selfieImage || !docFrontImage}
+                    className="w-full gap-2"
+                  >
+                    {identityValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                    {identityValidating ? 'Analisando com IA...' : 'Validar Identidade'}
+                  </Button>
+                </>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="h-8 w-8 text-green-500" />
+                  <div>
+                    <p className="font-medium text-green-700 dark:text-green-400">Identidade validada com sucesso!</p>
+                    <p className="text-xs text-muted-foreground">Selfie, documento, nome e CPF conferem com o cadastro.</p>
                   </div>
                 </div>
               )}

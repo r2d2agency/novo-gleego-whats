@@ -468,6 +468,36 @@ export function useDocSignatures() {
     }
   }, []);
 
+  const validateIdentity = useCallback(async (token: string, images: { selfie: string; doc_front: string; doc_back?: string | null }): Promise<{
+    validated: boolean;
+    nome_documento?: string;
+    tipo_documento?: string;
+    face_match?: boolean;
+    name_match?: boolean;
+    cpf_match?: boolean;
+    legible?: boolean;
+    motivo?: string;
+  } | null> => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_URL}/api/doc-signatures/sign/${token}/validate-identity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          selfie: images.selfie,
+          doc_front: images.doc_front,
+          doc_back: images.doc_back || null,
+        }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Erro ao validar identidade'); }
+      return res.json();
+    } catch (err: any) {
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   return {
     loading,
     listDocuments,
@@ -487,5 +517,6 @@ export function useDocSignatures() {
     verifyOtp,
     sendSigningLinkWhatsApp,
     validateCnh,
+    validateIdentity,
   };
 }

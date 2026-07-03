@@ -116,6 +116,14 @@ async function ensureTables() {
     await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS cnh_validated BOOLEAN DEFAULT false`);
     await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS cnh_image_url TEXT`);
 
+    // Add identity validation (selfie + document front + back)
+    await query(`ALTER TABLE doc_signature_documents ADD COLUMN IF NOT EXISTS require_identity_validation BOOLEAN DEFAULT false`);
+    await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS identity_validated BOOLEAN DEFAULT false`);
+    await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS selfie_image_url TEXT`);
+    await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS doc_front_image_url TEXT`);
+    await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS doc_back_image_url TEXT`);
+    await query(`ALTER TABLE doc_signature_signers ADD COLUMN IF NOT EXISTS identity_validation_details JSONB`);
+
   } catch (e) {
     console.error('[doc-signatures] Table init error:', e.message);
   }
@@ -864,7 +872,7 @@ router.get('/sign/:token', async (req, res) => {
     const { token } = req.params;
     const result = await query(
       `SELECT s.*, d.title, d.description, d.file_url, d.status as doc_status, d.organization_id,
-              d.require_cnh_validation,
+              d.require_cnh_validation, d.require_identity_validation,
               o.name as org_name, o.logo_url as org_logo_url
        FROM doc_signature_signers s
        JOIN doc_signature_documents d ON d.id = s.document_id
@@ -907,6 +915,8 @@ router.get('/sign/:token', async (req, res) => {
       org_logo_url: signer.org_logo_url || null,
       require_cnh_validation: signer.require_cnh_validation || false,
       cnh_validated: signer.cnh_validated || false,
+      require_identity_validation: signer.require_identity_validation || false,
+      identity_validated: signer.identity_validated || false,
       signer: {
         id: signer.id,
         name: signer.name,
@@ -1038,6 +1048,162 @@ router.post('/sign/:token/validate-cnh', async (req, res) => {
 });
 
 
+// Validate identity (selfie + doc front + back) via AI (public)
+router.post('/sign/:token/validate-identity', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { selfie, doc_front, doc_back } = req.body;
+
+    if (!selfie || !doc_front) {
+      return res.status(400).json({ error: 'Selfie e foto do documento (frente) são obrigatórias' });
+    }
+
+    const signerResult = await query(
+      `SELECT s.*, d.require_identity_validation, d.organization_id, d.id as doc_id
+       FROM doc_signature_signers s
+       JOIN doc_signature_documents d ON d.id = s.document_id
+       WHERE s.sign_token = $1`,
+      [token]
+    );
+    if (signerResult.rows.length === 0) return res.status(404).json({ error: 'Link inválido' });
+
+    const signer = signerResult.rows[0];
+    if (!signer.require_identity_validation) {
+      return res.status(400).json({ error: 'Validação de identidade não é necessária para este documento' });
+    }
+
+    // Get org AI config
+    const aiConfigResult = await query(
+      `SELECT ai_provider, ai_model, ai_api_key FROM organizations WHERE id = $1`,
+      [signer.organization_id]
+    );
+    const aiConfig = aiConfigResult.rows[0];
+    if (!aiConfig?.ai_api_key || aiConfig.ai_provider === 'none') {
+      return res.status(400).json({ error: 'Configuração de IA não encontrada na organização. Configure um provedor de IA nas configurações.' });
+    }
+
+    const { callAI } = await import('../lib/ai-caller.js');
+
+    const config = {
+      provider: aiConfig.ai_provider,
+      model: aiConfig.ai_model,
+      apiKey: aiConfig.ai_api_key,
+    };
+
+    const signerCleanCpf = signer.cpf.replace(/\D/g, '');
+    const signerName = signer.name.trim().toLowerCase();
+
+    const userContent = [
+      {
+        type: 'text',
+        text: `Analise as imagens enviadas para validação de identidade.\n\nDADOS CADASTRADOS DO SIGNATÁRIO:\n- Nome: "${signer.name}"\n- CPF: "${signerCleanCpf}"\n\nIMAGENS (nesta ordem):\n1) Selfie do signatário (rosto)\n2) Frente do documento oficial (RG, CNH, ou similar)\n${doc_back ? '3) Verso do documento oficial' : ''}\n\nExtraia o nome completo e CPF visíveis no documento e verifique:\n- Se a pessoa na selfie parece ser a mesma que aparece na foto do documento (rosto similar).\n- Se o nome do documento confere com o nome cadastrado.\n- Se o CPF do documento confere com o CPF cadastrado.\n\nResponda SOMENTE em JSON no formato: {"nome_documento":"NOME","cpf_documento":"00000000000","tipo_documento":"RG|CNH|OUTRO","rosto_confere":true/false,"nome_confere":true/false,"cpf_confere":true/false,"documento_legivel":true/false,"motivo":"explicação curta"}. Se algo estiver ilegível, coloque documento_legivel=false e explique.`
+      },
+      { type: 'image_url', image_url: { url: selfie } },
+      { type: 'image_url', image_url: { url: doc_front } },
+    ];
+    if (doc_back) userContent.push({ type: 'image_url', image_url: { url: doc_back } });
+
+    const messages = [
+      {
+        role: 'system',
+        content: 'Você é um validador de identidade. Analise as fotos (selfie + documento frente/verso), extraia os dados do documento e verifique se conferem com o cadastro. Responda somente em JSON.'
+      },
+      { role: 'user', content: userContent }
+    ];
+
+    const aiResult = await callAI(config, messages, {
+      temperature: 0.1,
+      maxTokens: 700,
+      responseFormat: { type: 'json_object' },
+    });
+
+    let parsed;
+    try {
+      parsed = JSON.parse(aiResult.content);
+    } catch {
+      return res.status(400).json({ error: 'Não foi possível analisar as imagens. Tente novamente com fotos mais nítidas.', ai_raw: aiResult.content });
+    }
+
+    const docName = (parsed.nome_documento || '').trim().toLowerCase();
+    const docCpf = (parsed.cpf_documento || '').replace(/\D/g, '');
+
+    // Name similarity check
+    const nameWords = signerName.split(/\s+/).filter(Boolean);
+    const docWords = docName.split(/\s+/).filter(Boolean);
+    const matchingWords = nameWords.filter(w => docWords.some(dw => dw === w || dw.includes(w) || w.includes(dw)));
+    const nameMatch = matchingWords.length >= Math.min(2, nameWords.length);
+    const cpfMatch = docCpf === signerCleanCpf;
+    const faceMatch = parsed.rosto_confere !== false;
+    const legible = parsed.documento_legivel !== false;
+
+    const validated = legible && nameMatch && cpfMatch && faceMatch;
+
+    const details = {
+      nome_documento: parsed.nome_documento || null,
+      cpf_documento: parsed.cpf_documento || null,
+      tipo_documento: parsed.tipo_documento || null,
+      name_match: nameMatch,
+      cpf_match: cpfMatch,
+      face_match: faceMatch,
+      legible,
+      motivo: parsed.motivo || null,
+      validated_at: new Date().toISOString(),
+    };
+
+    if (validated) {
+      await query(
+        `UPDATE doc_signature_signers
+         SET identity_validated = true,
+             selfie_image_url = $1,
+             doc_front_image_url = $2,
+             doc_back_image_url = $3,
+             identity_validation_details = $4
+         WHERE id = $5`,
+        [
+          selfie.substring(0, 100) + '...stored',
+          doc_front.substring(0, 100) + '...stored',
+          doc_back ? doc_back.substring(0, 100) + '...stored' : null,
+          JSON.stringify(details),
+          signer.id,
+        ]
+      );
+
+      await auditLog(signer.doc_id, 'identity_validated', {
+        name: signer.name, email: signer.email,
+        ip: getClientIp(req), userAgent: req.headers['user-agent'],
+        details,
+      });
+    } else {
+      await auditLog(signer.doc_id, 'identity_validation_failed', {
+        name: signer.name, email: signer.email,
+        ip: getClientIp(req), userAgent: req.headers['user-agent'],
+        details,
+      });
+    }
+
+    res.json({
+      validated,
+      nome_documento: parsed.nome_documento,
+      tipo_documento: parsed.tipo_documento,
+      face_match: faceMatch,
+      name_match: nameMatch,
+      cpf_match: cpfMatch,
+      legible,
+      motivo: parsed.motivo || (validated
+        ? 'Identidade validada com sucesso'
+        : (!legible ? 'Documento não está legível — tire fotos mais nítidas'
+          : !faceMatch ? 'Rosto da selfie não confere com o documento'
+          : !nameMatch ? 'Nome do documento não confere com o cadastro'
+          : !cpfMatch ? 'CPF do documento não confere com o cadastro'
+          : 'Dados não conferem')),
+    });
+  } catch (error) {
+    console.error('[doc-signatures] Identity validation error:', error);
+    res.status(500).json({ error: 'Erro ao validar identidade' });
+  }
+});
+
+
 router.post('/sign/:token', async (req, res) => {
   try {
     const { token } = req.params;
@@ -1050,7 +1216,7 @@ router.post('/sign/:token', async (req, res) => {
 
     // Validate signer
     const signerResult = await query(
-      `SELECT s.*, d.id as doc_id, d.status as doc_status, d.require_cnh_validation
+      `SELECT s.*, d.id as doc_id, d.status as doc_status, d.require_cnh_validation, d.require_identity_validation
        FROM doc_signature_signers s
        JOIN doc_signature_documents d ON d.id = s.document_id
        WHERE s.sign_token = $1`,
@@ -1065,6 +1231,11 @@ router.post('/sign/:token', async (req, res) => {
     // Check CNH validation if required
     if (signer.require_cnh_validation && !signer.cnh_validated) {
       return res.status(400).json({ error: 'Validação de CNH é obrigatória antes de assinar. Envie a foto da sua CNH.' });
+    }
+
+    // Check identity validation (selfie + document) if required
+    if (signer.require_identity_validation && !signer.identity_validated) {
+      return res.status(400).json({ error: 'Validação de identidade é obrigatória antes de assinar. Envie a selfie e as fotos do documento.' });
     }
 
     // Validate CPF matches
@@ -1341,7 +1512,7 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const { title, description, file_url, deal_id, require_cnh_validation } = req.body;
+    const { title, description, file_url, deal_id, require_cnh_validation, require_identity_validation } = req.body;
     if (!title || !file_url) return res.status(400).json({ error: 'Título e arquivo são obrigatórios' });
 
     const normalizedFileUrl = normalizeDocumentFileUrl(file_url);
@@ -1367,9 +1538,9 @@ router.post('/', async (req, res) => {
     const user = userResult.rows[0];
 
     const result = await query(
-      `INSERT INTO doc_signature_documents (organization_id, title, description, file_url, created_by, deal_id, require_cnh_validation, hash_sha256)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [orgId, title, description || null, normalizedFileUrl, req.userId, deal_id || null, require_cnh_validation || false, hashSha256]
+      `INSERT INTO doc_signature_documents (organization_id, title, description, file_url, created_by, deal_id, require_cnh_validation, require_identity_validation, hash_sha256)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [orgId, title, description || null, normalizedFileUrl, req.userId, deal_id || null, require_cnh_validation || false, require_identity_validation || false, hashSha256]
     );
 
     const doc = result.rows[0];
