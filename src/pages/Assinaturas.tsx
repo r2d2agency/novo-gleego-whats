@@ -565,6 +565,36 @@ export default function Assinaturas() {
 
                   {/* Audit Tab */}
                   <TabsContent value="audit" className="space-y-2">
+                    {/* Identity images captured per signer */}
+                    {signers.some((s: any) => s.selfie_image_url || s.doc_front_image_url || s.doc_back_image_url) && (
+                      <div className="mb-3 space-y-3">
+                        <p className="text-xs font-medium uppercase text-muted-foreground">Registro de Identidade (Selfie + Documento)</p>
+                        {signers.map((s: any) => {
+                          if (!s.selfie_image_url && !s.doc_front_image_url && !s.doc_back_image_url) return null;
+                          const buildUrl = (u?: string | null) => {
+                            if (!u) return null;
+                            return u.startsWith('http') ? u : `${window.location.origin}${u}`;
+                          };
+                          return (
+                            <div key={s.id} className="p-3 rounded-lg border">
+                              <p className="text-xs font-medium mb-2">👤 {s.name} ({s.email})</p>
+                              <div className="grid grid-cols-3 gap-2">
+                                {[
+                                  { label: 'Selfie', url: buildUrl(s.selfie_image_url) },
+                                  { label: 'Doc. Frente', url: buildUrl(s.doc_front_image_url) },
+                                  { label: 'Doc. Verso', url: buildUrl(s.doc_back_image_url) },
+                                ].map((img) => img.url ? (
+                                  <a key={img.label} href={img.url} target="_blank" rel="noopener noreferrer" className="block">
+                                    <img src={img.url} alt={img.label} className="w-full h-24 object-cover rounded border" />
+                                    <p className="text-[10px] text-center text-muted-foreground mt-1">{img.label}</p>
+                                  </a>
+                                ) : null)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     {auditLogs.length === 0 ? (
                       <p className="text-center text-muted-foreground py-6">Sem registros de auditoria</p>
                     ) : (
