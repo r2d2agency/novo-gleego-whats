@@ -1117,7 +1117,7 @@ router.post('/sign/:token/validate-identity', async (req, res) => {
     const userContent = [
       {
         type: 'text',
-        text: `Analise as imagens enviadas para registro de identidade do signatário.\n\nDADOS CADASTRADOS:\n- Nome: "${signer.name}"\n- CPF: "${signerCleanCpf}"\n\nIMAGENS (nesta ordem):\n1) Selfie do signatário (rosto)\n2) Frente do documento oficial (aceita QUALQUER documento oficial com foto: RG, CNH, CIN, CTPS, Passaporte, Carteira funcional, etc.)\n${doc_back ? '3) Verso do documento oficial' : ''}\n\nExtraia o que for legível (nome e CPF, se aparecerem) apenas para fins informativos. NÃO é obrigatório que os dados batam — o objetivo é registrar as fotos para auditoria.\n\nResponda SOMENTE em JSON: {"nome_documento":"NOME OU vazio","cpf_documento":"00000000000 OU vazio","tipo_documento":"RG|CNH|CIN|CTPS|Passaporte|OUTRO","rosto_confere":true/false,"nome_confere":true/false,"cpf_confere":true/false,"documento_legivel":true/false,"motivo":"observação curta"}.`
+        text: `Analise as imagens enviadas para registro de identidade do signatário.\n\nDADOS CADASTRADOS:\n- Nome: "${signer.name}"\n- CPF: "${signerCleanCpf}"\n\nIMAGENS (nesta ordem):\n1) Selfie do signatário (deve conter um ROSTO HUMANO visível)\n2) Frente do documento oficial brasileiro com foto (RG, CNH, CIN, CTPS, Passaporte, Carteira funcional, OAB, CRM, etc.)\n${doc_back ? '3) Verso do documento oficial' : ''}\n\nSEJA RIGOROSO na verificação de autenticidade:\n- "selfie_tem_rosto" deve ser true APENAS se a imagem 1 mostrar claramente um rosto humano real. Se for objeto, animal, tela, foto de foto, ambiente vazio ou imagem irreconhecível → false.\n- "eh_documento_oficial" deve ser true APENAS se a imagem 2 for INEQUIVOCAMENTE um documento de identidade oficial brasileiro (com foto, nome impresso, número de identificação, layout característico de RG/CNH/CIN/etc.). Se for objeto qualquer (mouse, teclado, celular, papel em branco, foto genérica, cartão de crédito, cartão fidelidade, cartão de visita, screenshot, print, meme) → false.\n- Extraia nome e CPF apenas se visíveis no documento.\n\nResponda SOMENTE em JSON: {"selfie_tem_rosto":true/false,"eh_documento_oficial":true/false,"nome_documento":"NOME OU vazio","cpf_documento":"00000000000 OU vazio","tipo_documento":"RG|CNH|CIN|CTPS|Passaporte|OUTRO|NAO_E_DOCUMENTO","rosto_confere":true/false,"nome_confere":true/false,"cpf_confere":true/false,"documento_legivel":true/false,"motivo":"explique brevemente, especialmente se recusar"}.`
       },
       { type: 'image_url', image_url: { url: selfie } },
       { type: 'image_url', image_url: { url: doc_front } },
@@ -1143,6 +1143,23 @@ router.post('/sign/:token/validate-identity', async (req, res) => {
       parsed = JSON.parse(aiResult.content);
     } catch {
       return res.status(400).json({ error: 'Não foi possível analisar as imagens. Tente novamente com fotos mais nítidas.', ai_raw: aiResult.content });
+    }
+
+    const isOfficialDoc = parsed.eh_documento_oficial === true;
+    const selfieHasFace = parsed.selfie_tem_rosto !== false;
+
+    if (!isOfficialDoc) {
+      return res.status(400).json({
+        error: 'A foto enviada não parece ser um documento de identidade oficial válido. Envie uma foto nítida de RG, CNH, CIN, Passaporte ou outro documento oficial com foto.',
+        motivo: parsed.motivo || null,
+        tipo_documento: parsed.tipo_documento || null,
+      });
+    }
+    if (!selfieHasFace) {
+      return res.status(400).json({
+        error: 'Não foi possível detectar um rosto na selfie. Tire uma nova foto mostrando claramente o seu rosto.',
+        motivo: parsed.motivo || null,
+      });
     }
 
     const docName = (parsed.nome_documento || '').trim().toLowerCase();
