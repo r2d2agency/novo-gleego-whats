@@ -19,7 +19,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
   FileSignature, Plus, Loader2, Eye, Send, Copy, Trash2,
-  UserPlus, FileText, Clock, CheckCircle2, XCircle, Shield, Download, Link2, Users, MapPin, CreditCard
+  UserPlus, FileText, Clock, CheckCircle2, XCircle, Shield, Download, Link2, Users, MapPin, CreditCard, ScanFace
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
@@ -47,6 +47,7 @@ export default function Assinaturas() {
   const [newDescription, setNewDescription] = useState('');
   const [newFileUrl, setNewFileUrl] = useState('');
   const [newRequireCnh, setNewRequireCnh] = useState(false);
+  const [newRequireIdentity, setNewRequireIdentity] = useState(false);
 
   // Add signer form
   const [signerName, setSignerName] = useState('');
@@ -81,10 +82,10 @@ export default function Assinaturas() {
   const handleCreate = async () => {
     if (!newTitle || !newFileUrl) { toast.error('Título e arquivo são obrigatórios'); return; }
     try {
-      await createDocument({ title: newTitle, description: newDescription, file_url: newFileUrl, require_cnh_validation: newRequireCnh } as any);
+      await createDocument({ title: newTitle, description: newDescription, file_url: newFileUrl, require_cnh_validation: newRequireCnh, require_identity_validation: newRequireIdentity } as any);
       toast.success('Documento criado com sucesso!');
       setCreateOpen(false);
-      setNewTitle(''); setNewDescription(''); setNewFileUrl(''); setNewRequireCnh(false);
+      setNewTitle(''); setNewDescription(''); setNewFileUrl(''); setNewRequireCnh(false); setNewRequireIdentity(false);
       loadDocuments();
     } catch (err: any) { toast.error(err.message); }
   };
@@ -371,6 +372,16 @@ export default function Assinaturas() {
                   </div>
                 </div>
                 <Switch checked={newRequireCnh} onCheckedChange={setNewRequireCnh} />
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg border">
+                <div className="flex items-center gap-2">
+                  <ScanFace className="h-4 w-4 text-primary" />
+                  <div>
+                    <p className="text-sm font-medium">Selfie + Documento (RG, CNH, CIN...)</p>
+                    <p className="text-xs text-muted-foreground">Exigir selfie e foto do documento oficial. As imagens ficam salvas em Auditoria.</p>
+                  </div>
+                </div>
+                <Switch checked={newRequireIdentity} onCheckedChange={setNewRequireIdentity} />
               </div>
             </div>
             <DialogFooter>
