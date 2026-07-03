@@ -1096,7 +1096,7 @@ router.post('/sign/:token/validate-identity', async (req, res) => {
     const userContent = [
       {
         type: 'text',
-        text: `Analise as imagens enviadas para validação de identidade.\n\nDADOS CADASTRADOS DO SIGNATÁRIO:\n- Nome: "${signer.name}"\n- CPF: "${signerCleanCpf}"\n\nIMAGENS (nesta ordem):\n1) Selfie do signatário (rosto)\n2) Frente do documento oficial (RG, CNH, ou similar)\n${doc_back ? '3) Verso do documento oficial' : ''}\n\nExtraia o nome completo e CPF visíveis no documento e verifique:\n- Se a pessoa na selfie parece ser a mesma que aparece na foto do documento (rosto similar).\n- Se o nome do documento confere com o nome cadastrado.\n- Se o CPF do documento confere com o CPF cadastrado.\n\nResponda SOMENTE em JSON no formato: {"nome_documento":"NOME","cpf_documento":"00000000000","tipo_documento":"RG|CNH|OUTRO","rosto_confere":true/false,"nome_confere":true/false,"cpf_confere":true/false,"documento_legivel":true/false,"motivo":"explicação curta"}. Se algo estiver ilegível, coloque documento_legivel=false e explique.`
+        text: `Analise as imagens enviadas para registro de identidade do signatário.\n\nDADOS CADASTRADOS:\n- Nome: "${signer.name}"\n- CPF: "${signerCleanCpf}"\n\nIMAGENS (nesta ordem):\n1) Selfie do signatário (rosto)\n2) Frente do documento oficial (aceita QUALQUER documento oficial com foto: RG, CNH, CIN, CTPS, Passaporte, Carteira funcional, etc.)\n${doc_back ? '3) Verso do documento oficial' : ''}\n\nExtraia o que for legível (nome e CPF, se aparecerem) apenas para fins informativos. NÃO é obrigatório que os dados batam — o objetivo é registrar as fotos para auditoria.\n\nResponda SOMENTE em JSON: {"nome_documento":"NOME OU vazio","cpf_documento":"00000000000 OU vazio","tipo_documento":"RG|CNH|CIN|CTPS|Passaporte|OUTRO","rosto_confere":true/false,"nome_confere":true/false,"cpf_confere":true/false,"documento_legivel":true/false,"motivo":"observação curta"}.`
       },
       { type: 'image_url', image_url: { url: selfie } },
       { type: 'image_url', image_url: { url: doc_front } },
@@ -1136,7 +1136,10 @@ router.post('/sign/:token/validate-identity', async (req, res) => {
     const faceMatch = parsed.rosto_confere !== false;
     const legible = parsed.documento_legivel !== false;
 
-    const validated = legible && nameMatch && cpfMatch && faceMatch;
+    // Registro de identidade: fotos capturadas são suficientes para prosseguir.
+    // Os matches abaixo são apenas informativos/auditoria — não bloqueiam a assinatura
+    // (o signatário pode usar RG, CNH ou qualquer documento oficial com foto).
+    const validated = true;
 
     const details = {
       nome_documento: parsed.nome_documento || null,
@@ -1150,7 +1153,7 @@ router.post('/sign/:token/validate-identity', async (req, res) => {
       validated_at: new Date().toISOString(),
     };
 
-    if (validated) {
+    {
       await query(
         `UPDATE doc_signature_signers
          SET identity_validated = true,
@@ -1168,13 +1171,7 @@ router.post('/sign/:token/validate-identity', async (req, res) => {
         ]
       );
 
-      await auditLog(signer.doc_id, 'identity_validated', {
-        name: signer.name, email: signer.email,
-        ip: getClientIp(req), userAgent: req.headers['user-agent'],
-        details,
-      });
-    } else {
-      await auditLog(signer.doc_id, 'identity_validation_failed', {
+      await auditLog(signer.doc_id, 'identity_recorded', {
         name: signer.name, email: signer.email,
         ip: getClientIp(req), userAgent: req.headers['user-agent'],
         details,
@@ -1189,13 +1186,7 @@ router.post('/sign/:token/validate-identity', async (req, res) => {
       name_match: nameMatch,
       cpf_match: cpfMatch,
       legible,
-      motivo: parsed.motivo || (validated
-        ? 'Identidade validada com sucesso'
-        : (!legible ? 'Documento não está legível — tire fotos mais nítidas'
-          : !faceMatch ? 'Rosto da selfie não confere com o documento'
-          : !nameMatch ? 'Nome do documento não confere com o cadastro'
-          : !cpfMatch ? 'CPF do documento não confere com o cadastro'
-          : 'Dados não conferem')),
+      motivo: parsed.motivo || 'Identidade registrada com sucesso',
     });
   } catch (error) {
     console.error('[doc-signatures] Identity validation error:', error);

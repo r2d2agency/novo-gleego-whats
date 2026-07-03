@@ -707,7 +707,7 @@ export default function AssinarDocumento() {
               {!identityValidated ? (
                 <>
                   <p className="text-sm text-muted-foreground">
-                    Para assinar este documento você precisa tirar uma <strong>selfie</strong> e enviar fotos do seu <strong>documento oficial (frente e verso)</strong>. A IA vai comparar seu rosto com o documento e conferir se o nome e CPF batem com os dados cadastrados.
+                    Para assinar este documento você precisa registrar uma <strong>selfie</strong> e uma foto do seu <strong>documento oficial com foto</strong> (RG, CNH, CIN, CTPS, Passaporte ou similar). O verso é opcional. As fotos são apenas registradas para auditoria — não bloqueiam a assinatura.
                   </p>
 
                   {/* Selfie */}
@@ -740,7 +740,7 @@ export default function AssinarDocumento() {
                   {/* Doc front */}
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2 text-sm font-medium">
-                      <IdCard className="h-4 w-4" /> 2. Frente do Documento (RG, CNH ou similar)
+                      <IdCard className="h-4 w-4" /> 2. Frente do Documento com foto (RG, CNH, CIN, Passaporte...)
                     </Label>
                     <input
                       ref={docFrontInputRef}
@@ -813,18 +813,9 @@ export default function AssinarDocumento() {
                     )}
                   </div>
 
-                  {identityResult && !identityResult.validated && (
-                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30 space-y-1">
-                      <p className="text-sm text-destructive font-medium">❌ {identityResult.motivo || 'Dados não conferem'}</p>
-                      {identityResult.nome_documento && (
-                        <p className="text-xs text-muted-foreground">Nome extraído do documento: {identityResult.nome_documento}</p>
-                      )}
-                      <div className="flex flex-wrap gap-2 text-[10px] pt-1">
-                        <Badge variant={identityResult.face_match ? 'default' : 'destructive'}>Rosto: {identityResult.face_match ? 'OK' : 'Não confere'}</Badge>
-                        <Badge variant={identityResult.name_match ? 'default' : 'destructive'}>Nome: {identityResult.name_match ? 'OK' : 'Não confere'}</Badge>
-                        <Badge variant={identityResult.cpf_match ? 'default' : 'destructive'}>CPF: {identityResult.cpf_match ? 'OK' : 'Não confere'}</Badge>
-                        <Badge variant={identityResult.legible ? 'default' : 'destructive'}>Legibilidade: {identityResult.legible ? 'OK' : 'Ruim'}</Badge>
-                      </div>
+                  {identityResult && identityResult.nome_documento && (
+                    <div className="p-3 rounded-lg bg-muted/40 border space-y-1">
+                      <p className="text-xs text-muted-foreground">Nome extraído do documento: <strong>{identityResult.nome_documento}</strong></p>
                     </div>
                   )}
 
@@ -834,7 +825,7 @@ export default function AssinarDocumento() {
                     className="w-full gap-2"
                   >
                     {identityValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                    {identityValidating ? 'Analisando com IA...' : 'Validar Identidade'}
+                    {identityValidating ? 'Registrando fotos...' : 'Registrar Identidade e Continuar'}
                   </Button>
                 </>
               ) : (
