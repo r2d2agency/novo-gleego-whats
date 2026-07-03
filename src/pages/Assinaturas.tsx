@@ -14,6 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { FileUploadInput } from '@/components/ui/file-upload-input';
 import { PdfSignaturePositioner } from '@/components/doc-signatures/PdfSignaturePositioner';
 import { useDocSignatures, DocSignatureDocument, DocSigner, AuditLog, SignaturePosition } from '@/hooks/use-doc-signatures';
+import { API_URL } from '@/lib/api';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -573,7 +574,9 @@ export default function Assinaturas() {
                           if (!s.selfie_image_url && !s.doc_front_image_url && !s.doc_back_image_url) return null;
                           const buildUrl = (u?: string | null) => {
                             if (!u) return null;
-                            return u.startsWith('http') ? u : `${window.location.origin}${u}`;
+                            if (u.startsWith('http') || u.startsWith('data:')) return u;
+                            const base = API_URL || window.location.origin;
+                            return `${base}${u.startsWith('/') ? '' : '/'}${u}`;
                           };
                           return (
                             <div key={s.id} className="p-3 rounded-lg border">
