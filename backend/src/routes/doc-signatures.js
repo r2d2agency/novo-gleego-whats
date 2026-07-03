@@ -1512,7 +1512,7 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const { title, description, file_url, deal_id, require_cnh_validation } = req.body;
+    const { title, description, file_url, deal_id, require_cnh_validation, require_identity_validation } = req.body;
     if (!title || !file_url) return res.status(400).json({ error: 'Título e arquivo são obrigatórios' });
 
     const normalizedFileUrl = normalizeDocumentFileUrl(file_url);
@@ -1538,9 +1538,9 @@ router.post('/', async (req, res) => {
     const user = userResult.rows[0];
 
     const result = await query(
-      `INSERT INTO doc_signature_documents (organization_id, title, description, file_url, created_by, deal_id, require_cnh_validation, hash_sha256)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [orgId, title, description || null, normalizedFileUrl, req.userId, deal_id || null, require_cnh_validation || false, hashSha256]
+      `INSERT INTO doc_signature_documents (organization_id, title, description, file_url, created_by, deal_id, require_cnh_validation, require_identity_validation, hash_sha256)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [orgId, title, description || null, normalizedFileUrl, req.userId, deal_id || null, require_cnh_validation || false, require_identity_validation || false, hashSha256]
     );
 
     const doc = result.rows[0];
