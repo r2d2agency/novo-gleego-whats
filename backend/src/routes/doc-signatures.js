@@ -872,7 +872,7 @@ router.get('/sign/:token', async (req, res) => {
     const { token } = req.params;
     const result = await query(
       `SELECT s.*, d.title, d.description, d.file_url, d.status as doc_status, d.organization_id,
-              d.require_cnh_validation,
+              d.require_cnh_validation, d.require_identity_validation,
               o.name as org_name, o.logo_url as org_logo_url
        FROM doc_signature_signers s
        JOIN doc_signature_documents d ON d.id = s.document_id
@@ -915,6 +915,8 @@ router.get('/sign/:token', async (req, res) => {
       org_logo_url: signer.org_logo_url || null,
       require_cnh_validation: signer.require_cnh_validation || false,
       cnh_validated: signer.cnh_validated || false,
+      require_identity_validation: signer.require_identity_validation || false,
+      identity_validated: signer.identity_validated || false,
       signer: {
         id: signer.id,
         name: signer.name,
