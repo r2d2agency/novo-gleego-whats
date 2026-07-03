@@ -392,13 +392,14 @@ async function processSession(sessionId, userId, orgId, userName) {
 }
 
 async function transcribeAudio(audioPath, aiConfig) {
-  if (aiConfig.provider === 'openai' || !aiConfig.provider) {
-    const audioBuffer = fs.readFileSync(audioPath);
-    const ext = path.extname(audioPath).replace('.', '') || 'webm';
-    const mimeMap = { webm: 'audio/webm', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4' };
-    const mime = mimeMap[ext] || 'audio/webm';
-    const audioFile = new File([audioBuffer], `recording.${ext}`, { type: mime });
+  const audioBuffer = fs.readFileSync(audioPath);
+  const ext = path.extname(audioPath).replace('.', '') || 'webm';
+  const mimeMap = { webm: 'audio/webm', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4' };
+  const mime = mimeMap[ext] || 'audio/webm';
 
+  // Path 1: OpenAI directly (org has openai key)
+  if (aiConfig.provider === 'openai' && aiConfig.apiKey) {
+    const audioFile = new File([audioBuffer], `recording.${ext}`, { type: mime });
     const form = new FormData();
     form.append('file', audioFile);
     form.append('model', 'whisper-1');
@@ -412,10 +413,8 @@ async function transcribeAudio(audioPath, aiConfig) {
       headers: { 'Authorization': `Bearer ${aiConfig.apiKey}` },
       body: form,
     });
-    if (!resp.ok) throw new Error(`Whisper error: ${resp.status} ${await resp.text()}`);
+    if (!resp.ok) throw new Error(`Whisper (OpenAI) ${resp.status}: ${await resp.text()}`);
     const data = await resp.json();
-    
-    // If verbose_json, format segments with timestamps for better diarization
     if (data.segments && data.segments.length > 0) {
       return data.segments.map(s => {
         const min = Math.floor(s.start / 60);
@@ -423,6 +422,23 @@ async function transcribeAudio(audioPath, aiConfig) {
         return `[${min}:${sec}] ${s.text.trim()}`;
       }).join('\n');
     }
+    return data.text || '';
+  }
+
+  // Path 2: Lovable AI Gateway (works for any org — uses platform LOVABLE_API_KEY)
+  const lovableKey = process.env.LOVABLE_API_KEY;
+  if (lovableKey) {
+    const audioFile = new File([audioBuffer], `recording.${ext}`, { type: mime });
+    const form = new FormData();
+    form.append('file', audioFile);
+    form.append('model', 'openai/gpt-4o-mini-transcribe');
+    const resp = await fetch('https://ai.gateway.lovable.dev/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${lovableKey}` },
+      body: form,
+    });
+    if (!resp.ok) throw new Error(`Transcrição (Lovable AI) ${resp.status}: ${await resp.text()}`);
+    const data = await resp.json();
     return data.text || '';
   }
 
