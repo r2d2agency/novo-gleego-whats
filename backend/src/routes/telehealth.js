@@ -266,12 +266,17 @@ router.post('/:id/retry', authenticate, async (req, res) => {
   try {
     const org = await getUserOrganization(req.userId);
     if (!org) return res.status(403).json({ error: 'Sem organização' });
+    // Allow retry for sessions that errored OR got stuck (still marked processing/transcribing without a transcript)
     const r = await query(
-      `UPDATE telehealth_sessions SET status = 'processing', error_message = NULL, retry_count = retry_count + 1, updated_at = NOW()
-       WHERE id = $1 AND organization_id = $2 AND status = 'error' RETURNING *`,
+      `UPDATE telehealth_sessions
+       SET status = 'processing', error_message = NULL, retry_count = retry_count + 1, updated_at = NOW()
+       WHERE id = $1 AND organization_id = $2
+         AND (status = 'error' OR (status IN ('processing','transcribing') AND transcript IS NULL))
+       RETURNING *`,
       [req.params.id, org.organization_id]
     );
-    if (!r.rows.length) return res.status(404).json({ error: 'Sessão não encontrada ou não está em erro' });
+    if (!r.rows.length) return res.status(404).json({ error: 'Sessão não pode ser reprocessada (já concluída ou inexistente)' });
+    if (!r.rows[0].audio_url) return res.status(400).json({ error: 'Sessão sem áudio para reprocessar' });
     await auditLog(r.rows[0].id, org.organization_id, req.userId, org.name, 'retry_processing');
     processSession(r.rows[0].id, req.userId, org.organization_id, org.name).catch(e => logError('Retry process error', e));
     res.json(r.rows[0]);
