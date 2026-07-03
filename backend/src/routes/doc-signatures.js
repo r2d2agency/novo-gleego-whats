@@ -1216,7 +1216,7 @@ router.post('/sign/:token', async (req, res) => {
 
     // Validate signer
     const signerResult = await query(
-      `SELECT s.*, d.id as doc_id, d.status as doc_status, d.require_cnh_validation
+      `SELECT s.*, d.id as doc_id, d.status as doc_status, d.require_cnh_validation, d.require_identity_validation
        FROM doc_signature_signers s
        JOIN doc_signature_documents d ON d.id = s.document_id
        WHERE s.sign_token = $1`,
@@ -1231,6 +1231,11 @@ router.post('/sign/:token', async (req, res) => {
     // Check CNH validation if required
     if (signer.require_cnh_validation && !signer.cnh_validated) {
       return res.status(400).json({ error: 'Validação de CNH é obrigatória antes de assinar. Envie a foto da sua CNH.' });
+    }
+
+    // Check identity validation (selfie + document) if required
+    if (signer.require_identity_validation && !signer.identity_validated) {
+      return res.status(400).json({ error: 'Validação de identidade é obrigatória antes de assinar. Envie a selfie e as fotos do documento.' });
     }
 
     // Validate CPF matches
