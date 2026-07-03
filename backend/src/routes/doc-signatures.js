@@ -12,6 +12,27 @@ import { logInfo, logError } from '../logger.js';
 
 const router = Router();
 
+// Save a base64 data URL image to /uploads/identity and return the public relative path
+function saveIdentityImage(dataUrl, signerId, kind) {
+  if (!dataUrl || typeof dataUrl !== 'string') return null;
+  try {
+    const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+    if (!match) return null;
+    const mime = match[1].toLowerCase();
+    const buffer = Buffer.from(match[2], 'base64');
+    const extMap = { 'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+    const ext = extMap[mime] || '.jpg';
+    const dir = path.join(process.cwd(), 'uploads', 'identity');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const filename = `${signerId}-${kind}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`;
+    fs.writeFileSync(path.join(dir, filename), buffer);
+    return `/uploads/identity/${filename}`;
+  } catch (err) {
+    console.error('[doc-signatures] saveIdentityImage failed:', err?.message);
+    return null;
+  }
+}
+
 // Helper: get org id for user
 async function getUserOrgId(userId) {
   const r = await query(
