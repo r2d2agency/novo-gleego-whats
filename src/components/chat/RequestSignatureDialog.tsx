@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useDocSignatures } from '@/hooks/use-doc-signatures';
 import { toast } from 'sonner';
-import { FileSignature, Loader2, Send, CreditCard } from 'lucide-react';
+import { FileSignature, Loader2, Send, CreditCard, ScanFace } from 'lucide-react';
 
 interface RequestSignatureDialogProps {
   open: boolean;
@@ -30,6 +30,7 @@ export function RequestSignatureDialog({ open, onOpenChange, contactName, contac
   const [signerRole, setSignerRole] = useState('signer');
   const [sending, setSending] = useState(false);
   const [requireCnh, setRequireCnh] = useState(false);
+  const [requireIdentity, setRequireIdentity] = useState(false);
 
   const { createDocument, addSigner, sendForSignature, sendSigningLinkWhatsApp } = useDocSignatures();
 
@@ -51,6 +52,7 @@ export function RequestSignatureDialog({ open, onOpenChange, contactName, contac
     setSignerCpf('');
     setSignerRole('signer');
     setRequireCnh(false);
+    setRequireIdentity(false);
   };
 
   const handleSubmit = async () => {
@@ -62,7 +64,7 @@ export function RequestSignatureDialog({ open, onOpenChange, contactName, contac
     setSending(true);
     try {
       // 1. Create document
-      const doc = await createDocument({ title, description, file_url: fileUrl, require_cnh_validation: requireCnh, ...(dealId ? { deal_id: dealId } : {}) } as any);
+      const doc = await createDocument({ title, description, file_url: fileUrl, require_cnh_validation: requireCnh, require_identity_validation: requireIdentity, ...(dealId ? { deal_id: dealId } : {}) } as any);
       if (!doc) throw new Error('Erro ao criar documento');
 
       // 2. Add signer with phone
@@ -139,6 +141,16 @@ export function RequestSignatureDialog({ open, onOpenChange, contactName, contac
               </div>
             </div>
             <Switch checked={requireCnh} onCheckedChange={setRequireCnh} />
+          </div>
+          <div className="flex items-center justify-between p-3 rounded-lg border">
+            <div className="flex items-center gap-2">
+              <ScanFace className="h-4 w-4 text-primary" />
+              <div>
+                <p className="text-sm font-medium">Validação de Identidade (Selfie + Documento)</p>
+                <p className="text-xs text-muted-foreground">Exigir selfie e fotos do documento (frente/verso) analisados por IA</p>
+              </div>
+            </div>
+            <Switch checked={requireIdentity} onCheckedChange={setRequireIdentity} />
           </div>
           {/* Signer info */}
           <div className="border-t pt-4">
