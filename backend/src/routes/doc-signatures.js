@@ -1609,9 +1609,10 @@ router.post('/:id/send-whatsapp', async (req, res) => {
       return res.status(400).json({ error: 'Nenhum signatário com telefone e pendente encontrado' });
     }
 
-    // Get first active WhatsApp connection
+    // Get first active WhatsApp connection (select all columns so provider-specific
+    // fields like uazapi_url/uazapi_token/instance_id/token are available to sendMessage)
     const connResult = await query(
-      `SELECT c.id, c.api_url, c.api_key, c.instance_name, c.provider 
+      `SELECT c.* 
        FROM connections c 
        WHERE c.organization_id = $1 AND c.status IN ('connected', 'open', 'online')
        ORDER BY c.created_at ASC LIMIT 1`,
@@ -1627,18 +1628,49 @@ router.post('/:id/send-whatsapp', async (req, res) => {
 
     const frontendUrl = getFrontendBaseUrl({ headers: req.headers, protocol: req.protocol });
     let sent = 0;
+    const seenPhones = new Set();
+
+    // Detect duplicate phones so we can warn the caller — two signers with the
+    // same phone will each receive their own link, but visually the last message
+    // "wins" in WhatsApp and gives the impression of mixed data.
+    const duplicatePhones = [];
 
     for (const signer of signersResult.rows) {
-      const signingLink = `${frontendUrl}/assinar/${signer.sign_token}`;
-      const message = `📝 *Solicitação de Assinatura*\n\nOlá ${signer.name},\n\nVocê tem um documento aguardando sua assinatura:\n\n📄 *${docTitle}*\n\n🔗 Acesse o link abaixo para assinar:\n${signingLink}\n\n_Assinatura eletrônica com validade jurídica conforme MP 2.200-2/2001._`;
+      // Bind per-signer values into locals so the closure can't accidentally
+      // reuse another iteration's data.
+      const currentSigner = {
+        id: signer.id,
+        name: signer.name,
+        phone: String(signer.phone || '').trim(),
+        token: signer.sign_token,
+      };
+
+      if (!currentSigner.phone || !currentSigner.token) {
+        console.warn(`[doc-signatures] Skipping signer ${currentSigner.id}: missing phone or token`);
+        continue;
+      }
+
+      const normalizedPhone = currentSigner.phone.replace(/\D/g, '');
+      if (seenPhones.has(normalizedPhone)) {
+        duplicatePhones.push(normalizedPhone);
+      }
+      seenPhones.add(normalizedPhone);
+
+      const signingLink = `${frontendUrl}/assinar/${currentSigner.token}`;
+      const message = `📝 *Solicitação de Assinatura*\n\nOlá ${currentSigner.name},\n\nVocê tem um documento aguardando sua assinatura:\n\n📄 *${docTitle}*\n\n🔗 Acesse o link abaixo para assinar:\n${signingLink}\n\n_Assinatura eletrônica com validade jurídica conforme MP 2.200-2/2001._`;
+
+      console.log(`[doc-signatures] Sending signature link → signer=${currentSigner.name} (${currentSigner.id}) phone=${normalizedPhone} token=${currentSigner.token.substring(0, 8)}…`);
 
       try {
-        await sendMessage(connection, signer.phone, message, 'text');
+        const sendResult = await sendMessage(connection, currentSigner.phone, message, 'text');
+        if (sendResult && sendResult.success === false) {
+          console.error(`[doc-signatures] WhatsApp send failed for ${currentSigner.name}:`, sendResult.error);
+          continue;
+        }
         sent++;
 
         // Save message in conversation if exists
-        const phone = signer.phone.replace(/\D/g, '');
-        const jid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+        const jid = normalizedPhone.includes('@') ? normalizedPhone : `${normalizedPhone}@s.whatsapp.net`;
         const convResult = await query(
           `SELECT id FROM conversations WHERE connection_id = $1 AND contact_jid = $2 LIMIT 1`,
           [connection.id, jid]
@@ -1650,8 +1682,12 @@ router.post('/:id/send-whatsapp', async (req, res) => {
           );
           await query(`UPDATE conversations SET last_message_at = NOW() WHERE id = $1`, [convResult.rows[0].id]);
         }
+
+        // Small delay between sends to the same provider so W-API/UAZAPI don't
+        // rate-limit and drop messages when multiple signers share a provider.
+        await new Promise((resolve) => setTimeout(resolve, 800));
       } catch (sendErr) {
-        console.error(`[doc-signatures] WhatsApp send error for ${signer.name}:`, sendErr.message);
+        console.error(`[doc-signatures] WhatsApp send error for ${currentSigner.name}:`, sendErr.message);
       }
     }
 
