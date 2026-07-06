@@ -33,6 +33,13 @@ export function defaultModelForProvider(provider) {
   return 'gpt-4o-mini';
 }
 
+export function getEnvKeyForProvider(provider) {
+  if (provider === 'gemini') return cleanAIKey(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+  if (provider === 'openai') return cleanAIKey(process.env.OPENAI_API_KEY);
+  if (provider === 'openrouter') return cleanAIKey(process.env.OPENROUTER_API_KEY);
+  return null;
+}
+
 export function modelMatchesProvider(provider, model) {
   const m = String(model || '').trim().toLowerCase();
   if (!m) return false;
@@ -148,9 +155,33 @@ export async function getAgentAIConfig(agent, organizationId) {
   }
 
   const orgConfig = await getOrganizationAIConfig(organizationId, agent?.ai_provider, agent?.ai_model);
-  if (!orgConfig?.apiKey) {
-    throw new Error('Nenhuma chave de API válida configurada. Configure a chave da organização em Ajustes → IA ou informe uma chave específica no agente.');
+  if (orgConfig?.apiKey) return orgConfig;
+
+  // Fallback: environment variables (permite operação quando a chave da org foi
+  // salva mascarada/vazia por engano, ou quando o admin configurou via env).
+  const provider =
+    orgConfig?.provider ||
+    normalizeProvider(agent?.ai_provider) ||
+    (process.env.OPENAI_API_KEY ? 'openai' : null) ||
+    (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY ? 'gemini' : null) ||
+    (process.env.OPENROUTER_API_KEY ? 'openrouter' : null);
+
+  if (provider) {
+    const envKey = getEnvKeyForProvider(provider);
+    if (envKey) {
+      return {
+        provider,
+        model: resolveModelForProvider(provider, agent?.ai_model, orgConfig?.model),
+        apiKey: envKey,
+        keySource: `env.${provider}`,
+      };
+    }
   }
 
-  return orgConfig;
+  const detail = orgConfig?.provider
+    ? ` (organização tem provider="${orgConfig.provider}" mas a chave está vazia ou mascarada — reabra Ajustes → IA e cole a chave novamente).`
+    : '';
+  throw new Error(
+    `Nenhuma chave de API válida configurada. Configure a chave da organização em Ajustes → IA ou informe uma chave específica no agente.${detail}`
+  );
 }
