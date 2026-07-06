@@ -276,6 +276,7 @@ export default function AssinarDocumento() {
       return;
     }
     setIdentityValidating(true);
+    setIdentityResult(null);
     try {
       const result = await validateIdentity(token, {
         selfie: selfieImage,
@@ -295,6 +296,16 @@ export default function AssinarDocumento() {
       setIdentityValidating(false);
     }
   };
+
+  // Auto-verifica assim que a selfie e a frente do documento forem enviadas.
+  // Também re-verifica quando o verso é adicionado depois.
+  useEffect(() => {
+    if (!requireIdentityValidation) return;
+    if (identityValidated || identityValidating) return;
+    if (!token || !selfieImage || !docFrontImage) return;
+    handleValidateIdentity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selfieImage, docFrontImage, docBackImage, requireIdentityValidation, identityValidated, token]);
 
   const handleSubmit = async () => {
     if (requireCnhValidation && !cnhValidated) { toast.error('A validação da CNH é obrigatória para assinar este documento.'); return; }
