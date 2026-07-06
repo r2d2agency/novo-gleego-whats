@@ -2125,23 +2125,7 @@ router.post('/conversations/:id/messages', authenticate, async (req, res) => {
       [id, req.userId]
     );
 
-    // ============================================================
-    // Return response immediately (optimistic)
-    // ============================================================
-    res.status(201).json(savedMessage);
-
-    // ============================================================
-    // PAUSE AI AGENT: When a human sends a message, pause the AI
-    // so it doesn't respond on top of the human agent
-    // ============================================================
-    pauseSessionForHumanReply(id).catch(err => {
-      console.error('Error pausing AI agent session:', err.message);
-    });
-
-    // ============================================================
-    // ASYNC: Send to WhatsApp via unified provider (Evolution or W-API)
-    // ============================================================
-    (async () => {
+    const sendSavedMessageToWhatsapp = async () => {
       try {
         // IMPORTANT: groups must keep the full JID (@g.us). If we strip it,
         // providers will send to an invalid destination.
@@ -2185,22 +2169,66 @@ router.post('/conversations/:id/messages', authenticate, async (req, res) => {
 
         if (result.success) {
           // Update message with provider message_id, status='sent' and clean content
-          await query(
-            `UPDATE chat_messages SET message_id = $1, status = 'sent', content = $3 WHERE id = $2`,
+          const sentUpdate = await query(
+            `UPDATE chat_messages
+             SET message_id = COALESCE($1, message_id),
+                 status = 'sent',
+                 content = $3,
+                 error_message = NULL
+             WHERE id = $2
+             RETURNING *`,
             [result.messageId || null, savedMessage.id, cleanContent]
           );
+          return { success: true, message: sentUpdate.rows[0] || savedMessage };
         } else {
           throw new Error(result.error || 'Falha ao enviar mensagem');
         }
       } catch (bgError) {
         console.error('Background send error:', bgError.message);
         // Mark as failed so UI can show error state, include error message for diagnostics
-        await query(
-          `UPDATE chat_messages SET status = 'failed', error_message = $2 WHERE id = $1`,
+        const failedUpdate = await query(
+          `UPDATE chat_messages SET status = 'failed', error_message = $2 WHERE id = $1 RETURNING *`,
           [savedMessage.id, bgError.message || 'Erro desconhecido']
         ).catch(() => {});
+        return {
+          success: false,
+          error: bgError.message || 'Erro desconhecido',
+          message: failedUpdate?.rows?.[0] || savedMessage,
+        };
       }
-    })();
+    };
+
+    // ============================================================
+    // PAUSE AI AGENT: When a human sends a message, pause the AI
+    // so it doesn't respond on top of the human agent
+    // ============================================================
+    pauseSessionForHumanReply(id).catch(err => {
+      console.error('Error pausing AI agent session:', err.message);
+    });
+
+    const shouldWaitForProvider = Boolean(media_url) && ['image', 'video', 'audio', 'document', 'sticker', 'gif', 'ptv'].includes(String(message_type || '').toLowerCase());
+
+    if (shouldWaitForProvider) {
+      const sendResult = await sendSavedMessageToWhatsapp();
+      if (sendResult.success) {
+        return res.status(201).json(sendResult.message || savedMessage);
+      }
+
+      return res.status(502).json({
+        error: sendResult.error || 'Falha ao enviar mídia para o WhatsApp',
+        message: sendResult.message || savedMessage,
+      });
+    }
+
+    // ============================================================
+    // Return response immediately for text/interactive messages (optimistic)
+    // ============================================================
+    res.status(201).json(savedMessage);
+
+    // ============================================================
+    // ASYNC: Send to WhatsApp via unified provider (Evolution or W-API)
+    // ============================================================
+    sendSavedMessageToWhatsapp();
   } catch (error) {
     console.error('Send message error:', error);
     res.status(500).json({ error: error.message || 'Erro ao enviar mensagem' });
