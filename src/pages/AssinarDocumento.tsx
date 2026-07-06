@@ -718,7 +718,7 @@ export default function AssinarDocumento() {
               {!identityValidated ? (
                 <>
                   <p className="text-sm text-muted-foreground">
-                    Para assinar este documento você precisa registrar uma <strong>selfie</strong> e uma foto do seu <strong>documento oficial com foto</strong> (RG, CNH, CIN, CTPS, Passaporte ou similar). O verso é opcional. As fotos são apenas registradas para auditoria — não bloqueiam a assinatura.
+                    Para assinar este documento você precisa registrar uma <strong>selfie</strong> e uma foto do seu <strong>documento oficial com foto</strong> (RG, CNH, CIN, CTPS, Passaporte ou similar). O verso é opcional. Assim que você enviar as duas fotos, nós verificamos automaticamente.
                   </p>
 
                   {/* Selfie */}
@@ -836,7 +836,11 @@ export default function AssinarDocumento() {
                     className="w-full gap-2"
                   >
                     {identityValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                    {identityValidating ? 'Registrando fotos...' : 'Registrar Identidade e Continuar'}
+                    {identityValidating
+                      ? 'Verificando suas fotos...'
+                      : (!selfieImage || !docFrontImage)
+                        ? 'Envie a selfie e a frente do documento'
+                        : 'Verificar novamente'}
                   </Button>
                 </>
               ) : (
