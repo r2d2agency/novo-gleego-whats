@@ -762,6 +762,11 @@ export async function sendMedia(baseUrl, token, phone, mediaUrl, type, caption, 
     method: 'POST',
     token,
     body,
+    // Mídias grandes (PDF/vídeo até ~100MB) precisam de tempo maior: a UAZAPI
+    // baixa a URL antes de repassar ao WhatsApp. Timeout curto causava abort
+    // enquanto o upstream ainda estava enviando, gerando duplicados quando
+    // o cliente tentava novamente.
+    timeout: 180000,
   });
 
   if (!r.ok) {
