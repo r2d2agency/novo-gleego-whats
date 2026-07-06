@@ -471,6 +471,9 @@ export const useChat = () => {
     const data = await api<ChatMessage>(`/api/chat/conversations/${conversationId}/messages`, {
       method: 'POST',
       body: message,
+      // Envio de mídia grande (PDF/vídeo) pode levar bem mais que 15s no provider
+      // WhatsApp. Deixa até 3 minutos antes de abortar.
+      timeoutMs: 180000,
     });
     return data;
   }, []);

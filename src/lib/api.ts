@@ -45,6 +45,7 @@ interface ApiOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT';
   body?: unknown;
   auth?: boolean;
+  timeoutMs?: number;
 }
 
 class HttpError extends Error {
@@ -60,7 +61,8 @@ class HttpError extends Error {
 }
 
 export const api = async <T>(endpoint: string, options: ApiOptions = {}): Promise<T> => {
-  const { method = 'GET', body, auth = true } = options;
+  const { method = 'GET', body, auth = true, timeoutMs } = options;
+  const effectiveTimeout = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : REQUEST_TIMEOUT_MS;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -83,7 +85,7 @@ export const api = async <T>(endpoint: string, options: ApiOptions = {}): Promis
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      const timeoutId = window.setTimeout(() => controller.abort(), effectiveTimeout);
       try {
         const response = await fetch(url, {
           method,
