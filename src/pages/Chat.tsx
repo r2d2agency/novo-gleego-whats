@@ -628,6 +628,10 @@ const Chat = () => {
       setMessages(prev => dedupeMessages([...prev, newMessage]));
       loadConversations(); // Refresh to update last_message
     } catch (error: any) {
+      const failedMessage = error?.response?.message as ChatMessage | undefined;
+      if (failedMessage?.id) {
+        setMessages(prev => dedupeMessages([...prev.filter(m => m.id !== failedMessage.id), failedMessage]));
+      }
       toast.error(error.message || 'Erro ao enviar mensagem');
       throw error;
     } finally {
