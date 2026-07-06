@@ -1168,8 +1168,14 @@ export async function sendDocument(instanceId, token, phone, documentUrl, filena
       response_preview: text.substring(0, 800),
     });
 
-    if (!response.ok) {
-      const errorMsg = data?.message || data?.error || 'Failed to send document';
+    const providerRejected =
+      data?.success === false ||
+      data?.status === false ||
+      String(data?.status || '').toLowerCase() === 'error' ||
+      String(data?.data?.status || '').toLowerCase() === 'error';
+
+    if (!response.ok || providerRejected) {
+      const errorMsg = data?.message || data?.error || data?.data?.message || data?.raw || 'Failed to send document';
       recordSendAttempt({
         at,
         instanceId,
@@ -1199,14 +1205,16 @@ export async function sendDocument(instanceId, token, phone, documentUrl, filena
       preview: text.slice(0, 800),
     });
 
+    const messageId = data.messageId || data.id || data.key?.id || data?.data?.id || data?.data?.messageId || data?.result?.id;
+
     logInfo('wapi.send_document_success', {
       instance_id: instanceId,
-      message_id: data.messageId || data.id || data.key?.id || null,
+      message_id: messageId || null,
     });
 
     return {
       success: true,
-      messageId: data.messageId || data.id || data.key?.id,
+      messageId,
     };
   } catch (error) {
     recordSendAttempt({
