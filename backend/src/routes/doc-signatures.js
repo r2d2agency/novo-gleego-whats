@@ -809,8 +809,9 @@ async function generateSignedPdf(documentId, baseUrl) {
   const footerBoxHeight = footerPadding * 2 + (footerLines.length * footerLineHeight) + 2;
   const effectiveFooterBoxHeight = Math.max(footerBoxHeight, qrImage ? qrSize + footerPadding * 2 : footerBoxHeight);
 
-  for (let pi = 0; pi < pages.length; pi++) {
-    const pg = pages[pi];
+  const allPages = pdfDoc.getPages();
+  for (let pi = 0; pi < allPages.length; pi++) {
+    const pg = allPages[pi];
     const { width: pgW } = pg.getSize();
     const footerY = 6;
     const footerX = 24;
