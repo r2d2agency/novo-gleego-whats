@@ -1343,17 +1343,22 @@ router.post('/sign/:token/validate-identity', async (req, res) => {
       return res.status(400).json({ error: 'Não foi possível analisar as imagens. Tente novamente com fotos mais nítidas.', ai_raw: aiResult.content });
     }
 
-    const isOfficialDoc = parsed.eh_documento_oficial === true;
-    const selfieHasFace = parsed.selfie_tem_rosto !== false;
+    // Só rejeita quando a IA tem CERTEZA que não é documento (evita falsos negativos
+    // em RG/CNH reais mas com foto de qualidade ruim). Mouse/teclado/cartão continuam
+    // sendo bloqueados porque a IA marca explicitamente como NAO_E_DOCUMENTO.
+    const tipoDoc = String(parsed.tipo_documento || '').toUpperCase();
+    const isClearlyNotDoc =
+      tipoDoc === 'NAO_E_DOCUMENTO' || parsed.eh_documento_oficial === false;
+    const selfieClearlyNoFace = parsed.selfie_tem_rosto === false;
 
-    if (!isOfficialDoc) {
+    if (isClearlyNotDoc) {
       return res.status(400).json({
-        error: 'A foto enviada não parece ser um documento de identidade oficial válido. Envie uma foto nítida de RG, CNH, CIN, Passaporte ou outro documento oficial com foto.',
+        error: 'A foto enviada não parece ser um documento de identidade. Envie uma foto nítida de RG, CNH, CIN, Passaporte ou outro documento oficial com foto.',
         motivo: parsed.motivo || null,
         tipo_documento: parsed.tipo_documento || null,
       });
     }
-    if (!selfieHasFace) {
+    if (selfieClearlyNoFace) {
       return res.status(400).json({
         error: 'Não foi possível detectar um rosto na selfie. Tire uma nova foto mostrando claramente o seu rosto.',
         motivo: parsed.motivo || null,
