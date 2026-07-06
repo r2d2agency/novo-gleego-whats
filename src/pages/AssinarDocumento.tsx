@@ -271,8 +271,8 @@ export default function AssinarDocumento() {
   };
 
   const handleValidateIdentity = async () => {
-    if (!token || !selfieImage || !docFrontImage) {
-      toast.error('Envie a selfie e a foto da frente do documento.');
+    if (!token || !selfieImage || !docFrontImage || !docBackImage) {
+      toast.error('Envie a selfie e as fotos da frente e do verso do documento.');
       return;
     }
     setIdentityValidating(true);
@@ -297,12 +297,11 @@ export default function AssinarDocumento() {
     }
   };
 
-  // Auto-verifica assim que a selfie e a frente do documento forem enviadas.
-  // Também re-verifica quando o verso é adicionado depois.
+  // Auto-verifica somente quando selfie + frente + verso do documento estiverem enviados.
   useEffect(() => {
     if (!requireIdentityValidation) return;
     if (identityValidated || identityValidating) return;
-    if (!token || !selfieImage || !docFrontImage) return;
+    if (!token || !selfieImage || !docFrontImage || !docBackImage) return;
     handleValidateIdentity();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selfieImage, docFrontImage, docBackImage, requireIdentityValidation, identityValidated, token]);
@@ -718,7 +717,7 @@ export default function AssinarDocumento() {
               {!identityValidated ? (
                 <>
                   <p className="text-sm text-muted-foreground">
-                    Para assinar este documento você precisa registrar uma <strong>selfie</strong> e uma foto do seu <strong>documento oficial com foto</strong> (RG, CNH, CIN, CTPS, Passaporte ou similar). O verso é opcional. Assim que você enviar as duas fotos, nós verificamos automaticamente.
+                    Para assinar este documento você precisa registrar uma <strong>selfie</strong> e as fotos da <strong>frente e do verso</strong> do seu documento oficial com foto (RG, CNH, CIN, CTPS, Passaporte ou similar). Assim que você enviar as três fotos, nós verificamos automaticamente.
                   </p>
 
                   {/* Selfie */}
@@ -789,7 +788,7 @@ export default function AssinarDocumento() {
                   {/* Doc back (optional) */}
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2 text-sm font-medium">
-                      <IdCard className="h-4 w-4" /> 3. Verso do Documento <span className="text-xs text-muted-foreground font-normal">(opcional)</span>
+                      <IdCard className="h-4 w-4" /> 3. Verso do Documento
                     </Label>
                     <input
                       ref={docBackInputRef}
@@ -832,14 +831,14 @@ export default function AssinarDocumento() {
 
                   <Button
                     onClick={handleValidateIdentity}
-                    disabled={identityValidating || !selfieImage || !docFrontImage}
+                    disabled={identityValidating || !selfieImage || !docFrontImage || !docBackImage}
                     className="w-full gap-2"
                   >
                     {identityValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                     {identityValidating
                       ? 'Verificando suas fotos...'
-                      : (!selfieImage || !docFrontImage)
-                        ? 'Envie a selfie e a frente do documento'
+                      : (!selfieImage || !docFrontImage || !docBackImage)
+                        ? 'Envie a selfie, a frente e o verso do documento'
                         : 'Verificar novamente'}
                   </Button>
                 </>
