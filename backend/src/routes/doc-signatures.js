@@ -375,7 +375,8 @@ async function generateSignedPdf(documentId, baseUrl) {
   // 2. Get all signed signers with their positions
   const signersResult = await query(
     `SELECT s.id, s.name, s.email, s.cpf, s.role, s.signature_url, s.signed_at,
-            s.ip_address, s.geolocation
+            s.ip_address, s.geolocation, s.user_agent,
+            s.selfie_image_url, s.doc_front_image_url, s.doc_back_image_url
      FROM doc_signature_signers s
      WHERE s.document_id = $1 AND s.status = 'signed' AND s.signature_url IS NOT NULL`,
     [documentId]
