@@ -587,6 +587,202 @@ async function generateSignedPdf(documentId, baseUrl) {
     return null;
   }
 
+  // 6.5 Append an audit page per signer with identity photos and metadata
+  async function embedIdentityImage(source) {
+    if (!source) return null;
+    try {
+      let bytes = null;
+      let looksPng = false;
+      if (typeof source === 'string' && source.startsWith('data:')) {
+        const m = source.match(/^data:(image\/[a-z0-9+.-]+);base64,(.+)$/i);
+        if (!m) return null;
+        looksPng = m[1].toLowerCase().includes('png');
+        bytes = Buffer.from(m[2], 'base64');
+      } else if (typeof source === 'string') {
+        const local = resolveLocalUploadsPath(source);
+        if (local) {
+          bytes = fs.readFileSync(local);
+          looksPng = local.toLowerCase().endsWith('.png');
+        } else if (HTTP_URL_REGEX.test(source)) {
+          bytes = await readRemoteBinary(source);
+          looksPng = source.toLowerCase().split('?')[0].endsWith('.png');
+        }
+      }
+      if (!bytes) return null;
+      if (looksPng) {
+        try { return await pdfDoc.embedPng(bytes); } catch { return await pdfDoc.embedJpg(bytes); }
+      }
+      try { return await pdfDoc.embedJpg(bytes); } catch { return await pdfDoc.embedPng(bytes); }
+    } catch (err) {
+      console.error('[doc-signatures] embedIdentityImage failed:', err?.message);
+      return null;
+    }
+  }
+
+  const auditBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const pageWidthA4 = 595.28;
+  const pageHeightA4 = 841.89;
+
+  const wrapText = (text, maxChars) => {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    const lines = [];
+    let current = '';
+    for (const w of words) {
+      const candidate = current ? `${current} ${w}` : w;
+      if (candidate.length > maxChars) {
+        if (current) lines.push(current);
+        current = w.length > maxChars ? `${w.slice(0, maxChars - 1)}…` : w;
+      } else {
+        current = candidate;
+      }
+    }
+    if (current) lines.push(current);
+    return lines.length ? lines : ['N/A'];
+  };
+
+  for (const signer of signersResult.rows) {
+    const hasAnyPhoto = signer.selfie_image_url || signer.doc_front_image_url || signer.doc_back_image_url;
+    // Always add an audit page per signer with the metadata; include photos when available
+    const auditPage = pdfDoc.addPage([pageWidthA4, pageHeightA4]);
+    const margin = 40;
+    let cursorY = pageHeightA4 - margin;
+
+    // Title
+    auditPage.drawText('Registro de Auditoria de Identidade', {
+      x: margin,
+      y: cursorY - 14,
+      size: 14,
+      font: auditBoldFont,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+    cursorY -= 24;
+    auditPage.drawRectangle({
+      x: margin,
+      y: cursorY,
+      width: pageWidthA4 - margin * 2,
+      height: 1.2,
+      color: rgb(0.13, 0.55, 0.13),
+    });
+    cursorY -= 14;
+
+    // Signer info block
+    const infoPairs = [
+      ['Nome', signer.name || 'N/A'],
+      ['CPF', signer.cpf || 'N/A'],
+      ['E-mail', signer.email || 'N/A'],
+      ['Data/Hora da assinatura', formatSignedAt(signer.signed_at)],
+      ['Endereço IP', signer.ip_address || 'N/A'],
+      ['Geolocalização', signer.geolocation || 'N/A'],
+      ['Navegador (User-Agent)', signer.user_agent || 'N/A'],
+      ['ID do signatário', signer.id],
+    ];
+
+    const labelSize = 9;
+    const valueSize = 10;
+    const rowGap = 6;
+    for (const [label, value] of infoPairs) {
+      auditPage.drawText(`${label}:`, {
+        x: margin,
+        y: cursorY - labelSize,
+        size: labelSize,
+        font: auditBoldFont,
+        color: rgb(0.35, 0.35, 0.35),
+      });
+      const valueLines = wrapText(String(value), 80);
+      valueLines.forEach((line, idx) => {
+        auditPage.drawText(line, {
+          x: margin + 130,
+          y: cursorY - valueSize - (idx * (valueSize + 2)),
+          size: valueSize,
+          font: infoFont,
+          color: rgb(0.1, 0.1, 0.1),
+        });
+      });
+      cursorY -= (valueSize + 2) * valueLines.length + rowGap;
+    }
+
+    cursorY -= 8;
+    auditPage.drawText(hasAnyPhoto ? 'Fotos de validação de identidade' : 'Fotos de validação de identidade: não coletadas', {
+      x: margin,
+      y: cursorY - 11,
+      size: 11,
+      font: auditBoldFont,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+    cursorY -= 20;
+
+    if (hasAnyPhoto) {
+      const photos = [
+        { label: 'Selfie', url: signer.selfie_image_url },
+        { label: 'Documento (frente)', url: signer.doc_front_image_url },
+        { label: 'Documento (verso)', url: signer.doc_back_image_url },
+      ].filter((p) => !!p.url);
+
+      const available = pageWidthA4 - margin * 2;
+      const gap = 12;
+      const boxW = (available - gap * (photos.length - 1)) / Math.max(1, photos.length);
+      const boxH = Math.min(cursorY - margin - 80, 300);
+      const boxTopY = cursorY;
+      const boxBottomY = boxTopY - boxH;
+
+      for (let i = 0; i < photos.length; i += 1) {
+        const photo = photos[i];
+        const bx = margin + i * (boxW + gap);
+        auditPage.drawRectangle({
+          x: bx,
+          y: boxBottomY,
+          width: boxW,
+          height: boxH,
+          borderColor: rgb(0.75, 0.78, 0.82),
+          borderWidth: 0.7,
+          color: rgb(0.98, 0.98, 0.98),
+        });
+        auditPage.drawText(photo.label, {
+          x: bx + 6,
+          y: boxTopY - 12,
+          size: 9,
+          font: auditBoldFont,
+          color: rgb(0.25, 0.25, 0.25),
+        });
+
+        const img = await embedIdentityImage(photo.url);
+        if (img) {
+          const innerPad = 8;
+          const captionH = 16;
+          const innerW = boxW - innerPad * 2;
+          const innerH = boxH - innerPad * 2 - captionH;
+          const scale = Math.min(innerW / img.width, innerH / img.height);
+          const drawW = img.width * scale;
+          const drawH = img.height * scale;
+          const drawX = bx + innerPad + (innerW - drawW) / 2;
+          const drawY = boxBottomY + innerPad + (innerH - drawH) / 2;
+          auditPage.drawImage(img, { x: drawX, y: drawY, width: drawW, height: drawH });
+        } else {
+          auditPage.drawText('Imagem indisponível', {
+            x: bx + boxW / 2 - 40,
+            y: boxBottomY + boxH / 2 - 4,
+            size: 9,
+            font: infoFont,
+            color: rgb(0.55, 0.55, 0.55),
+          });
+        }
+      }
+
+      cursorY = boxBottomY - 8;
+    }
+
+    auditPage.drawText(
+      'Este registro compõe a trilha de auditoria do documento assinado eletronicamente.',
+      {
+        x: margin,
+        y: margin + 60,
+        size: 8,
+        font: infoFont,
+        color: rgb(0.4, 0.4, 0.4),
+      }
+    );
+  }
+
   // 7. Add legal validity footer with QR code to every page
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const footerFontSize = 6.5;
