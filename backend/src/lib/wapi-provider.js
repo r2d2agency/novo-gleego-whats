@@ -913,7 +913,9 @@ export async function sendImage(instanceId, token, phone, imageUrl, caption = ''
       },
       // Uploads maiores (fotos de câmera moderna 10-25MB) precisam de mais tempo
       // pois a W-API baixa a URL antes de encaminhar ao WhatsApp.
-      { retries: 2, baseDelay: 1000, timeout: 120000, label: 'wapi-sendImage' }
+      // NÃO fazer retry em envio de mídia: se a W-API já aceitou mas demorou
+      // para responder, um retry envia o mesmo arquivo duas vezes no WhatsApp.
+      { retries: 0, baseDelay: 1000, timeout: 120000, label: 'wapi-sendImage' }
     );
 
     const { data } = await readJsonResponse(response);
@@ -954,7 +956,7 @@ export async function sendAudio(instanceId, token, phone, audioUrl) {
           ptt: true,
         }),
       },
-      { retries: 2, baseDelay: 1000, timeout: 120000, label: 'wapi-sendAudio' }
+      { retries: 0, baseDelay: 1000, timeout: 120000, label: 'wapi-sendAudio' }
     );
 
     const { data } = await readJsonResponse(response);
@@ -995,7 +997,7 @@ export async function sendVideo(instanceId, token, phone, videoUrl, caption = ''
           caption: caption,
         }),
       },
-      { retries: 2, baseDelay: 1000, timeout: 180000, label: 'wapi-sendVideo' }
+      { retries: 0, baseDelay: 1000, timeout: 180000, label: 'wapi-sendVideo' }
     );
 
     const { data } = await readJsonResponse(response);
@@ -1156,7 +1158,7 @@ export async function sendDocument(instanceId, token, phone, documentUrl, filena
       },
       // Documentos podem ter até 200MB (PDFs escaneados). Damos 3min para
       // a W-API baixar do nosso servidor e encaminhar ao WhatsApp.
-      { retries: 2, baseDelay: 1000, timeout: 180000, label: 'wapi-sendDocument' }
+      { retries: 0, baseDelay: 1000, timeout: 180000, label: 'wapi-sendDocument' }
     );
 
     const { data, text } = await readJsonResponse(response);
