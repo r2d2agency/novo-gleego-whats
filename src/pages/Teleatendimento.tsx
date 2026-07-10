@@ -57,15 +57,14 @@ export default function Teleatendimento() {
     setRecordingSession(session);
   }, []);
 
-  const handleFinishRecording = useCallback(async (blob: Blob, reason: string, notes: string, duration: number, attachments: any[]) => {
+  const handleFinishRecording = useCallback(async ({ attachments }: { reason: string; notes: string; duration: number; attachments: any[] }) => {
     if (!recordingSession) return;
     if (attachments.length > 0) {
       await updateSession(recordingSession.id, { attachments } as any);
     }
-    await uploadAudio(recordingSession.id, blob, reason, notes, duration);
     setRecordingSession(null);
     fetchSessions();
-  }, [recordingSession, updateSession, uploadAudio, fetchSessions]);
+  }, [recordingSession, updateSession, fetchSessions]);
 
   const handleViewDetail = useCallback(async (session: TelehealthSession) => {
     const full = await fetchSession(session.id);
@@ -207,7 +206,8 @@ export default function Teleatendimento() {
       <RecordingModal
         open={!!recordingSession}
         onClose={() => setRecordingSession(null)}
-        onFinish={handleFinishRecording}
+        sessionId={recordingSession?.id}
+        onFinished={handleFinishRecording}
         sessionTitle={recordingSession?.title || undefined}
       />
       <SessionDetailDialog

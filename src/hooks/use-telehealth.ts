@@ -123,6 +123,63 @@ export function useTelehealth() {
     }
   }, []);
 
+  // Chunked upload — resilient for long recordings
+  const uploadChunk = useCallback(async (
+    sessionId: string,
+    chunk: Blob,
+    index: number,
+    opts: { maxRetries?: number } = {}
+  ): Promise<boolean> => {
+    const maxRetries = opts.maxRetries ?? 5;
+    const token = getAuthToken();
+    const formData = new FormData();
+    formData.append('chunk', chunk, `chunk_${index}.part`);
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const resp = await fetch(`${API_URL}/api/telehealth/${sessionId}/audio/chunk`, {
+          method: 'POST',
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            'X-Chunk-Index': String(index),
+          },
+          body: formData,
+        });
+        if (resp.ok) return true;
+        // Non-retryable errors
+        if (resp.status === 401 || resp.status === 403 || resp.status === 404) return false;
+      } catch {
+        // network error — will retry
+      }
+      // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+      await new Promise(r => setTimeout(r, Math.min(16000, 1000 * Math.pow(2, attempt))));
+    }
+    return false;
+  }, []);
+
+  const finalizeChunkedUpload = useCallback(async (
+    sessionId: string,
+    args: { reason: string; notes: string; duration: number; mime: string; totalChunks: number }
+  ) => {
+    try {
+      const session = await api<TelehealthSession>(`/api/telehealth/${sessionId}/audio/finalize`, {
+        method: 'POST',
+        body: {
+          reason: args.reason,
+          notes: args.notes,
+          duration: args.duration,
+          mime: args.mime,
+          total_chunks: args.totalChunks,
+        },
+        auth: true,
+      });
+      toast.success('Gravação enviada para transcrição');
+      return session;
+    } catch {
+      toast.error('Erro ao finalizar upload');
+      return null;
+    }
+  }, []);
+
   const retryProcessing = useCallback(async (id: string) => {
     try {
       const session = await api<TelehealthSession>(`/api/telehealth/${id}/retry`, { method: 'POST', auth: true });
@@ -167,6 +224,8 @@ export function useTelehealth() {
     createSession,
     updateSession,
     uploadAudio,
+    uploadChunk,
+    finalizeChunkedUpload,
     retryProcessing,
     analyzeSession,
     deleteSession,
