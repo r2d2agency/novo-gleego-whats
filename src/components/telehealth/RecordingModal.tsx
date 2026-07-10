@@ -409,6 +409,22 @@ export function RecordingModal({ open, onClose, onFinish, onFinished, sessionId,
             </div>
           )}
 
+          {/* Chunked upload progress — shows during and after recording */}
+          {sessionId && (isRecording || isFinalizing) && chunkQueue.total > 0 && (
+            <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <Upload className="h-3 w-3" />
+              <span>
+                Enviando pedaços: {chunkQueue.uploaded}/{chunkQueue.total}
+                {chunkQueue.failed > 0 && ` · ${chunkQueue.failed} retries`}
+              </span>
+            </div>
+          )}
+          {isFinalizing && (
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Finalizando envio…
+            </div>
+          )}
+
           {/* Timer + Waveform */}
           <div className="flex flex-col items-center space-y-4">
             <div className={cn(
