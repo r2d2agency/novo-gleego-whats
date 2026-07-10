@@ -49,6 +49,20 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } });
 
+// Multer for chunked uploads — stored in per-session temp folder
+const chunkStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(uploadDir, `upload-${req.params.id}`);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const idx = String(req.headers['x-chunk-index'] || '0').padStart(6, '0');
+    cb(null, `chunk_${idx}.part`);
+  },
+});
+const chunkUpload = multer({ storage: chunkStorage, limits: { fileSize: 20 * 1024 * 1024 } });
+
 // Helper to get user's organization
 async function getUserOrganization(userId) {
   const result = await query(
