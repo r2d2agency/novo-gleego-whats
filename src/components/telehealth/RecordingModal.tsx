@@ -8,6 +8,7 @@ import { AudioWaveform } from '@/components/chat/AudioWaveform';
 import { Mic, Square, Pause, Play, Upload, X, FileText, Image, AlertTriangle, Loader2, Monitor, MicOff, Smartphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUpload } from '@/hooks/use-upload';
+import { useTelehealth } from '@/hooks/use-telehealth';
 import { toast } from 'sonner';
 
 type AudioSource = 'mic' | 'screen' | 'both';
@@ -15,11 +16,14 @@ type AudioSource = 'mic' | 'screen' | 'both';
 interface RecordingModalProps {
   open: boolean;
   onClose: () => void;
-  onFinish: (audioBlob: Blob, reason: string, notes: string, duration: number, attachments: Array<{ name: string; url: string; type: string }>) => void;
+  // Legacy fallback: sessionless mode still returns a Blob. New chunked mode uses `sessionId` and calls `onFinished()` when done.
+  onFinish?: (audioBlob: Blob, reason: string, notes: string, duration: number, attachments: Array<{ name: string; url: string; type: string }>) => void;
+  onFinished?: (args: { reason: string; notes: string; duration: number; attachments: Array<{ name: string; url: string; type: string }> }) => void;
+  sessionId?: string;
   sessionTitle?: string;
 }
 
-export function RecordingModal({ open, onClose, onFinish, sessionTitle }: RecordingModalProps) {
+export function RecordingModal({ open, onClose, onFinish, onFinished, sessionId, sessionTitle }: RecordingModalProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -31,6 +35,9 @@ export function RecordingModal({ open, onClose, onFinish, sessionTitle }: Record
   const [isDragOver, setIsDragOver] = useState(false);
   const [audioSource, setAudioSource] = useState<AudioSource>('mic');
   const [screenShareActive, setScreenShareActive] = useState(false);
+  // Chunked upload state
+  const [chunkQueue, setChunkQueue] = useState<{ total: number; uploaded: number; failed: number }>({ total: 0, uploaded: 0, failed: 0 });
+  const [isFinalizing, setIsFinalizing] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -42,6 +49,37 @@ export function RecordingModal({ open, onClose, onFinish, sessionTitle }: Record
   const animFrameRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { uploadFile } = useUpload();
+  const { uploadChunk, finalizeChunkedUpload } = useTelehealth();
+
+  // Chunked upload queue refs — decouples recording (fast) from network (slow/unreliable)
+  const chunkIndexRef = useRef(0);
+  const chunkQueueRef = useRef<Array<{ index: number; blob: Blob }>>([]);
+  const uploaderBusyRef = useRef(false);
+  const uploadAbortRef = useRef(false);
+  const uploadedCountRef = useRef(0);
+
+  const processUploadQueue = useCallback(async () => {
+    if (!sessionId) return;
+    if (uploaderBusyRef.current) return;
+    uploaderBusyRef.current = true;
+    try {
+      while (chunkQueueRef.current.length > 0 && !uploadAbortRef.current) {
+        const item = chunkQueueRef.current[0];
+        const ok = await uploadChunk(sessionId, item.blob, item.index);
+        if (ok) {
+          chunkQueueRef.current.shift();
+          uploadedCountRef.current += 1;
+          setChunkQueue(q => ({ ...q, uploaded: uploadedCountRef.current }));
+        } else {
+          setChunkQueue(q => ({ ...q, failed: q.failed + 1 }));
+          // Wait a bit and try again — keeps recording resilient on flaky network
+          await new Promise(r => setTimeout(r, 5000));
+        }
+      }
+    } finally {
+      uploaderBusyRef.current = false;
+    }
+  }, [sessionId, uploadChunk]);
 
   const updateLevels = useCallback(() => {
     if (!analyserRef.current) return;
@@ -62,6 +100,11 @@ export function RecordingModal({ open, onClose, onFinish, sessionTitle }: Record
 
   const startRecording = useCallback(async () => {
     try {
+      chunkIndexRef.current = 0;
+      chunkQueueRef.current = [];
+      uploadAbortRef.current = false;
+      uploadedCountRef.current = 0;
+      setChunkQueue({ total: 0, uploaded: 0, failed: 0 });
       const ctx = new AudioContext();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
@@ -155,8 +198,21 @@ export function RecordingModal({ open, onClose, onFinish, sessionTitle }: Record
       chunksRef.current = [];
       const recorder = new MediaRecorder(recordingStream, { mimeType: mime });
       mediaRecorderRef.current = recorder;
-      recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      recorder.start(100);
+      recorder.ondataavailable = e => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+          // Queue chunk for progressive upload (only when we have a sessionId)
+          if (sessionId) {
+            const idx = chunkIndexRef.current++;
+            chunkQueueRef.current.push({ index: idx, blob: e.data });
+            setChunkQueue(q => ({ ...q, total: idx + 1 }));
+            processUploadQueue();
+          }
+        }
+      };
+      // 15s timeslice — each chunk is a self-contained upload unit that can retry
+      // independently. Long meetings no longer buffer the whole file in memory.
+      recorder.start(sessionId ? 15000 : 100);
       setIsRecording(true);
       setIsPaused(false);
       setDuration(0);
@@ -166,7 +222,7 @@ export function RecordingModal({ open, onClose, onFinish, sessionTitle }: Record
     } catch (e: any) {
       toast.error('Erro ao iniciar gravação: ' + (e.message || ''));
     }
-  }, [updateLevels, audioSource]);
+  }, [updateLevels, audioSource, sessionId, processUploadQueue]);
 
   // Ref to allow screen share end handler to call finish
   const finishRecordingRef = useRef<(() => void) | null>(null);
@@ -200,16 +256,55 @@ export function RecordingModal({ open, onClose, onFinish, sessionTitle }: Record
     if (!mediaRecorderRef.current) return;
     const recorder = mediaRecorderRef.current;
     const finalDuration = duration;
-    recorder.onstop = () => {
+    recorder.onstop = async () => {
       const mime = recorder.mimeType || 'audio/webm';
       const blob = new Blob(chunksRef.current, { type: mime });
       cleanup();
       setIsRecording(false);
       setIsPaused(false);
-      onFinish(blob, reason, notes, finalDuration, attachments);
+
+      // Chunked path: wait for queue to drain, then finalize on the backend.
+      if (sessionId && onFinished) {
+        setIsFinalizing(true);
+        try {
+          // Kick uploader in case it's idle, then poll until queue empties.
+          processUploadQueue();
+          const deadline = Date.now() + 5 * 60 * 1000;
+          while (chunkQueueRef.current.length > 0 && Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 500));
+          }
+          if (chunkQueueRef.current.length > 0) {
+            toast.error('Alguns pedaços falharam. Tente novamente com melhor conexão.');
+            setIsFinalizing(false);
+            return;
+          }
+          const result = await finalizeChunkedUpload(sessionId, {
+            reason,
+            notes,
+            duration: finalDuration,
+            mime,
+            totalChunks: chunkIndexRef.current,
+          });
+          setIsFinalizing(false);
+          if (result) {
+            if (attachments.length > 0 || reason || notes) {
+              onFinished({ reason, notes, duration: finalDuration, attachments });
+            } else {
+              onFinished({ reason, notes, duration: finalDuration, attachments });
+            }
+          }
+        } catch (err) {
+          setIsFinalizing(false);
+          toast.error('Erro ao finalizar upload');
+        }
+        return;
+      }
+
+      // Legacy single-blob path
+      if (onFinish) onFinish(blob, reason, notes, finalDuration, attachments);
     };
     recorder.stop();
-  }, [duration, reason, notes, attachments, cleanup, onFinish]);
+  }, [duration, reason, notes, attachments, cleanup, onFinish, onFinished, sessionId, processUploadQueue, finalizeChunkedUpload]);
 
   // Keep ref in sync
   useEffect(() => {
@@ -217,6 +312,8 @@ export function RecordingModal({ open, onClose, onFinish, sessionTitle }: Record
   }, [finishRecording]);
 
   const cancelRecording = useCallback(() => {
+    uploadAbortRef.current = true;
+    chunkQueueRef.current = [];
     if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
     cleanup();
     setIsRecording(false);
