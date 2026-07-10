@@ -300,6 +300,87 @@ router.post('/:id/retry', authenticate, async (req, res) => {
   }
 });
 
+// UPLOAD chunk - resilient upload for long recordings
+// Client streams chunks (e.g. 15s each) as they are recorded; each chunk can retry
+// independently without restarting the whole upload.
+router.post('/:id/audio/chunk', authenticate, chunkUpload.single('chunk'), async (req, res) => {
+  try {
+    const org = await getUserOrganization(req.userId);
+    if (!org) return res.status(403).json({ error: 'Sem organização' });
+    if (!req.file) return res.status(400).json({ error: 'Chunk obrigatório' });
+    // Verify session belongs to org
+    const r = await query(
+      `SELECT id FROM telehealth_sessions WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
+      [req.params.id, org.organization_id]
+    );
+    if (!r.rows.length) return res.status(404).json({ error: 'Sessão não encontrada' });
+    const idx = parseInt(req.headers['x-chunk-index'] || '0');
+    res.json({ ok: true, index: idx, size: req.file.size });
+  } catch (e) {
+    logError('Chunk upload error', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// FINALIZE chunked upload - concatenate chunks and trigger processing
+router.post('/:id/audio/finalize', authenticate, async (req, res) => {
+  try {
+    const org = await getUserOrganization(req.userId);
+    if (!org) return res.status(403).json({ error: 'Sem organização' });
+    const { reason = '', notes = '', duration = 0, mime = 'audio/webm', total_chunks } = req.body || {};
+
+    const sessionR = await query(
+      `SELECT * FROM telehealth_sessions WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
+      [req.params.id, org.organization_id]
+    );
+    if (!sessionR.rows.length) return res.status(404).json({ error: 'Sessão não encontrada' });
+
+    const chunkDir = path.join(uploadDir, `upload-${req.params.id}`);
+    if (!fs.existsSync(chunkDir)) return res.status(400).json({ error: 'Nenhum chunk recebido' });
+    const files = fs.readdirSync(chunkDir).filter(f => f.startsWith('chunk_')).sort();
+    if (!files.length) return res.status(400).json({ error: 'Nenhum chunk encontrado' });
+    if (total_chunks && files.length < parseInt(total_chunks)) {
+      return res.status(400).json({ error: `Chunks incompletos: ${files.length}/${total_chunks}` });
+    }
+
+    // Concatenate binary chunks into single file (webm/opus tolerates naive concat;
+    // ffmpeg re-encoding downstream normalizes any container issues).
+    const ext = mime.includes('mp4') ? 'mp4' : mime.includes('wav') ? 'wav' : 'webm';
+    const finalName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const finalPath = path.join(uploadDir, finalName);
+    const out = fs.createWriteStream(finalPath);
+    for (const f of files) {
+      const buf = fs.readFileSync(path.join(chunkDir, f));
+      out.write(buf);
+    }
+    await new Promise(resolve => out.end(resolve));
+    const stats = fs.statSync(finalPath);
+    // Cleanup chunk folder
+    try { fs.rmSync(chunkDir, { recursive: true, force: true }); } catch {}
+
+    const audioUrl = `/uploads/telehealth/${finalName}`;
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const upd = await query(
+      `UPDATE telehealth_sessions SET
+        audio_url = $1, audio_size = $2, audio_duration = $3, audio_mime = $4,
+        reason = COALESCE(NULLIF($5,''), reason), notes = COALESCE(NULLIF($6,''), notes),
+        status = 'processing', audio_expires_at = $7, updated_at = NOW()
+       WHERE id = $8 AND organization_id = $9 RETURNING *`,
+      [audioUrl, stats.size, parseInt(duration) || 0, mime, reason, notes, expiresAt, req.params.id, org.organization_id]
+    );
+    await auditLog(upd.rows[0].id, org.organization_id, req.userId, org.name, 'audio_uploaded_chunked', {
+      size: stats.size, duration, chunks: files.length,
+    });
+
+    processSession(upd.rows[0].id, req.userId, org.organization_id, org.name).catch(e => logError('Process session error', e));
+    res.json(upd.rows[0]);
+  } catch (e) {
+    logError('Finalize chunked upload error', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // DELETE session (soft)
 router.delete('/:id', authenticate, async (req, res) => {
   try {
