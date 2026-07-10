@@ -252,15 +252,14 @@ router.post('/:id/audio', authenticate, upload.single('audio'), async (req, res)
     const notes = req.headers['x-session-notes'] || '';
     const duration = parseInt(req.headers['x-session-duration'] || '0');
     const audioUrl = `/uploads/telehealth/${req.file.filename}`;
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
+    // Áudio é preservado indefinidamente para permitir reprocessamento posterior
     const r = await query(
       `UPDATE telehealth_sessions SET
         audio_url = $1, audio_size = $2, audio_duration = $3, audio_mime = $4,
         reason = COALESCE(NULLIF($5,''), reason), notes = COALESCE(NULLIF($6,''), notes),
-        status = 'processing', audio_expires_at = $7, updated_at = NOW()
-       WHERE id = $8 AND organization_id = $9 RETURNING *`,
-      [audioUrl, req.file.size, duration, req.file.mimetype, reason, notes, expiresAt, req.params.id, org.organization_id]
+        status = 'processing', audio_expires_at = NULL, updated_at = NOW()
+       WHERE id = $7 AND organization_id = $8 RETURNING *`,
+      [audioUrl, req.file.size, duration, req.file.mimetype, reason, notes, req.params.id, org.organization_id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Sessão não encontrada' });
     await auditLog(r.rows[0].id, org.organization_id, req.userId, org.name, 'audio_uploaded', { size: req.file.size, duration });
@@ -359,15 +358,14 @@ router.post('/:id/audio/finalize', authenticate, async (req, res) => {
     try { fs.rmSync(chunkDir, { recursive: true, force: true }); } catch {}
 
     const audioUrl = `/uploads/telehealth/${finalName}`;
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
+    // Áudio preservado indefinidamente — permite reprocessamento em qualquer momento
     const upd = await query(
       `UPDATE telehealth_sessions SET
         audio_url = $1, audio_size = $2, audio_duration = $3, audio_mime = $4,
         reason = COALESCE(NULLIF($5,''), reason), notes = COALESCE(NULLIF($6,''), notes),
-        status = 'processing', audio_expires_at = $7, updated_at = NOW()
-       WHERE id = $8 AND organization_id = $9 RETURNING *`,
-      [audioUrl, stats.size, parseInt(duration) || 0, mime, reason, notes, expiresAt, req.params.id, org.organization_id]
+        status = 'processing', audio_expires_at = NULL, updated_at = NOW()
+       WHERE id = $7 AND organization_id = $8 RETURNING *`,
+      [audioUrl, stats.size, parseInt(duration) || 0, mime, reason, notes, req.params.id, org.organization_id]
     );
     await auditLog(upd.rows[0].id, org.organization_id, req.userId, org.name, 'audio_uploaded_chunked', {
       size: stats.size, duration, chunks: files.length,
