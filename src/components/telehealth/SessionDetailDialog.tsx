@@ -407,6 +407,81 @@ export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze
             </TabsContent>
 
             <TabsContent value="audit" className="py-4 m-0">
+            </TabsContent>
+
+            <TabsContent value="chat" className="py-4 m-0">
+              {!hasTranscript ? (
+                <p className="text-sm text-muted-foreground">Aguardando transcrição para habilitar perguntas.</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground">
+                    <Sparkles className="h-4 w-4 shrink-0 mt-0.5 text-primary" />
+                    <p>A IA responderá <strong>somente com base na transcrição</strong> desta reunião. Se a informação não estiver na gravação, ela dirá.</p>
+                  </div>
+
+                  {chatMessages.length === 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">Sugestões:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {SUGGESTED_QUESTIONS.map((q, i) => (
+                          <Button key={i} size="sm" variant="outline" className="h-auto py-1.5 text-xs whitespace-normal text-left" onClick={() => sendChat(q)} disabled={chatLoading}>
+                            {q}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    {chatMessages.map((m, i) => (
+                      <div key={i} className={cn('flex gap-2', m.role === 'user' ? 'justify-end' : 'justify-start')}>
+                        <div className={cn(
+                          'max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap',
+                          m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                        )}>
+                          {m.role === 'assistant' && (
+                            <div className="flex items-center gap-1 mb-1 text-xs opacity-70">
+                              <MessageCircle className="h-3 w-3" /> IA
+                            </div>
+                          )}
+                          {m.content}
+                        </div>
+                      </div>
+                    ))}
+                    {chatLoading && (
+                      <div className="flex justify-start">
+                        <div className="bg-muted rounded-lg px-3 py-2 text-sm flex items-center gap-2">
+                          <Loader2 className="h-3 w-3 animate-spin" /> Consultando transcrição...
+                        </div>
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  <div className="flex items-end gap-2 sticky bottom-0 bg-background pt-2">
+                    <Textarea
+                      value={chatInput}
+                      onChange={e => setChatInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          sendChat();
+                        }
+                      }}
+                      placeholder="Pergunte algo sobre esta reunião..."
+                      rows={2}
+                      className="resize-none text-sm"
+                      disabled={chatLoading}
+                    />
+                    <Button size="icon" onClick={() => sendChat()} disabled={chatLoading || !chatInput.trim()}>
+                      {chatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="audit-original-placeholder" className="hidden">
               {session.audit_logs?.length ? (
                 <div className="space-y-2">
                   {session.audit_logs.map(log => (
