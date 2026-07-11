@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { RefreshCw, FileText, Clock, CheckCircle2, XCircle, Loader2, AlertTriangle, Upload, Mic, ListTodo, ClipboardList, AlertCircle, FileCheck, CalendarPlus, Plus } from 'lucide-react';
+import { RefreshCw, FileText, Clock, CheckCircle2, XCircle, Loader2, AlertTriangle, Upload, Mic, ListTodo, ClipboardList, AlertCircle, FileCheck, CalendarPlus, Plus, Send, Sparkles, MessageCircle } from 'lucide-react';
 import { TelehealthSession, AnalysisType } from '@/hooks/use-telehealth';
+import { useTelehealth } from '@/hooks/use-telehealth';
 import { cn } from '@/lib/utils';
 
 interface SessionDetailDialogProps {
@@ -40,6 +42,21 @@ const ANALYSIS_OPTIONS: { type: AnalysisType; label: string; icon: any; desc: st
 export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze, onCreateTask, onScheduleReturn }: SessionDetailDialogProps) {
   const [analyzingType, setAnalyzingType] = useState<AnalysisType | null>(null);
   const [activeAnalysis, setActiveAnalysis] = useState<AnalysisType | null>(null);
+  const { askQuestion } = useTelehealth();
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    // Reset chat when switching session
+    setChatMessages([]);
+    setChatInput('');
+  }, [session?.id]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages, chatLoading]);
 
   if (!session) return null;
 
@@ -48,6 +65,27 @@ export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze
   const currentStepIndex = PIPELINE_STEPS.indexOf(session.status);
   const hasTranscript = !!session.transcript;
   const structuredContent = session.structured_content || {};
+
+  const SUGGESTED_QUESTIONS = [
+    'Quais foram os principais assuntos discutidos?',
+    'Quem participou da reunião?',
+    'Quais compromissos foram assumidos e por quem?',
+    'Quais são os próximos passos?',
+  ];
+
+  const sendChat = async (text?: string) => {
+    const q = (text ?? chatInput).trim();
+    if (!q || chatLoading || !session) return;
+    const nextHistory = [...chatMessages, { role: 'user' as const, content: q }];
+    setChatMessages(nextHistory);
+    setChatInput('');
+    setChatLoading(true);
+    const answer = await askQuestion(session.id, q, chatMessages);
+    setChatLoading(false);
+    if (answer) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: answer }]);
+    }
+  };
 
   const handleAnalyze = async (type: AnalysisType) => {
     if (!onAnalyze) return;
@@ -282,6 +320,7 @@ export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze
             <TabsTrigger value="info">Informações</TabsTrigger>
             <TabsTrigger value="transcript">Transcrição</TabsTrigger>
             <TabsTrigger value="analysis">Análise IA</TabsTrigger>
+            <TabsTrigger value="chat">Perguntar à IA</TabsTrigger>
             <TabsTrigger value="audit">Auditoria</TabsTrigger>
           </TabsList>
 
