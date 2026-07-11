@@ -407,6 +407,21 @@ export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze
             </TabsContent>
 
             <TabsContent value="audit" className="py-4 m-0">
+              {session.audit_logs?.length ? (
+                <div className="space-y-2">
+                  {session.audit_logs.map(log => (
+                    <div key={log.id} className="flex items-start gap-3 text-sm border-b pb-2">
+                      <span className="text-muted-foreground shrink-0">{new Date(log.created_at).toLocaleString('pt-BR')}</span>
+                      <div>
+                        <span className="font-medium">{log.user_name || 'Sistema'}</span>
+                        <span className="text-muted-foreground ml-1">— {log.action.replace(/_/g, ' ')}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Nenhum registro de auditoria.</p>
+              )}
             </TabsContent>
 
             <TabsContent value="chat" className="py-4 m-0">
@@ -481,23 +496,6 @@ export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze
               )}
             </TabsContent>
 
-            <TabsContent value="audit-original-placeholder" className="hidden">
-              {session.audit_logs?.length ? (
-                <div className="space-y-2">
-                  {session.audit_logs.map(log => (
-                    <div key={log.id} className="flex items-start gap-3 text-sm border-b pb-2">
-                      <span className="text-muted-foreground shrink-0">{new Date(log.created_at).toLocaleString('pt-BR')}</span>
-                      <div>
-                        <span className="font-medium">{log.user_name || 'Sistema'}</span>
-                        <span className="text-muted-foreground ml-1">— {log.action.replace(/_/g, ' ')}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">Nenhum registro de auditoria.</p>
-              )}
-            </TabsContent>
           </ScrollArea>
         </Tabs>
       </DialogContent>
