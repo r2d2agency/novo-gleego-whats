@@ -673,4 +673,73 @@ router.post('/:id/analyze', authenticate, async (req, res) => {
   }
 });
 
+// POST /:id/ask - free-form Q&A restricted to the transcript
+router.post('/:id/ask', authenticate, async (req, res) => {
+  try {
+    const org = await getUserOrganization(req.userId);
+    if (!org) return res.status(403).json({ error: 'Sem organização' });
+
+    const { question, history } = req.body || {};
+    if (!question || !String(question).trim()) {
+      return res.status(400).json({ error: 'Pergunta obrigatória' });
+    }
+
+    const session = (await query(
+      `SELECT * FROM telehealth_sessions WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
+      [req.params.id, org.organization_id]
+    )).rows[0];
+    if (!session) return res.status(404).json({ error: 'Sessão não encontrada' });
+    if (!session.transcript) return res.status(400).json({ error: 'Sessão ainda não possui transcrição' });
+
+    const aiConfig = (await getAIConfig(req.userId))
+      || (process.env.LOVABLE_API_KEY ? { provider: 'lovable', apiKey: process.env.LOVABLE_API_KEY, model: null } : null);
+    if (!aiConfig) return res.status(400).json({ error: 'Configuração de IA não encontrada' });
+
+    const systemPrompt = `Você é um assistente que responde perguntas sobre uma reunião gravada.
+REGRAS ESTRITAS:
+1. Responda EXCLUSIVAMENTE com base na transcrição fornecida abaixo.
+2. Se a informação não estiver na transcrição, diga claramente: "Essa informação não está na transcrição."
+3. Não invente nomes, datas, valores ou fatos.
+4. Cite trechos entre aspas quando útil.
+5. Responda em português, de forma clara e objetiva.
+
+Contexto da reunião:
+- Título: ${session.title || 'não informado'}
+- Motivo: ${session.reason || 'não informado'}
+- Anotações: ${session.notes || 'nenhuma'}
+
+TRANSCRIÇÃO:
+"""
+${session.transcript}
+"""`;
+
+    const priorTurns = Array.isArray(history)
+      ? history.slice(-10).filter(m => m && m.role && m.content).map(m => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: String(m.content).slice(0, 4000),
+        }))
+      : [];
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...priorTurns,
+      { role: 'user', content: String(question).slice(0, 4000) },
+    ];
+
+    const aiResult = await callAI(aiConfig, messages, { temperature: 0.2, maxTokens: 1500 });
+    const answer = typeof aiResult === 'string'
+      ? aiResult
+      : (aiResult?.content ?? aiResult?.text ?? '');
+
+    await auditLog(session.id, org.organization_id, req.userId, org.name, 'ai_question', {
+      question: String(question).slice(0, 500),
+    });
+
+    res.json({ answer: String(answer || '').trim() });
+  } catch (e) {
+    logError('Telehealth ask error', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
