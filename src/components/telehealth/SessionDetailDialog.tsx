@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { RefreshCw, FileText, Clock, CheckCircle2, XCircle, Loader2, AlertTriangle, Upload, Mic, ListTodo, ClipboardList, AlertCircle, FileCheck, CalendarPlus, Plus } from 'lucide-react';
+import { RefreshCw, FileText, Clock, CheckCircle2, XCircle, Loader2, AlertTriangle, Upload, Mic, ListTodo, ClipboardList, AlertCircle, FileCheck, CalendarPlus, Plus, Send, Sparkles, MessageCircle } from 'lucide-react';
 import { TelehealthSession, AnalysisType } from '@/hooks/use-telehealth';
+import { useTelehealth } from '@/hooks/use-telehealth';
 import { cn } from '@/lib/utils';
 
 interface SessionDetailDialogProps {
@@ -40,6 +42,21 @@ const ANALYSIS_OPTIONS: { type: AnalysisType; label: string; icon: any; desc: st
 export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze, onCreateTask, onScheduleReturn }: SessionDetailDialogProps) {
   const [analyzingType, setAnalyzingType] = useState<AnalysisType | null>(null);
   const [activeAnalysis, setActiveAnalysis] = useState<AnalysisType | null>(null);
+  const { askQuestion } = useTelehealth();
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    // Reset chat when switching session
+    setChatMessages([]);
+    setChatInput('');
+  }, [session?.id]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages, chatLoading]);
 
   if (!session) return null;
 
@@ -48,6 +65,27 @@ export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze
   const currentStepIndex = PIPELINE_STEPS.indexOf(session.status);
   const hasTranscript = !!session.transcript;
   const structuredContent = session.structured_content || {};
+
+  const SUGGESTED_QUESTIONS = [
+    'Quais foram os principais assuntos discutidos?',
+    'Quem participou da reunião?',
+    'Quais compromissos foram assumidos e por quem?',
+    'Quais são os próximos passos?',
+  ];
+
+  const sendChat = async (text?: string) => {
+    const q = (text ?? chatInput).trim();
+    if (!q || chatLoading || !session) return;
+    const nextHistory = [...chatMessages, { role: 'user' as const, content: q }];
+    setChatMessages(nextHistory);
+    setChatInput('');
+    setChatLoading(true);
+    const answer = await askQuestion(session.id, q, chatMessages);
+    setChatLoading(false);
+    if (answer) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: answer }]);
+    }
+  };
 
   const handleAnalyze = async (type: AnalysisType) => {
     if (!onAnalyze) return;
@@ -282,6 +320,7 @@ export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze
             <TabsTrigger value="info">Informações</TabsTrigger>
             <TabsTrigger value="transcript">Transcrição</TabsTrigger>
             <TabsTrigger value="analysis">Análise IA</TabsTrigger>
+            <TabsTrigger value="chat">Perguntar à IA</TabsTrigger>
             <TabsTrigger value="audit">Auditoria</TabsTrigger>
           </TabsList>
 
@@ -384,6 +423,79 @@ export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze
                 <p className="text-sm text-muted-foreground">Nenhum registro de auditoria.</p>
               )}
             </TabsContent>
+
+            <TabsContent value="chat" className="py-4 m-0">
+              {!hasTranscript ? (
+                <p className="text-sm text-muted-foreground">Aguardando transcrição para habilitar perguntas.</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground">
+                    <Sparkles className="h-4 w-4 shrink-0 mt-0.5 text-primary" />
+                    <p>A IA responderá <strong>somente com base na transcrição</strong> desta reunião. Se a informação não estiver na gravação, ela dirá.</p>
+                  </div>
+
+                  {chatMessages.length === 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">Sugestões:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {SUGGESTED_QUESTIONS.map((q, i) => (
+                          <Button key={i} size="sm" variant="outline" className="h-auto py-1.5 text-xs whitespace-normal text-left" onClick={() => sendChat(q)} disabled={chatLoading}>
+                            {q}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    {chatMessages.map((m, i) => (
+                      <div key={i} className={cn('flex gap-2', m.role === 'user' ? 'justify-end' : 'justify-start')}>
+                        <div className={cn(
+                          'max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap',
+                          m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                        )}>
+                          {m.role === 'assistant' && (
+                            <div className="flex items-center gap-1 mb-1 text-xs opacity-70">
+                              <MessageCircle className="h-3 w-3" /> IA
+                            </div>
+                          )}
+                          {m.content}
+                        </div>
+                      </div>
+                    ))}
+                    {chatLoading && (
+                      <div className="flex justify-start">
+                        <div className="bg-muted rounded-lg px-3 py-2 text-sm flex items-center gap-2">
+                          <Loader2 className="h-3 w-3 animate-spin" /> Consultando transcrição...
+                        </div>
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  <div className="flex items-end gap-2 sticky bottom-0 bg-background pt-2">
+                    <Textarea
+                      value={chatInput}
+                      onChange={e => setChatInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          sendChat();
+                        }
+                      }}
+                      placeholder="Pergunte algo sobre esta reunião..."
+                      rows={2}
+                      className="resize-none text-sm"
+                      disabled={chatLoading}
+                    />
+                    <Button size="icon" onClick={() => sendChat()} disabled={chatLoading || !chatInput.trim()}>
+                      {chatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
           </ScrollArea>
         </Tabs>
       </DialogContent>

@@ -206,6 +206,24 @@ export function useTelehealth() {
     }
   }, []);
 
+  const askQuestion = useCallback(async (
+    id: string,
+    question: string,
+    history: Array<{ role: 'user' | 'assistant'; content: string }>,
+  ) => {
+    try {
+      const result = await api<{ answer: string }>(`/api/telehealth/${id}/ask`, {
+        method: 'POST',
+        body: { question, history },
+        auth: true,
+      });
+      return result.answer;
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao consultar IA');
+      return null;
+    }
+  }, []);
+
   const deleteSession = useCallback(async (id: string) => {
     try {
       await api(`/api/telehealth/${id}`, { method: 'DELETE', auth: true });
@@ -228,6 +246,7 @@ export function useTelehealth() {
     finalizeChunkedUpload,
     retryProcessing,
     analyzeSession,
+    askQuestion,
     deleteSession,
   };
 }
