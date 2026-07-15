@@ -1117,7 +1117,7 @@ export function ChatArea({
           {!isMobile && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><Tag className="h-4 w-4" /></Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="z-[80]">
+              <DropdownMenuContent align="end" className="z-[80] max-h-[60vh] overflow-y-auto">
                 {tags.filter(t => !(Array.isArray(conversation.tags) ? conversation.tags : []).some(ct => ct.id === t.id)).map(tag => (
                   <DropdownMenuItem key={tag.id} onClick={() => onAddTag(tag.id)}>
                     <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: tag.color }} />{tag.name}
@@ -1290,7 +1290,7 @@ export function ChatArea({
                 {(Array.isArray(conversation.tags) ? conversation.tags : []).length > 0 && <Badge variant="secondary" className="h-4 px-1 text-[9px] ml-0.5">{conversation.tags.length}</Badge>}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="z-[80] max-h-60 overflow-y-auto">
+            <DropdownMenuContent align="start" className="z-[80] max-h-[60vh] overflow-y-auto">
               {tags.filter(t => !(Array.isArray(conversation.tags) ? conversation.tags : []).some(ct => ct.id === t.id)).map(tag => (
                 <DropdownMenuItem key={tag.id} onClick={() => onAddTag(tag.id)}>
                   <div className="w-3 h-3 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: tag.color }} />{tag.name}
