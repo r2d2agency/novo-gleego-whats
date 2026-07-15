@@ -69,6 +69,7 @@ import VerificarDocumento from "./pages/VerificarDocumento";
 import Teleatendimento from "./pages/Teleatendimento";
 import SupervisorIA from "./pages/SupervisorIA";
 import MarinaTestChat from "./pages/MarinaTestChat";
+import MinhaEquipe from "./pages/MinhaEquipe";
 
 import NotFound from "./pages/NotFound";
 
@@ -175,6 +176,7 @@ const App = () => (
             <Route path="/assinaturas" element={<ProtectedRoute><Assinaturas /></ProtectedRoute>} />
             <Route path="/teleatendimento" element={<ProtectedRoute><Teleatendimento /></ProtectedRoute>} />
             <Route path="/supervisor-ia" element={<ProtectedRoute><SupervisorIA /></ProtectedRoute>} />
+            <Route path="/minha-equipe" element={<ProtectedRoute><MinhaEquipe /></ProtectedRoute>} />
             <Route path="/testbarber" element={<ProtectedRoute><MarinaTestChat /></ProtectedRoute>} />
 
             <Route path="/marina-test" element={<ProtectedRoute><MarinaTestChat /></ProtectedRoute>} />
