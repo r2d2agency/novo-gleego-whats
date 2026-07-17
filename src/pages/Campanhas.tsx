@@ -1226,31 +1226,94 @@ const Campanhas = () => {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <Label>Tag de Conversa</Label>
-                      <Select value={selectedTag} onValueChange={setSelectedTag} disabled={conversationTags.length === 0}>
-                        <SelectTrigger>
-                          <SelectValue placeholder={conversationTags.length === 0 ? "Nenhuma tag disponível" : "Selecione uma tag"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {conversationTags.length === 0 ? (
-                            <div className="px-2 py-2 text-sm text-muted-foreground">Nenhuma tag encontrada</div>
-                          ) : (
-                            conversationTags.filter(t => t.conversation_count > 0).map((tag) => (
-                              <SelectItem key={tag.id} value={tag.id}>
-                                <div className="flex items-center gap-2">
-                                  <div 
-                                    className="w-3 h-3 rounded-full" 
-                                    style={{ backgroundColor: tag.color }}
-                                  />
-                                  {tag.name} ({tag.conversation_count} conversas)
-                                </div>
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Será criada uma lista com os números das conversas que possuem esta tag
+                      <Label>Tags de Conversa (selecione uma ou mais)</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full justify-between font-normal"
+                            disabled={conversationTags.length === 0}
+                          >
+                            <span className="truncate">
+                              {selectedTags.length === 0
+                                ? (conversationTags.length === 0 ? "Nenhuma tag disponível" : "Selecione uma ou mais tags")
+                                : `${selectedTags.length} tag${selectedTags.length > 1 ? 's' : ''} selecionada${selectedTags.length > 1 ? 's' : ''}`}
+                            </span>
+                            <Tag className="w-4 h-4 opacity-60" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                          <ScrollArea className="max-h-64">
+                            <div className="p-2 space-y-1">
+                              {conversationTags.filter(t => t.conversation_count > 0).length === 0 ? (
+                                <div className="px-2 py-2 text-sm text-muted-foreground">Nenhuma tag com conversas</div>
+                              ) : (
+                                conversationTags.filter(t => t.conversation_count > 0).map((tag) => {
+                                  const checked = selectedTags.includes(tag.id);
+                                  return (
+                                    <label
+                                      key={tag.id}
+                                      className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer text-sm"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={(e) => {
+                                          setSelectedTags(prev =>
+                                            e.target.checked
+                                              ? [...prev, tag.id]
+                                              : prev.filter(id => id !== tag.id)
+                                          );
+                                        }}
+                                        className="h-4 w-4"
+                                      />
+                                      <div
+                                        className="w-3 h-3 rounded-full flex-shrink-0"
+                                        style={{ backgroundColor: tag.color }}
+                                      />
+                                      <span className="flex-1 truncate">{tag.name}</span>
+                                      <span className="text-xs text-muted-foreground">{tag.conversation_count}</span>
+                                    </label>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </ScrollArea>
+                        </PopoverContent>
+                      </Popover>
+                      {selectedTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {conversationTags
+                            .filter(t => selectedTags.includes(t.id))
+                            .map(tag => (
+                              <Badge key={tag.id} variant="secondary" className="gap-1.5 pl-2 pr-1">
+                                <div
+                                  className="w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: tag.color }}
+                                />
+                                {tag.name}
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedTags(prev => prev.filter(id => id !== tag.id))}
+                                  className="ml-0.5 rounded hover:bg-muted-foreground/20 p-0.5"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground flex items-center gap-2">
+                        {loadingTagPreview ? (
+                          <><Loader2 className="w-3 h-3 animate-spin" /> Carregando contatos...</>
+                        ) : selectedTags.length === 0 ? (
+                          <>Selecione as tags para gerar a lista de disparo</>
+                        ) : tagPreviewCount !== null ? (
+                          <><Users className="w-3 h-3" /> {tagPreviewCount} contato{tagPreviewCount === 1 ? '' : 's'} único{tagPreviewCount === 1 ? '' : 's'} será{tagPreviewCount === 1 ? '' : 'ão'} incluído{tagPreviewCount === 1 ? '' : 's'} na campanha</>
+                        ) : (
+                          <>Será criada uma lista com os números das conversas que possuem essas tags</>
+                        )}
                       </p>
                     </div>
                   )}
