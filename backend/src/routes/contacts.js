@@ -718,9 +718,14 @@ router.delete('/:id', async (req, res) => {
 // Create a contact list from conversations that have a specific tag
 router.post('/lists/from-tag', async (req, res) => {
   try {
-    const { tag_id, name, connection_id } = req.body;
+    const { tag_id, tag_ids, name, connection_id } = req.body;
 
-    if (!tag_id) {
+    // Accept either tag_ids (array) or tag_id (single, legacy)
+    const tagIds = Array.isArray(tag_ids) && tag_ids.length > 0
+      ? tag_ids.filter(Boolean)
+      : (tag_id ? [tag_id] : []);
+
+    if (tagIds.length === 0) {
       return res.status(400).json({ error: 'Tag é obrigatória' });
     }
 
@@ -729,18 +734,19 @@ router.post('/lists/from-tag', async (req, res) => {
       return res.status(400).json({ error: 'Usuário não pertence a uma organização' });
     }
 
-    // Verify tag belongs to user's organization
+    // Verify tags belong to user's organization
     const tagCheck = await query(
-      'SELECT id, name FROM conversation_tags WHERE id = $1 AND organization_id = $2',
-      [tag_id, org.organization_id]
+      'SELECT id, name FROM conversation_tags WHERE id = ANY($1::uuid[]) AND organization_id = $2',
+      [tagIds, org.organization_id]
     );
 
     if (tagCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Tag não encontrada' });
+      return res.status(404).json({ error: 'Nenhuma tag encontrada' });
     }
 
-    const tagName = tagCheck.rows[0].name;
-    const listName = name || `Tag: ${tagName}`;
+    const tagNames = tagCheck.rows.map(r => r.name);
+    const validTagIds = tagCheck.rows.map(r => r.id);
+    const listName = name || `Tags: ${tagNames.join(', ')}`;
 
     // Get all conversations with this tag that have phone numbers
     // Only get active (non-archived) individual conversations with messages
@@ -751,18 +757,18 @@ router.post('/lists/from-tag', async (req, res) => {
        FROM conversations conv
        JOIN conversation_tag_links ctl ON ctl.conversation_id = conv.id
        JOIN connections conn ON conn.id = conv.connection_id
-       WHERE ctl.tag_id = $1
+       WHERE ctl.tag_id = ANY($1::uuid[])
          AND conn.organization_id = $2
          AND conv.contact_phone IS NOT NULL
          AND conv.contact_phone != ''
          AND COALESCE(conv.is_group, false) = false
          AND conv.is_archived = false
          AND EXISTS (SELECT 1 FROM chat_messages cm WHERE cm.conversation_id = conv.id)`,
-      [tag_id, org.organization_id]
+      [validTagIds, org.organization_id]
     );
 
     if (conversationsResult.rows.length === 0) {
-      return res.status(400).json({ error: 'Nenhuma conversa ativa encontrada com esta tag' });
+      return res.status(400).json({ error: 'Nenhuma conversa ativa encontrada com essas tags' });
     }
 
     // Create the list
@@ -802,11 +808,62 @@ router.post('/lists/from-tag', async (req, res) => {
 
     res.status(201).json({
       ...finalList.rows[0],
-      message: `Lista criada com ${insertedCount} contatos da tag "${tagName}"`
+      message: `Lista criada com ${insertedCount} contatos das tags: ${tagNames.join(', ')}`
     });
   } catch (error) {
     console.error('Create list from tag error:', error);
     res.status(500).json({ error: 'Erro ao criar lista a partir da tag' });
+  }
+});
+
+// Preview count of unique contacts for one or more tags (no list created)
+router.post('/lists/from-tag/preview', async (req, res) => {
+  try {
+    const { tag_ids, tag_id } = req.body || {};
+    const tagIds = Array.isArray(tag_ids) && tag_ids.length > 0
+      ? tag_ids.filter(Boolean)
+      : (tag_id ? [tag_id] : []);
+
+    if (tagIds.length === 0) {
+      return res.json({ count: 0, tag_names: [] });
+    }
+
+    const org = await getUserOrganization(req.userId);
+    if (!org) {
+      return res.status(400).json({ error: 'Usuário não pertence a uma organização' });
+    }
+
+    const tagCheck = await query(
+      'SELECT id, name FROM conversation_tags WHERE id = ANY($1::uuid[]) AND organization_id = $2',
+      [tagIds, org.organization_id]
+    );
+
+    if (tagCheck.rows.length === 0) {
+      return res.json({ count: 0, tag_names: [] });
+    }
+
+    const validTagIds = tagCheck.rows.map(r => r.id);
+    const tagNames = tagCheck.rows.map(r => r.name);
+
+    const result = await query(
+      `SELECT COUNT(DISTINCT conv.contact_phone)::int AS count
+         FROM conversations conv
+         JOIN conversation_tag_links ctl ON ctl.conversation_id = conv.id
+         JOIN connections conn ON conn.id = conv.connection_id
+        WHERE ctl.tag_id = ANY($1::uuid[])
+          AND conn.organization_id = $2
+          AND conv.contact_phone IS NOT NULL
+          AND conv.contact_phone != ''
+          AND COALESCE(conv.is_group, false) = false
+          AND conv.is_archived = false
+          AND EXISTS (SELECT 1 FROM chat_messages cm WHERE cm.conversation_id = conv.id)`,
+      [validTagIds, org.organization_id]
+    );
+
+    res.json({ count: result.rows[0]?.count || 0, tag_names: tagNames });
+  } catch (error) {
+    console.error('Preview list from tag error:', error);
+    res.status(500).json({ error: 'Erro ao prever contatos' });
   }
 });
 
