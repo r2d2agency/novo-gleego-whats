@@ -255,6 +255,31 @@ const Campanhas = () => {
 
   const selectedTemplateObj = metaTemplates.find((t) => t.id === selectedMetaTemplate);
 
+  // Auto-load preview count when selected tags change
+  useEffect(() => {
+    if (contactSource !== 'tag' || selectedTags.length === 0) {
+      setTagPreviewCount(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingTagPreview(true);
+    api<{ count: number }>('/api/contacts/lists/from-tag/preview', {
+      method: 'POST',
+      body: { tag_ids: selectedTags },
+    })
+      .then((res) => {
+        if (!cancelled) setTagPreviewCount(res?.count ?? 0);
+      })
+      .catch((err) => {
+        console.error('Erro ao prever contatos por tag:', err);
+        if (!cancelled) setTagPreviewCount(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingTagPreview(false);
+      });
+    return () => { cancelled = true; };
+  }, [contactSource, selectedTags]);
+
   const getTemplateBodyText = (t: any): string => {
     const body = (t?.components || []).find((c: any) => (c.type || '').toUpperCase() === 'BODY');
     return body?.text || '';
