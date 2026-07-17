@@ -400,7 +400,8 @@ const Campanhas = () => {
     setMetaTemplates([]);
     setMetaParamValues({});
     setContactSource('list');
-    setSelectedTag("");
+    setSelectedTags([]);
+    setTagPreviewCount(null);
     setStartDate(undefined);
     setEndDate(undefined);
     setStartTime("08:00");
@@ -444,7 +445,7 @@ const Campanhas = () => {
         return;
       }
     } else {
-      if (!campaignName || !selectedConnection || !selectedTag || !hasContent) {
+      if (!campaignName || !selectedConnection || selectedTags.length === 0 || !hasContent) {
         toast.error("Preencha todos os campos obrigatórios");
         return;
       }
@@ -466,16 +467,19 @@ const Campanhas = () => {
     try {
       let listIdToUse = selectedList;
 
-      // If using tag source, create list from tag first
-      if (contactSource === 'tag' && selectedTag) {
+      // If using tag source, create list from tag(s) first
+      if (contactSource === 'tag' && selectedTags.length > 0) {
         setCreatingListFromTag(true);
         try {
-          const tagInfo = conversationTags.find(t => t.id === selectedTag);
+          const tagNames = conversationTags
+            .filter(t => selectedTags.includes(t.id))
+            .map(t => t.name)
+            .join(', ');
           const result = await api<{ id: string; contact_count: number; message: string }>('/api/contacts/lists/from-tag', {
             method: 'POST',
             body: {
-              tag_id: selectedTag,
-              name: `${campaignName} - ${tagInfo?.name || 'Tag'}`,
+              tag_ids: selectedTags,
+              name: `${campaignName} - ${tagNames || 'Tags'}`,
               connection_id: selectedConnection,
             },
           });
