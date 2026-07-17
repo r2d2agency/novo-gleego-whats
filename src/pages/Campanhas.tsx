@@ -1269,8 +1269,7 @@ const Campanhas = () => {
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                          <ScrollArea className="max-h-64">
-                            <div className="p-2 space-y-1">
+                          <div className="max-h-64 overflow-y-auto p-2 space-y-1">
                               {conversationTags.filter(t => t.conversation_count > 0).length === 0 ? (
                                 <div className="px-2 py-2 text-sm text-muted-foreground">Nenhuma tag com conversas</div>
                               ) : (
@@ -1303,8 +1302,7 @@ const Campanhas = () => {
                                   );
                                 })
                               )}
-                            </div>
-                          </ScrollArea>
+                          </div>
                         </PopoverContent>
                       </Popover>
                       {selectedTags.length > 0 && (
