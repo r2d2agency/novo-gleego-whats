@@ -147,7 +147,9 @@ const Campanhas = () => {
   
   // Form state - Tag source
   const [contactSource, setContactSource] = useState<'list' | 'tag'>('list');
-  const [selectedTag, setSelectedTag] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagPreviewCount, setTagPreviewCount] = useState<number | null>(null);
+  const [loadingTagPreview, setLoadingTagPreview] = useState(false);
   const [creatingListFromTag, setCreatingListFromTag] = useState(false);
   
   // Form state - Schedule
