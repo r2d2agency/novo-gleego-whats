@@ -566,6 +566,43 @@ export default function Assinaturas() {
 
                   {/* Audit Tab */}
                   <TabsContent value="audit" className="space-y-2">
+                    {/* Partial signed contract preview */}
+                    {selectedDoc.status !== 'draft' && signers.some((s: any) => s.status === 'signed') && (
+                      <div className="mb-3 p-3 rounded-lg border bg-primary/5">
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <div>
+                            <p className="text-sm font-medium">📄 Contrato parcial</p>
+                            <p className="text-xs text-muted-foreground">
+                              {signers.filter((s: any) => s.status === 'signed').length} de {signers.length} signatário(s) já assinaram
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              const url = await downloadSignedPdf(selectedDoc.id);
+                              if (url) window.open(url, '_blank');
+                              else toast.error('Não foi possível gerar o PDF parcial');
+                            }}
+                            className="gap-1"
+                          >
+                            <Eye className="h-3 w-3" /> Ver PDF com assinaturas atuais
+                          </Button>
+                        </div>
+                        <div className="mt-2 space-y-1">
+                          {signers.filter((s: any) => s.status === 'signed').map((s: any) => (
+                            <p key={s.id} className="text-xs text-green-700 dark:text-green-400">
+                              ✅ {s.name} • {s.signed_at ? format(new Date(s.signed_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) : ''}
+                            </p>
+                          ))}
+                          {signers.filter((s: any) => s.status === 'pending').map((s: any) => (
+                            <p key={s.id} className="text-xs text-muted-foreground">
+                              ⏳ {s.name} — aguardando assinatura
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {/* Identity images captured per signer */}
                     {signers.some((s: any) => s.selfie_image_url || s.doc_front_image_url || s.doc_back_image_url) && (
                       <div className="mb-3 space-y-3">
@@ -575,20 +612,47 @@ export default function Assinaturas() {
                           const buildUrl = (u?: string | null) => {
                             if (!u) return null;
                             if (u.startsWith('http') || u.startsWith('data:')) return u;
-                            const base = API_URL || window.location.origin;
-                            return `${base}${u.startsWith('/') ? '' : '/'}${u}`;
+                            // Prefer same-origin (nginx proxies /uploads to backend); fallback to API_URL via onError
+                            const path = u.startsWith('/') ? u : `/${u}`;
+                            return path;
+                          };
+                          const fallbackUrl = (u?: string | null) => {
+                            if (!u || !API_URL) return null;
+                            if (u.startsWith('http') || u.startsWith('data:')) return null;
+                            const path = u.startsWith('/') ? u : `/${u}`;
+                            return `${API_URL}${path}`;
                           };
                           return (
                             <div key={s.id} className="p-3 rounded-lg border">
                               <p className="text-xs font-medium mb-2">👤 {s.name} ({s.email})</p>
                               <div className="grid grid-cols-3 gap-2">
                                 {[
-                                  { label: 'Selfie', url: buildUrl(s.selfie_image_url) },
-                                  { label: 'Doc. Frente', url: buildUrl(s.doc_front_image_url) },
-                                  { label: 'Doc. Verso', url: buildUrl(s.doc_back_image_url) },
+                                  { label: 'Selfie', url: buildUrl(s.selfie_image_url), fb: fallbackUrl(s.selfie_image_url) },
+                                  { label: 'Doc. Frente', url: buildUrl(s.doc_front_image_url), fb: fallbackUrl(s.doc_front_image_url) },
+                                  { label: 'Doc. Verso', url: buildUrl(s.doc_back_image_url), fb: fallbackUrl(s.doc_back_image_url) },
                                 ].map((img) => img.url ? (
                                   <a key={img.label} href={img.url} target="_blank" rel="noopener noreferrer" className="block">
-                                    <img src={img.url} alt={img.label} className="w-full h-24 object-cover rounded border" />
+                                    <img
+                                      src={img.url}
+                                      alt={img.label}
+                                      className="w-full h-24 object-cover rounded border bg-muted"
+                                      onError={(e) => {
+                                        const el = e.currentTarget as HTMLImageElement;
+                                        if (img.fb && el.src !== img.fb && !el.dataset.fbTried) {
+                                          el.dataset.fbTried = '1';
+                                          el.src = img.fb;
+                                        } else {
+                                          el.style.display = 'none';
+                                          const parent = el.parentElement;
+                                          if (parent && !parent.querySelector('.img-fallback')) {
+                                            const div = document.createElement('div');
+                                            div.className = 'img-fallback w-full h-24 rounded border bg-muted flex items-center justify-center text-[10px] text-muted-foreground';
+                                            div.textContent = 'Imagem indisponível';
+                                            parent.appendChild(div);
+                                          }
+                                        }
+                                      }}
+                                    />
                                     <p className="text-[10px] text-center text-muted-foreground mt-1">{img.label}</p>
                                   </a>
                                 ) : null)}
