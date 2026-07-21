@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { MessageNotifications } from "./MessageNotifications";
 import { CRMAlerts } from "./CRMAlerts";
 import { ConnectionStatusIndicator } from "./ConnectionStatusIndicator";
+import { SoundToggle } from "./SoundToggle";
 
 function getGreeting(hour: number): { text: string; icon: typeof Sun } {
   if (hour >= 5 && hour < 12) {
@@ -71,6 +72,9 @@ export function TopBar() {
 
         {/* CRM Lead Alerts */}
         <CRMAlerts />
+
+        {/* Sound mute toggle */}
+        <SoundToggle />
 
         {/* Divider */}
         <div className="h-6 w-px bg-border" />
