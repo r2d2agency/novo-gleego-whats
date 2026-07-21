@@ -5,6 +5,7 @@ import { MessageNotifications } from "./MessageNotifications";
 import { CRMAlerts } from "./CRMAlerts";
 import { ConnectionStatusIndicator } from "./ConnectionStatusIndicator";
 import { GroupSecretaryPopup } from "./GroupSecretaryPopup";
+import { SoundToggle } from "./SoundToggle";
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -22,6 +23,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         <div className="h-5 w-px bg-border" />
         <MessageNotifications />
         <CRMAlerts />
+        <SoundToggle />
       </div>
       
       {/* Desktop: margin-left for collapsed sidebar + top bar, Mobile/Tablet: no margin */}
