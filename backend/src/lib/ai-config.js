@@ -129,6 +129,43 @@ export async function getOrganizationAIConfig(organizationId, preferredProvider 
   const legacyConfig = pickLegacyAIConfig(legacyResult.rows[0], org?.ai_provider || preferredProvider, preferredModel || org?.ai_model);
   if (legacyConfig) return legacyConfig;
 
+  // Fallback multi-org: se a organização atual está sem chave (vazia/mascarada) mas
+  // outra organização que compartilha membros já tem uma chave válida salva
+  // (cenário comum: usuário pertence a várias orgs e configurou a IA apenas em uma delas),
+  // reaproveita essa chave para não travar o módulo.
+  const siblingResult = await query(
+    `SELECT o.id, o.ai_provider, o.ai_model, o.ai_api_key
+       FROM organizations o
+      WHERE o.id <> $1
+        AND o.ai_api_key IS NOT NULL
+        AND length(trim(o.ai_api_key)) > 0
+        AND (
+          EXISTS (
+            SELECT 1 FROM organization_members m1
+              JOIN organization_members m2 ON m1.user_id = m2.user_id
+             WHERE m1.organization_id = $1 AND m2.organization_id = o.id
+          )
+        )
+      ORDER BY o.updated_at DESC NULLS LAST, o.created_at DESC NULLS LAST
+      LIMIT 5`,
+    [organizationId]
+  ).catch((error) => {
+    logError('ai_config.sibling_lookup_error', error);
+    return { rows: [] };
+  });
+
+  for (const sibling of siblingResult.rows) {
+    const key = cleanAIKey(sibling.ai_api_key);
+    if (!key) continue;
+    const provider = normalizeProvider(sibling.ai_provider) || inferProviderFromKey(key, preferredProvider) || 'openai';
+    return {
+      provider,
+      model: resolveModelForProvider(provider, preferredModel, sibling.ai_model),
+      apiKey: key,
+      keySource: `organizations.ai_api_key (sibling:${sibling.id})`,
+    };
+  }
+
   const provider = normalizeProvider(org?.ai_provider) || normalizeProvider(preferredProvider);
   if (provider) {
     return {
