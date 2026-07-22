@@ -369,6 +369,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
           <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
           <Select value={filter} onValueChange={setFilter}><SelectTrigger className="w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem>{TASK_STATUS.map(s => <SelectItem key={s.v} value={s.v}>{s.label}</SelectItem>)}</SelectContent></Select>
         </div>
+        <TriagePanel projectId={id} tasks={tasks || []} />
         <div className="space-y-2">
           {filtered.map((t: any) => {
             const mod = modules.find((m: any) => m.id === t.module_id);
