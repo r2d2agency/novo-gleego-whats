@@ -200,7 +200,20 @@ export function useDevAI(projectId: string | null) {
   const roadmap = useMutation({
     mutationFn: () => api<{ markdown: string }>(`${base}/projects/${projectId}/ai/roadmap`, { method: "POST", auth: true, timeoutMs: 120000 }),
   });
-  return { breakdown, applyBreakdown, classify, ask, roadmap };
+  const bulkClassify = useMutation({
+    mutationFn: (data: { text?: string; items?: string[]; create?: boolean; default_status?: string }) =>
+      api<{ classifications: any[]; created: any[]; total: number }>(
+        `${base}/projects/${projectId}/ai/bulk-classify`,
+        { method: "POST", body: { create: true, default_status: "backlog", ...data }, auth: true, timeoutMs: 180000 }
+      ),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["dev-tasks", projectId] });
+      qc.invalidateQueries({ queryKey: ["dev-tasks-all"] });
+      toast.success(`${r.created?.length || 0} tarefas criadas`);
+    },
+    onError: (e: any) => toast.error(e?.message || "Falha ao criar tarefas"),
+  });
+  return { breakdown, applyBreakdown, classify, ask, roadmap, bulkClassify };
 }
 
 // ===== Gantt =====
