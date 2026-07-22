@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, FolderKanban, Calendar, AlertTriangle, Zap } from "lucide-react";
+import { Loader2, Plus, FolderKanban, Calendar, AlertTriangle, Zap, LayoutGrid } from "lucide-react";
 import { useDevProjects, useDevProjectMutations } from "@/hooks/use-dev-workspace";
 import { QuickRequestButton } from "./WorkspaceProject";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -39,6 +39,9 @@ export default function WorkspaceHome() {
             <p className="text-muted-foreground text-sm mt-1">Seus SaaS e projetos com IA, fases e portal do cliente.</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
+          <Link to="/workspace/kanban">
+            <Button variant="outline" size="sm"><LayoutGrid className="h-4 w-4 mr-1" /> Kanban global</Button>
+          </Link>
           {(projects?.length ?? 0) > 0 && (
             <div className="flex items-center gap-2">
               <Select value={quickProjectId} onValueChange={setQuickProjectId}>
