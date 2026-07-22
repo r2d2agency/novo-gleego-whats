@@ -1030,7 +1030,18 @@ router.post('/ai-config/test', async (req, res) => {
       });
     }
 
-    res.json({ success: true, message: 'Conexão testada com sucesso' });
+    // Se o teste passou, persiste a configuração validada na organização.
+    // Isso evita o caso em que a tela mostra "teste com sucesso", mas outros
+    // módulos (ex.: Workspace) não encontram a chave porque ela veio apenas do
+    // formulário atual ou de uma configuração legada.
+    await query(
+      `UPDATE organizations
+       SET ai_provider = $1, ai_model = $2, ai_api_key = $3, updated_at = NOW()
+       WHERE id = $4`,
+      [resolvedProvider, resolvedModel || null, actualApiKey, orgResult.rows[0].id]
+    );
+
+    res.json({ success: true, message: 'Conexão testada e salva com sucesso' });
   } catch (error) {
     console.error('Test AI config error:', error);
     // Migration resilience: missing columns
