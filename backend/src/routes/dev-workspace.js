@@ -90,6 +90,11 @@ const router = Router();
     await query(`CREATE INDEX IF NOT EXISTS idx_dev_tasks_proj ON dev_tasks(project_id)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_dev_phases_proj ON dev_phases(project_id)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_dev_knowledge_proj ON dev_knowledge(project_id)`);
+    // Self-heal new columns for client feedback loop
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS client_feedback TEXT`);
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS client_feedback_note TEXT`);
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS client_feedback_at TIMESTAMPTZ`);
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS contact_email TEXT`);
   } catch (e) { console.error('dev-workspace init error:', e.message); }
 })();
 
@@ -213,10 +218,22 @@ router.get('/portal/:token', async (req, res) => {
     const cmap = {};
     for (const r of taskCounts.rows) cmap[r.phase_id] = { total: r.total, done: r.done };
 
+    // Client-visible task list — client requests + anything already sent to testing
+    const tasksQ = await query(
+      `SELECT id, title, description, status, type, priority, phase_id, module_id, source, client_feedback, client_feedback_note, contact_email, created_at, completed_at, due_date
+         FROM dev_tasks
+        WHERE project_id = $1
+          AND (source = 'client' OR status IN ('testing','done'))
+        ORDER BY created_at DESC
+        LIMIT 200`,
+      [project.id]
+    );
+
     res.json({
       project,
       modules: modules.rows,
       phases: phases.rows.map((ph) => ({ ...ph, task_stats: cmap[ph.id] || { total: 0, done: 0 } })),
+      tasks: tasksQ.rows,
     });
   } catch (e) {
     logError('dev_workspace.portal_error', e);
@@ -240,6 +257,9 @@ router.post('/portal/:token/requests', async (req, res) => {
        VALUES ($1, $2, $3, 'feature', 'backlog', 'client', $4) RETURNING *`,
       [project.id, title.slice(0, 240), (description || '').slice(0, 5000), contact_email || null]
     );
+    if (contact_email) {
+      try { await query(`UPDATE dev_tasks SET contact_email = $1 WHERE id = $2`, [contact_email, ins.rows[0].id]); } catch (_) {}
+    }
     await logActivity(project.id, 'client', 'request_created', { task_id: ins.rows[0].id, contact_email });
 
     // Async: classify with AI (fire and forget)
@@ -270,10 +290,82 @@ Responda no formato {"module_id": "...", "phase_id": "...", "type": "support|imp
   }
 });
 
+// Client feedback on a task (approve / needs-changes). Public via portal token.
+router.post('/portal/:token/tasks/:taskId/feedback', async (req, res) => {
+  try {
+    const { feedback, note } = req.body || {};
+    if (!['approved', 'needs_changes'].includes(feedback)) {
+      return res.status(400).json({ error: 'feedback deve ser approved ou needs_changes' });
+    }
+    const p = await query(
+      `SELECT id FROM dev_projects WHERE portal_token = $1 AND portal_enabled = true LIMIT 1`,
+      [req.params.token]
+    );
+    if (p.rows.length === 0) return res.status(404).json({ error: 'Portal não encontrado' });
+    const projectId = p.rows[0].id;
+
+    const t = await query(
+      `SELECT id, status, source FROM dev_tasks WHERE id = $1 AND project_id = $2 LIMIT 1`,
+      [req.params.taskId, projectId]
+    );
+    if (t.rows.length === 0) return res.status(404).json({ error: 'Solicitação não encontrada' });
+
+    // Client can only give feedback on their own requests OR tasks flagged in testing
+    const task = t.rows[0];
+    if (task.source !== 'client' && task.status !== 'testing') {
+      return res.status(403).json({ error: 'Feedback não permitido para esta tarefa' });
+    }
+
+    let newStatus = task.status;
+    if (feedback === 'approved') newStatus = 'done';
+    else if (feedback === 'needs_changes') newStatus = 'in_progress';
+
+    await query(
+      `UPDATE dev_tasks
+          SET client_feedback = $1,
+              client_feedback_note = $2,
+              client_feedback_at = NOW(),
+              status = $3,
+              completed_at = CASE WHEN $3 = 'done' THEN NOW() ELSE completed_at END,
+              updated_at = NOW()
+        WHERE id = $4`,
+      [feedback, (note || '').slice(0, 2000), newStatus, req.params.taskId]
+    );
+    await logActivity(projectId, 'client', 'task_feedback', { task_id: req.params.taskId, feedback, note });
+    res.json({ ok: true, status: newStatus });
+  } catch (e) {
+    logError('dev_workspace.portal_feedback_error', e);
+    res.status(500).json({ error: 'Erro ao registrar feedback' });
+  }
+});
+
 // =====================================================
 // AUTHENTICATED ROUTES
 // =====================================================
 router.use(authenticate);
+
+// -------- Global tasks across all projects (kanban) --------
+router.get('/tasks-all', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.json([]);
+    const rows = await query(
+      `SELECT t.*, p.name AS project_name, ph.name AS phase_name, m.name AS module_name, m.color AS module_color
+         FROM dev_tasks t
+         JOIN dev_projects p ON p.id = t.project_id
+         LEFT JOIN dev_phases ph ON ph.id = t.phase_id
+         LEFT JOIN dev_modules m ON m.id = t.module_id
+        WHERE p.organization_id = $1
+          AND (p.owner_user_id = $2 OR $3)
+        ORDER BY
+          CASE t.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+          t.created_at DESC
+        LIMIT 1000`,
+      [org.organization_id, req.userId, isAdmin(org.role)]
+    );
+    res.json(rows.rows);
+  } catch (e) { logError('dev.tasks_all', e); res.status(500).json({ error: e.message }); }
+});
 
 // -------- Projects --------
 router.get('/projects', async (req, res) => {

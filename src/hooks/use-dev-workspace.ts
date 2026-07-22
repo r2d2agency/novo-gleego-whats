@@ -24,6 +24,7 @@ export interface DevProject {
 export interface DevModule { id: string; project_id: string; name: string; description: string | null; color: string; icon: string | null; position: number; }
 export interface DevPhase { id: string; project_id: string; module_id: string | null; name: string; description: string | null; position: number; start_date: string | null; due_date: string | null; status: string; completed_at: string | null; }
 export interface DevTask { id: string; project_id: string; module_id: string | null; phase_id: string | null; title: string; description: string | null; type: string; priority: string; status: string; source: string; client_note: string | null; ai_reasoning: string | null; due_date: string | null; completed_at: string | null; }
+export interface DevTaskGlobal extends DevTask { project_name: string; phase_name: string | null; module_name: string | null; module_color: string | null; client_feedback?: string | null; client_feedback_note?: string | null; }
 export interface DevKnowledge { id: string; title: string; kind: string; source_url: string | null; tokens: number; preview?: string; created_at: string; }
 export interface DevGanttPhase extends DevPhase { module_name: string | null; module_color: string | null; deadline_status: "ok" | "warning" | "overdue"; }
 
@@ -108,6 +109,30 @@ export function useDevPhaseMutations(projectId: string | null) {
 export function useDevTasks(projectId: string | null) {
   return useQuery<DevTask[]>({ queryKey: ["dev-tasks", projectId], queryFn: () => api(`${base}/projects/${projectId}/tasks`, { auth: true }), enabled: !!projectId });
 }
+
+// ===== Global tasks (kanban across projects) =====
+export function useDevAllTasks() {
+  return useQuery<DevTaskGlobal[]>({
+    queryKey: ["dev-tasks-all"],
+    queryFn: () => api(`${base}/tasks-all`, { auth: true }),
+    refetchInterval: 30000,
+  });
+}
+
+export function useDevTaskStatusMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      api(`${base}/tasks/${id}`, { method: "PATCH", body: { status }, auth: true }),
+    onSuccess: (_, v) => {
+      qc.invalidateQueries({ queryKey: ["dev-tasks-all"] });
+      qc.invalidateQueries({ queryKey: ["dev-tasks"] });
+      toast.success("Etapa atualizada");
+    },
+    onError: (e: any) => toast.error(e?.message || "Falha ao atualizar"),
+  });
+}
+
 export function useDevTaskMutations(projectId: string | null) {
   const qc = useQueryClient();
   const inv = () => qc.invalidateQueries({ queryKey: ["dev-tasks", projectId] });
@@ -208,5 +233,19 @@ export async function submitPortalRequest(token: string, data: { title: string; 
     body: JSON.stringify(data),
   });
   if (!r.ok) throw new Error("Falha ao enviar pedido");
+  return r.json();
+}
+
+export async function submitPortalFeedback(
+  token: string,
+  taskId: string,
+  data: { feedback: "approved" | "needs_changes"; note?: string }
+) {
+  const r = await fetch(`${API_URL}${base}/portal/${token}/tasks/${taskId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error("Falha ao enviar feedback");
   return r.json();
 }

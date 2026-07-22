@@ -73,6 +73,7 @@ import MinhaEquipe from "./pages/MinhaEquipe";
 import WorkspaceHome from "./pages/workspace/WorkspaceHome";
 import WorkspaceProject from "./pages/workspace/WorkspaceProject";
 import ClientPortal from "./pages/workspace/ClientPortal";
+import WorkspaceKanban from "./pages/workspace/WorkspaceKanban";
 
 import NotFound from "./pages/NotFound";
 
@@ -181,6 +182,7 @@ const App = () => (
             <Route path="/supervisor-ia" element={<ProtectedRoute><SupervisorIA /></ProtectedRoute>} />
             <Route path="/minha-equipe" element={<ProtectedRoute><MinhaEquipe /></ProtectedRoute>} />
             <Route path="/workspace" element={<ProtectedRoute><WorkspaceHome /></ProtectedRoute>} />
+            <Route path="/workspace/kanban" element={<ProtectedRoute><WorkspaceKanban /></ProtectedRoute>} />
             <Route path="/workspace/:id" element={<ProtectedRoute><WorkspaceProject /></ProtectedRoute>} />
             <Route path="/p/:token" element={<ClientPortal />} />
             <Route path="/testbarber" element={<ProtectedRoute><MarinaTestChat /></ProtectedRoute>} />
