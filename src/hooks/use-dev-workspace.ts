@@ -249,6 +249,22 @@ export async function submitPortalRequest(token: string, data: { title: string; 
   return r.json();
 }
 
+export async function submitPortalBulkRequests(
+  token: string,
+  data: { text?: string; items?: string[]; contact_email?: string }
+) {
+  const r = await fetch(`${API_URL}${base}/portal/${token}/requests/bulk`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || "Falha ao enviar pedidos");
+  }
+  return r.json() as Promise<{ ok: boolean; created: number }>;
+}
+
 export async function submitPortalFeedback(
   token: string,
   taskId: string,
