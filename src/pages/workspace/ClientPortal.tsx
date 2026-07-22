@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Send, Calendar, CheckCircle2, ThumbsUp, RefreshCw } from "lucide-react";
+import { Loader2, Send, Calendar, CheckCircle2, ThumbsUp, RefreshCw, Sparkles, List } from "lucide-react";
 import { toast } from "sonner";
-import { useDevPortal, submitPortalRequest, submitPortalFeedback } from "@/hooks/use-dev-workspace";
+import { useDevPortal, submitPortalRequest, submitPortalFeedback, submitPortalBulkRequests } from "@/hooks/use-dev-workspace";
 
 const STATUS_LABEL: Record<string, { label: string; tone: string }> = {
   triage: { label: "Triagem", tone: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
@@ -26,6 +26,9 @@ export default function ClientPortal() {
   const [sending, setSending] = useState(false);
   const [feedbackNote, setFeedbackNote] = useState<Record<string, string>>({});
   const [feedbackLoading, setFeedbackLoading] = useState<string | null>(null);
+  const [mode, setMode] = useState<"single" | "bulk">("single");
+  const [bulkText, setBulkText] = useState("");
+  const [bulkSending, setBulkSending] = useState(false);
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   if (error || !data) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Portal indisponível.</div>;
@@ -43,6 +46,18 @@ export default function ClientPortal() {
       setForm({ title: "", description: "", contact_email: "" });
       refetch();
     } catch (e: any) { toast.error(e.message); } finally { setSending(false); }
+  };
+
+  const sendBulk = async () => {
+    const lines = bulkText.split(/\n/).filter((l) => l.trim().length >= 3);
+    if (!lines.length) { toast.error("Cole ao menos uma demanda por linha."); return; }
+    setBulkSending(true);
+    try {
+      const r = await submitPortalBulkRequests(token, { text: bulkText, contact_email: form.contact_email || undefined });
+      toast.success(`${r.created} solicitações enviadas — a IA vai classificar em segundos.`);
+      setBulkText("");
+      refetch();
+    } catch (e: any) { toast.error(e.message); } finally { setBulkSending(false); }
   };
 
   const sendFeedback = async (taskId: string, feedback: "approved" | "needs_changes") => {
@@ -151,12 +166,48 @@ export default function ClientPortal() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-base">Enviar um pedido</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" /> Enviar pedido{mode === "bulk" ? "s (lote)" : ""}
+              </CardTitle>
+              <div className="flex gap-1">
+                <Button size="sm" variant={mode === "single" ? "default" : "outline"} onClick={() => setMode("single")}>
+                  <Send className="h-3.5 w-3.5 mr-1" /> Um por vez
+                </Button>
+                <Button size="sm" variant={mode === "bulk" ? "default" : "outline"} onClick={() => setMode("bulk")}>
+                  <List className="h-3.5 w-3.5 mr-1" /> Vários (IA)
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
           <CardContent className="space-y-3">
-            <div><Label>Título</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Resumo do que você precisa" /></div>
-            <div><Label>Detalhes</Label><Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descreva o pedido, print, contexto…" /></div>
-            <div><Label>Seu e-mail (opcional)</Label><Input type="email" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} /></div>
-            <Button onClick={send} disabled={!form.title || sending}>{sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="h-4 w-4 mr-2" /> Enviar</>}</Button>
+            {mode === "single" ? (
+              <>
+                <div><Label>Título</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Resumo do que você precisa" /></div>
+                <div><Label>Detalhes</Label><Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descreva o pedido, print, contexto…" /></div>
+                <div><Label>Seu e-mail (opcional)</Label><Input type="email" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} /></div>
+                <Button onClick={send} disabled={!form.title || sending}>{sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="h-4 w-4 mr-2" /> Enviar</>}</Button>
+              </>
+            ) : (
+              <>
+                <div>
+                  <Label>Cole várias demandas (uma por linha ou separadas por linha em branco)</Label>
+                  <Textarea
+                    rows={8}
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    placeholder={"Ex.:\n- Erro ao exportar relatório de vendas\n- Adicionar filtro por data no CRM\n- Ajustar cor do botão de login"}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">A IA vai classificar automaticamente (tipo, módulo, prioridade) — até 50 por envio.</p>
+                </div>
+                <div><Label>Seu e-mail (opcional)</Label><Input type="email" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} /></div>
+                <Button onClick={sendBulk} disabled={!bulkText.trim() || bulkSending}>
+                  {bulkSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                  Enviar lote e classificar com IA
+                </Button>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
