@@ -406,6 +406,8 @@ function InboxTab({ id }: any) {
   const ai = useDevAI(id);
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<any | null>(null);
+  const [mode, setMode] = useState<"single" | "bulk">("single");
+  const [bulkText, setBulkText] = useState("");
 
   const classify = async (create: boolean) => {
     try {
@@ -415,10 +417,29 @@ function InboxTab({ id }: any) {
     } catch (e: any) { toast.error(e.message || "Erro"); }
   };
 
+  const runBulk = async () => {
+    try {
+      const r = await ai.bulkClassify.mutateAsync({ text: bulkText, create: true, default_status: "backlog" });
+      setBulkText("");
+    } catch {}
+  };
+
+  const bulkCount = bulkText
+    .split(/\n\s*\n|\n/)
+    .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").trim())
+    .filter((l) => l.length >= 3).length;
+
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Caixa de demandas</CardTitle></CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base">Caixa de demandas</CardTitle>
+        <div className="flex gap-1 text-xs">
+          <Button size="sm" variant={mode === "single" ? "default" : "outline"} onClick={() => setMode("single")}>Uma por vez</Button>
+          <Button size="sm" variant={mode === "bulk" ? "default" : "outline"} onClick={() => setMode("bulk")}>Lote</Button>
+        </div>
+      </CardHeader>
       <CardContent className="space-y-3">
+        {mode === "single" ? (<>
         <p className="text-sm text-muted-foreground">Cole o que o cliente pediu. A IA classifica em módulo, fase e tipo (suporte / implantação / correção / feature).</p>
         <Textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ex: Cliente pediu para adicionar botão de exportar Excel no relatório de vendas…" />
         <div className="flex gap-2">
@@ -433,6 +454,21 @@ function InboxTab({ id }: any) {
             {preview.reasoning && <div className="text-purple-700 italic">IA: {preview.reasoning}</div>}
           </div>
         )}
+        </>) : (<>
+          <p className="text-sm text-muted-foreground">Cole várias demandas de uma vez — uma por linha, ou separadas por linha em branco. Ideal pra projetos já em andamento: a IA classifica todas e cria direto no backlog.</p>
+          <Textarea
+            rows={10}
+            value={bulkText}
+            onChange={(e) => setBulkText(e.target.value)}
+            placeholder={"- Erro ao filtrar CRM da empresa X no Gleego Whats\n- Cliente pediu botão de exportar Excel no relatório\n- Ajustar cor do botão de finalizar atendimento\n- Melhorar tempo de carregamento do dashboard"}
+          />
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">{bulkCount} demanda{bulkCount === 1 ? "" : "s"} detectada{bulkCount === 1 ? "" : "s"}</span>
+            <Button disabled={bulkCount === 0 || ai.bulkClassify.isPending} onClick={runBulk}>
+              {ai.bulkClassify.isPending ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> IA classificando {bulkCount}…</> : <><Sparkles className="h-4 w-4 mr-1" /> Classificar e criar {bulkCount || ""} task{bulkCount === 1 ? "" : "s"}</>}
+            </Button>
+          </div>
+        </>)}
       </CardContent>
     </Card>
   );
