@@ -481,15 +481,15 @@ export default function SecretariaGrupos() {
                             </div>
                           </ScrollArea>
                         </>
-                      );
-                    })()}
-                    {config.group_jids && config.group_jids.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        {config.group_jids.length} grupo(s) selecionado(s)
-                      </p>
-                    )}
-                  </>
-                )}
+                      )}
+                      {config.group_jids && config.group_jids.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {config.group_jids.length} grupo(s) selecionado(s)
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
               </CardContent>
             </Card>
 
