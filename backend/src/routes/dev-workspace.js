@@ -2,7 +2,14 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { authenticate } from '../middleware/auth.js';
 import { query } from '../db.js';
-import { getOrganizationAIConfig } from '../lib/ai-config.js';
+import {
+  cleanAIKey,
+  getAgentAIConfig,
+  getEnvKeyForProvider,
+  getOrganizationAIConfig,
+  normalizeProvider,
+  resolveModelForProvider,
+} from '../lib/ai-config.js';
 import { callAI } from '../lib/ai-caller.js';
 import { logInfo, logError } from '../logger.js';
 
@@ -167,13 +174,102 @@ async function aiText(organizationId, systemPrompt, userPrompt, maxTokens = 3000
   return result.content || '';
 }
 
-// Always use the organization AI config for Workspace AI.
+const WORKSPACE_AI_PROVIDERS = new Set(['openai', 'gemini']);
+
+function isWorkspaceAIConfigUsable(cfg) {
+  return Boolean(cfg?.apiKey && WORKSPACE_AI_PROVIDERS.has(normalizeProvider(cfg.provider)));
+}
+
+async function getWorkspaceAIConfig(organizationId) {
+  const orgCfg = await getOrganizationAIConfig(organizationId).catch((error) => {
+    logError('dev_workspace.ai_org_config_error', error);
+    return null;
+  });
+  if (isWorkspaceAIConfigUsable(orgCfg)) {
+    return { ...orgCfg, keySource: orgCfg.keySource || 'organizations.ai_api_key' };
+  }
+
+  const preferredProvider = normalizeProvider(orgCfg?.provider);
+  const preferredModel = orgCfg?.model || null;
+
+  // Mesmo fallback usado pelo chat: se a chave global estiver vazia/mascarada,
+  // usa um agente ativo da organização que já tenha OpenAI/Gemini configurado.
+  const agentsResult = await query(
+    `SELECT id, name, ai_provider::text AS ai_provider, ai_model, ai_api_key, agent_mode, created_at, updated_at
+       FROM ai_agents
+      WHERE organization_id = $1
+        AND is_active = true
+      ORDER BY
+        CASE WHEN NULLIF(BTRIM(ai_api_key), '') IS NOT NULL THEN 0 ELSE 1 END,
+        CASE WHEN COALESCE(agent_mode, 'standard') = 'autoreply' THEN 0 ELSE 1 END,
+        updated_at DESC NULLS LAST,
+        created_at DESC
+      LIMIT 10`,
+    [organizationId]
+  ).catch((error) => {
+    if (error?.code !== '42P01' && error?.code !== '42703') logError('dev_workspace.ai_agents_lookup_error', error);
+    return { rows: [] };
+  });
+
+  for (const agent of agentsResult.rows) {
+    const agentCfg = await getAgentAIConfig(agent, organizationId).catch(() => null);
+    if (isWorkspaceAIConfigUsable(agentCfg)) {
+      return { ...agentCfg, keySource: agentCfg.keySource || `ai_agents.${agent.id}` };
+    }
+  }
+
+  // Agentes globais ativados também podem ter a chave do cliente salva.
+  const globalResult = await query(
+    `SELECT ga.ai_provider::text AS ai_provider, ga.ai_model,
+            COALESCE(NULLIF(BTRIM(act.client_ai_api_key), ''), NULLIF(BTRIM(ga.ai_api_key), '')) AS ai_api_key
+       FROM global_agent_activations act
+       JOIN global_ai_agents ga ON ga.id = act.global_agent_id
+      WHERE act.organization_id = $1
+        AND act.is_active = true
+      ORDER BY act.updated_at DESC NULLS LAST, act.created_at DESC
+      LIMIT 10`,
+    [organizationId]
+  ).catch((error) => {
+    if (error?.code !== '42P01' && error?.code !== '42703') logError('dev_workspace.global_agents_lookup_error', error);
+    return { rows: [] };
+  });
+
+  for (const row of globalResult.rows) {
+    const provider = normalizeProvider(row.ai_provider) || preferredProvider;
+    const apiKey = cleanAIKey(row.ai_api_key);
+    if (apiKey && WORKSPACE_AI_PROVIDERS.has(provider)) {
+      return {
+        provider,
+        model: resolveModelForProvider(provider, row.ai_model, preferredModel),
+        apiKey,
+        keySource: 'global_agent_activations.client_ai_api_key',
+      };
+    }
+  }
+
+  // Último recurso: variável de ambiente do próprio servidor, somente OpenAI/Gemini.
+  if (preferredProvider && WORKSPACE_AI_PROVIDERS.has(preferredProvider)) {
+    const envKey = getEnvKeyForProvider(preferredProvider);
+    if (envKey) {
+      return {
+        provider: preferredProvider,
+        model: resolveModelForProvider(preferredProvider, preferredModel),
+        apiKey: envKey,
+        keySource: `env.${preferredProvider}`,
+      };
+    }
+  }
+
+  return null;
+}
+
+// Always use the project's configured OpenAI/Gemini path for Workspace AI.
 async function runAI(organizationId, systemPrompt, userPrompt, opts) {
   const messages = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ];
-  const cfg = await getOrganizationAIConfig(organizationId).catch(() => null);
+  const cfg = await getWorkspaceAIConfig(organizationId);
 
   if (cfg && cfg.apiKey) {
     // Use the organization's configured provider directly. If it fails, surface
@@ -190,7 +286,7 @@ async function runAI(organizationId, systemPrompt, userPrompt, opts) {
     );
   }
 
-  throw new Error('Chave de IA da organização não encontrada. Em Ajustes → IA, teste a conexão e clique em Salvar Configurações.');
+  throw new Error('Chave OpenAI/Gemini não encontrada para este Workspace. O sistema tentou a configuração global da organização e os agentes ativos do chat, mas nenhuma chave utilizável foi localizada.');
 }
 
 // =====================================================
