@@ -15,7 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
   ArrowLeft, Loader2, Plus, Sparkles, FileText, Upload, Send, Trash2, Copy, ExternalLink,
-  RefreshCw, Calendar, AlertTriangle, Download, Bot,
+  RefreshCw, Calendar, AlertTriangle, Download, Bot, Zap, Bug, Wand2, Map,
 } from "lucide-react";
 import {
   useDevProject, useDevProjectMutations,
@@ -28,15 +28,23 @@ import {
 import { isoToBrLocalInput, localInputToBrISO } from "@/lib/timezone";
 
 const TASK_STATUS = [
+  { v: "triage", label: "Triagem" },
   { v: "backlog", label: "Backlog" },
   { v: "todo", label: "A fazer" },
   { v: "doing", label: "Em andamento" },
   { v: "review", label: "Em revisão" },
   { v: "done", label: "Concluída" },
 ];
-const TASK_TYPES = ["support", "implementation", "fix", "feature", "chore"];
+const TASK_TYPES = ["unclassified", "fix", "improvement", "roadmap", "support", "implementation", "feature", "chore"];
 const TASK_TYPE_LABEL: Record<string, string> = {
-  support: "Suporte", implementation: "Implantação", fix: "Correção", feature: "Feature", chore: "Chore",
+  unclassified: "Sem triagem",
+  fix: "Correção",
+  improvement: "Aprimoramento",
+  roadmap: "Roadmap",
+  support: "Suporte",
+  implementation: "Implantação",
+  feature: "Feature",
+  chore: "Chore",
 };
 const PRIORITY = ["low", "medium", "high"];
 const PHASE_STATUS = [
@@ -78,6 +86,7 @@ export default function WorkspaceProject() {
             <h1 className="text-xl md:text-2xl font-bold">{project.name}</h1>
             {project.description && <p className="text-sm text-muted-foreground line-clamp-1">{project.description}</p>}
           </div>
+          <QuickRequestButton projectId={id} />
           <Badge variant="secondary">{doneTasks}/{totalTasks} • {pct}%</Badge>
         </div>
         <Progress value={pct} className="h-2" />
@@ -360,6 +369,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
           <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
           <Select value={filter} onValueChange={setFilter}><SelectTrigger className="w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem>{TASK_STATUS.map(s => <SelectItem key={s.v} value={s.v}>{s.label}</SelectItem>)}</SelectContent></Select>
         </div>
+        <TriagePanel projectId={id} tasks={tasks || []} />
         <div className="space-y-2">
           {filtered.map((t: any) => {
             const mod = modules.find((m: any) => m.id === t.module_id);
@@ -593,5 +603,108 @@ function SettingsTab({ id, project, onDeleted }: any) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// -------------------- QUICK REQUEST BUTTON --------------------
+export function QuickRequestButton({ projectId }: { projectId: string }) {
+  const { create } = useDevTaskMutations(projectId);
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const submit = async () => {
+    const raw = text.trim();
+    if (!raw) return;
+    const firstLine = raw.split("\n")[0].slice(0, 120);
+    const rest = raw.length > firstLine.length ? raw.slice(firstLine.length).trim() : "";
+    await create.mutateAsync({
+      title: firstLine,
+      description: rest || null,
+      type: "unclassified",
+      status: "triage",
+      priority: "medium",
+    } as any);
+    setText("");
+    setOpen(false);
+    toast.success("Solicitação registrada em Triagem");
+  };
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline"><Zap className="h-4 w-4 mr-1" /> Solicitação</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Nova solicitação rápida</DialogTitle></DialogHeader>
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Escreva livremente. A primeira linha vira o título. Você tria depois em Correção / Aprimoramento / Roadmap e define o prazo.</p>
+          <Textarea rows={5} autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Ex: Erro ao filtrar CRM da empresa X no Gleego Whats — sumiu a lista quando aplico status." />
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+          <Button disabled={!text.trim() || create.isPending} onClick={submit}>{create.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Registrar"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// -------------------- TRIAGE PANEL --------------------
+function TriagePanel({ projectId, tasks }: { projectId: string; tasks: any[] }) {
+  const { update } = useDevTaskMutations(projectId);
+  const triage = (tasks || []).filter((t) => t.status === "triage" || t.type === "unclassified");
+  if (triage.length === 0) return null;
+
+  const classify = (t: any, type: string) => {
+    update.mutate({ id: t.id, type, status: "backlog" } as any);
+    toast.success(`Classificado como ${TASK_TYPE_LABEL[type] || type}`);
+  };
+
+  return (
+    <div className="border rounded-lg p-3 bg-amber-500/5 border-amber-500/30 space-y-2">
+      <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
+        <Zap className="h-4 w-4" /> Triagem — {triage.length} solicita{triage.length === 1 ? "ção" : "ções"} aguardando
+      </div>
+      <div className="space-y-2">
+        {triage.map((t) => (
+          <div key={t.id} className="rounded border bg-background p-2 space-y-2">
+            <Input
+              defaultValue={t.title}
+              className="font-medium"
+              onBlur={(e) => e.target.value !== t.title && update.mutate({ id: t.id, title: e.target.value } as any)}
+            />
+            {t.description && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{t.description}</p>}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => classify(t, "fix")}>
+                <Bug className="h-3.5 w-3.5 mr-1 text-red-500" /> Correção
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => classify(t, "improvement")}>
+                <Wand2 className="h-3.5 w-3.5 mr-1 text-blue-500" /> Aprimoramento
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => classify(t, "roadmap")}>
+                <Map className="h-3.5 w-3.5 mr-1 text-purple-500" /> Roadmap
+              </Button>
+              <div className="flex items-center gap-1 ml-auto">
+                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  type="date"
+                  className="h-8 w-40"
+                  defaultValue={t.due_date ? new Date(t.due_date).toISOString().slice(0, 10) : ""}
+                  onBlur={(e) => {
+                    const v = e.target.value ? new Date(e.target.value).toISOString() : null;
+                    if (v !== t.due_date) update.mutate({ id: t.id, due_date: v } as any);
+                  }}
+                />
+                <Select
+                  value={t.priority}
+                  onValueChange={(v) => update.mutate({ id: t.id, priority: v } as any)}
+                >
+                  <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+                  <SelectContent>{PRIORITY.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
