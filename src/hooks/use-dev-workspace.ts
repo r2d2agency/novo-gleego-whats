@@ -150,7 +150,7 @@ export function useDevAI(projectId: string | null) {
   const qc = useQueryClient();
   const breakdown = useMutation({
     mutationFn: (data: { briefing: string; extra_context?: string }) =>
-      api(`${base}/projects/${projectId}/ai/breakdown`, { method: "POST", body: data, auth: true, timeoutMs: 120000 }),
+      api<{ modules: any[] }>(`${base}/projects/${projectId}/ai/breakdown`, { method: "POST", body: data, auth: true, timeoutMs: 120000 }),
   });
   const applyBreakdown = useMutation({
     mutationFn: (data: { modules: any[] }) =>
@@ -165,15 +165,15 @@ export function useDevAI(projectId: string | null) {
   });
   const classify = useMutation({
     mutationFn: (data: { text: string; create?: boolean }) =>
-      api(`${base}/projects/${projectId}/ai/classify-demand`, { method: "POST", body: data, auth: true, timeoutMs: 60000 }),
+      api<{ classification: any; task?: any }>(`${base}/projects/${projectId}/ai/classify-demand`, { method: "POST", body: data, auth: true, timeoutMs: 60000 }),
     onSuccess: (_, v) => { if (v.create) qc.invalidateQueries({ queryKey: ["dev-tasks", projectId] }); },
   });
   const ask = useMutation({
     mutationFn: (data: { question: string }) =>
-      api(`${base}/projects/${projectId}/ai/ask`, { method: "POST", body: data, auth: true, timeoutMs: 60000 }),
+      api<{ answer: string }>(`${base}/projects/${projectId}/ai/ask`, { method: "POST", body: data, auth: true, timeoutMs: 60000 }),
   });
   const roadmap = useMutation({
-    mutationFn: () => api(`${base}/projects/${projectId}/ai/roadmap`, { method: "POST", auth: true, timeoutMs: 120000 }),
+    mutationFn: () => api<{ markdown: string }>(`${base}/projects/${projectId}/ai/roadmap`, { method: "POST", auth: true, timeoutMs: 120000 }),
   });
   return { breakdown, applyBreakdown, classify, ask, roadmap };
 }
