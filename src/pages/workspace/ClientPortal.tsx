@@ -7,20 +7,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Send, Calendar, CheckCircle2 } from "lucide-react";
+import { Loader2, Send, Calendar, CheckCircle2, ThumbsUp, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { useDevPortal, submitPortalRequest } from "@/hooks/use-dev-workspace";
+import { useDevPortal, submitPortalRequest, submitPortalFeedback } from "@/hooks/use-dev-workspace";
+
+const STATUS_LABEL: Record<string, { label: string; tone: string }> = {
+  triage: { label: "Triagem", tone: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
+  backlog: { label: "Na fila", tone: "bg-slate-500/15 text-slate-700 dark:text-slate-300" },
+  in_progress: { label: "Em andamento", tone: "bg-blue-500/15 text-blue-700 dark:text-blue-300" },
+  testing: { label: "Em teste — sua vez!", tone: "bg-purple-500/15 text-purple-700 dark:text-purple-300" },
+  done: { label: "Concluído", tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
+};
 
 export default function ClientPortal() {
   const { token = "" } = useParams();
-  const { data, isLoading, error } = useDevPortal(token);
+  const { data, isLoading, error, refetch } = useDevPortal(token);
   const [form, setForm] = useState({ title: "", description: "", contact_email: "" });
   const [sending, setSending] = useState(false);
+  const [feedbackNote, setFeedbackNote] = useState<Record<string, string>>({});
+  const [feedbackLoading, setFeedbackLoading] = useState<string | null>(null);
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   if (error || !data) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Portal indisponível.</div>;
 
-  const { project, phases = [], modules = [] } = data;
+  const { project, phases = [], modules = [], tasks = [] } = data;
   const totalDone = phases.filter((p: any) => p.status === "done").length;
   const pct = phases.length > 0 ? Math.round((totalDone / phases.length) * 100) : 0;
 
@@ -31,12 +41,23 @@ export default function ClientPortal() {
       await submitPortalRequest(token, form);
       toast.success("Pedido enviado! A equipe já foi notificada.");
       setForm({ title: "", description: "", contact_email: "" });
+      refetch();
     } catch (e: any) { toast.error(e.message); } finally { setSending(false); }
+  };
+
+  const sendFeedback = async (taskId: string, feedback: "approved" | "needs_changes") => {
+    setFeedbackLoading(taskId + feedback);
+    try {
+      await submitPortalFeedback(token, taskId, { feedback, note: feedbackNote[taskId] });
+      toast.success(feedback === "approved" ? "Aprovado! Obrigado." : "Ajustes solicitados, a equipe foi avisada.");
+      setFeedbackNote((n) => ({ ...n, [taskId]: "" }));
+      refetch();
+    } catch (e: any) { toast.error(e.message); } finally { setFeedbackLoading(null); }
   };
 
   return (
     <div className="min-h-screen bg-muted/30 p-4 md:p-8">
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-2xl md:text-3xl font-bold">{project.name}</h1>
           {project.description && <p className="text-sm text-muted-foreground">{project.description}</p>}
@@ -47,6 +68,64 @@ export default function ClientPortal() {
           <CardContent>
             <div className="flex justify-between text-xs text-muted-foreground mb-1"><span>{totalDone}/{phases.length} fases</span><span>{pct}%</span></div>
             <Progress value={pct} className="h-3" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-base">Minhas solicitações</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {tasks.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma solicitação ainda. Envie a primeira abaixo.</p>}
+            {tasks.map((t: any) => {
+              const st = STATUS_LABEL[t.status] || { label: t.status, tone: "bg-muted" };
+              const canTest = t.status === "testing" && !t.client_feedback;
+              return (
+                <div key={t.id} className="border rounded p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium">{t.title}</div>
+                      {t.description && <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{t.description}</div>}
+                    </div>
+                    <Badge className={`${st.tone} border-0 shrink-0`}>{st.label}</Badge>
+                  </div>
+                  {t.client_feedback === "approved" && (
+                    <div className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Você aprovou esta entrega</div>
+                  )}
+                  {t.client_feedback === "needs_changes" && (
+                    <div className="text-xs text-amber-600 flex items-center gap-1"><RefreshCw className="h-3.5 w-3.5" /> Ajustes solicitados — a equipe vai retomar</div>
+                  )}
+                  {canTest && (
+                    <div className="space-y-2 pt-1 border-t">
+                      <p className="text-xs text-muted-foreground">Está pronto para você testar. Deu tudo certo?</p>
+                      <Textarea
+                        rows={2}
+                        placeholder="Comentário (opcional)"
+                        value={feedbackNote[t.id] || ""}
+                        onChange={(e) => setFeedbackNote((n) => ({ ...n, [t.id]: e.target.value }))}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => sendFeedback(t.id, "approved")}
+                          disabled={feedbackLoading === t.id + "approved"}
+                        >
+                          {feedbackLoading === t.id + "approved" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <ThumbsUp className="h-4 w-4 mr-1" />}
+                          Aprovar (marcar como concluído)
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => sendFeedback(t.id, "needs_changes")}
+                          disabled={feedbackLoading === t.id + "needs_changes"}
+                        >
+                          {feedbackLoading === t.id + "needs_changes" ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+                          Solicitar ajustes
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
 
