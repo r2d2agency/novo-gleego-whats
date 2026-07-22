@@ -9,8 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, FolderKanban, Calendar, AlertTriangle } from "lucide-react";
+import { Loader2, Plus, FolderKanban, Calendar, AlertTriangle, Zap } from "lucide-react";
 import { useDevProjects, useDevProjectMutations } from "@/hooks/use-dev-workspace";
+import { QuickRequestButton } from "./WorkspaceProject";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
 
 function daysUntil(d: string | null | undefined) {
   if (!d) return null;
@@ -23,6 +26,7 @@ export default function WorkspaceHome() {
   const { create } = useDevProjectMutations();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", description: "" });
+  const [quickProjectId, setQuickProjectId] = useState<string>("");
 
   return (
     <MainLayout>
@@ -34,6 +38,24 @@ export default function WorkspaceHome() {
             </h1>
             <p className="text-muted-foreground text-sm mt-1">Seus SaaS e projetos com IA, fases e portal do cliente.</p>
           </div>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+          {(projects?.length ?? 0) > 0 && (
+            <div className="flex items-center gap-2">
+              <Select value={quickProjectId} onValueChange={setQuickProjectId}>
+                <SelectTrigger className="h-9 w-52"><SelectValue placeholder="Solicitação em…" /></SelectTrigger>
+                <SelectContent>
+                  {(projects || []).map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {quickProjectId ? (
+                <QuickRequestButton projectId={quickProjectId} />
+              ) : (
+                <Button size="sm" variant="outline" disabled onClick={() => toast.info("Selecione o projeto primeiro")}>
+                  <Zap className="h-4 w-4 mr-1" /> Solicitação
+                </Button>
+              )}
+            </div>
+          )}
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button><Plus className="h-4 w-4 mr-2" /> Novo projeto</Button>
@@ -57,6 +79,7 @@ export default function WorkspaceHome() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {isLoading && <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Carregando…</div>}
