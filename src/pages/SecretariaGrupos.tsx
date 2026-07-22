@@ -369,47 +369,55 @@ export default function SecretariaGrupos() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {allGroups.length === 0 ? (
-                  <div className="space-y-2">
-                    <Alert>
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertDescription className="text-xs">
-                        Nenhum grupo foi detectado ainda nas suas conexões
-                        {orgConnections.length > 0 && (
-                          <> ({orgConnections.length} conexão(ões): {orgConnections.map(c => c.name).join(', ')})</>
-                        )}
-                        . Os grupos aparecem aqui após a primeira mensagem ser recebida. Você ainda pode salvar a configuração — ela monitorará automaticamente todos os grupos que aparecerem.
-                      </AlertDescription>
-                    </Alert>
-                    <Button size="sm" variant="outline" onClick={loadAll} disabled={loading}>
-                      <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} /> Recarregar grupos
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    {(() => {
-                      const connections = [...new Map(allGroups.map(g => [g.connection_id, g.connection_name])).entries()];
-                      const filteredGroups = allGroups
-                        .filter(g => connectionFilter === "all" || g.connection_id === connectionFilter)
-                        .filter(g => !groupFilter || g.group_name?.toLowerCase().includes(groupFilter.toLowerCase()));
-                      return (
+                {(() => {
+                  // Merge connections from groups + org connections list so
+                  // the dropdown shows every connection even if it has no
+                  // groups yet.
+                  const connMap = new Map<string, string>();
+                  orgConnections.forEach((c) => connMap.set(c.id, c.name));
+                  allGroups.forEach((g) => {
+                    if (!connMap.has(g.connection_id)) connMap.set(g.connection_id, g.connection_name);
+                  });
+                  const connections = [...connMap.entries()];
+                  const filteredGroups = allGroups
+                    .filter((g) => connectionFilter === 'all' || g.connection_id === connectionFilter)
+                    .filter((g) => !groupFilter || g.group_name?.toLowerCase().includes(groupFilter.toLowerCase()));
+                  return (
+                    <>
+                      {connections.length > 0 && (
+                        <div className="space-y-1.5 mb-2">
+                          <Label className="text-xs">Conexão</Label>
+                          <Select value={connectionFilter} onValueChange={setConnectionFilter}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione uma conexão" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">Todas as conexões</SelectItem>
+                              {connections.map(([id, name]) => (
+                                <SelectItem key={id} value={id}>{name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {filteredGroups.length === 0 ? (
+                        <div className="space-y-2">
+                          <Alert>
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertDescription className="text-xs">
+                              {connectionFilter === 'all'
+                                ? 'Nenhum grupo foi detectado ainda nas suas conexões.'
+                                : `Nenhum grupo detectado nessa conexão (${connMap.get(connectionFilter) || ''}).`}
+                              {' '}Os grupos aparecem aqui após a primeira mensagem ser recebida. Você ainda pode salvar a configuração — ela monitorará automaticamente todos os grupos que aparecerem.
+                            </AlertDescription>
+                          </Alert>
+                          <Button size="sm" variant="outline" onClick={loadAll} disabled={loading}>
+                            <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} /> Recarregar grupos
+                          </Button>
+                        </div>
+                      ) : (
                         <>
-                          {connections.length > 1 && (
-                            <div className="space-y-1.5 mb-2">
-                              <Label className="text-xs">Conexão</Label>
-                              <Select value={connectionFilter} onValueChange={setConnectionFilter}>
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">Todas as conexões</SelectItem>
-                                  {connections.map(([id, name]) => (
-                                    <SelectItem key={id} value={id}>{name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          )}
                           <Input
                             placeholder="Filtrar grupos por nome..."
                             value={groupFilter}
@@ -473,15 +481,15 @@ export default function SecretariaGrupos() {
                             </div>
                           </ScrollArea>
                         </>
-                      );
-                    })()}
-                    {config.group_jids && config.group_jids.length > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        {config.group_jids.length} grupo(s) selecionado(s)
-                      </p>
-                    )}
-                  </>
-                )}
+                      )}
+                      {config.group_jids && config.group_jids.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {config.group_jids.length} grupo(s) selecionado(s)
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
               </CardContent>
             </Card>
 
