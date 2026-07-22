@@ -70,6 +70,9 @@ import Teleatendimento from "./pages/Teleatendimento";
 import SupervisorIA from "./pages/SupervisorIA";
 import MarinaTestChat from "./pages/MarinaTestChat";
 import MinhaEquipe from "./pages/MinhaEquipe";
+import WorkspaceHome from "./pages/workspace/WorkspaceHome";
+import WorkspaceProject from "./pages/workspace/WorkspaceProject";
+import ClientPortal from "./pages/workspace/ClientPortal";
 
 import NotFound from "./pages/NotFound";
 
@@ -177,6 +180,9 @@ const App = () => (
             <Route path="/teleatendimento" element={<ProtectedRoute><Teleatendimento /></ProtectedRoute>} />
             <Route path="/supervisor-ia" element={<ProtectedRoute><SupervisorIA /></ProtectedRoute>} />
             <Route path="/minha-equipe" element={<ProtectedRoute><MinhaEquipe /></ProtectedRoute>} />
+            <Route path="/workspace" element={<ProtectedRoute><WorkspaceHome /></ProtectedRoute>} />
+            <Route path="/workspace/:id" element={<ProtectedRoute><WorkspaceProject /></ProtectedRoute>} />
+            <Route path="/p/:token" element={<ClientPortal />} />
             <Route path="/testbarber" element={<ProtectedRoute><MarinaTestChat /></ProtectedRoute>} />
 
             <Route path="/marina-test" element={<ProtectedRoute><MarinaTestChat /></ProtectedRoute>} />
