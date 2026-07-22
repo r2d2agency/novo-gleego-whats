@@ -138,22 +138,11 @@ function newPortalToken() {
 
 // -------------------- AI helper --------------------
 async function aiJSON(organizationId, systemPrompt, userPrompt) {
-  const cfg = await getOrganizationAIConfig(organizationId);
-  if (!cfg || !cfg.apiKey) throw new Error('Configure a chave de IA da organização em Ajustes → IA');
-
-  const result = await callAI(
-    { provider: cfg.provider, model: cfg.model, apiKey: cfg.apiKey },
-    [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    {
-      temperature: 0.3,
-      maxTokens: 2500,
-      responseFormat: cfg.provider !== 'gemini' ? { type: 'json_object' } : null,
-    }
-  );
-
+  const result = await runAI(organizationId, systemPrompt, userPrompt, {
+    temperature: 0.3,
+    maxTokens: 2500,
+    json: true,
+  });
   const raw = (result.content || '').trim();
   const jsonText = raw
     .replace(/^```json\s*/i, '')
@@ -171,17 +160,69 @@ async function aiJSON(organizationId, systemPrompt, userPrompt) {
 }
 
 async function aiText(organizationId, systemPrompt, userPrompt, maxTokens = 3000) {
-  const cfg = await getOrganizationAIConfig(organizationId);
-  if (!cfg || !cfg.apiKey) throw new Error('Configure a chave de IA da organização em Ajustes → IA');
-  const result = await callAI(
-    { provider: cfg.provider, model: cfg.model, apiKey: cfg.apiKey },
-    [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    { temperature: 0.5, maxTokens }
-  );
+  const result = await runAI(organizationId, systemPrompt, userPrompt, {
+    temperature: 0.5,
+    maxTokens,
+  });
   return result.content || '';
+}
+
+// Try organization AI config first, then fall back to Lovable AI Gateway.
+async function runAI(organizationId, systemPrompt, userPrompt, opts) {
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
+  const cfg = await getOrganizationAIConfig(organizationId).catch(() => null);
+
+  if (cfg && cfg.apiKey) {
+    try {
+      return await callAI(
+        { provider: cfg.provider, model: cfg.model, apiKey: cfg.apiKey },
+        messages,
+        {
+          temperature: opts.temperature,
+          maxTokens: opts.maxTokens,
+          responseFormat: opts.json && cfg.provider !== 'gemini' ? { type: 'json_object' } : null,
+        }
+      );
+    } catch (err) {
+      logError('dev.ai_org_failed_fallback_lovable', err);
+      // fall through to Lovable Gateway
+    }
+  }
+
+  const lovKey = process.env.LOVABLE_API_KEY;
+  if (!lovKey) {
+    throw new Error('Configure a chave de IA da organização em Ajustes → IA (ou defina LOVABLE_API_KEY no servidor).');
+  }
+
+  const body = {
+    model: 'google/gemini-2.5-flash',
+    messages,
+    temperature: opts.temperature,
+    max_tokens: opts.maxTokens,
+  };
+  if (opts.json) body.response_format = { type: 'json_object' };
+
+  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Lovable-API-Key': lovKey,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => '');
+    throw new Error(`Lovable AI Gateway ${resp.status}: ${txt.slice(0, 300)}`);
+  }
+  const data = await resp.json();
+  return {
+    content: data.choices?.[0]?.message?.content || '',
+    tokensUsed: data.usage?.total_tokens || 0,
+    model: data.model,
+  };
 }
 
 // =====================================================
