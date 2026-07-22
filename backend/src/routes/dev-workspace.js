@@ -1005,6 +1005,86 @@ router.post('/projects/:id/ai/ask', async (req, res) => {
   } catch (e) { logError('dev.ai_ask', e); res.status(500).json({ error: e.message }); }
 });
 
+// Bulk classify: usuário cola várias demandas (uma por linha ou separadas por linha em branco)
+// e a IA classifica todas de uma vez e cria as tasks no backlog.
+router.post('/projects/:id/ai/bulk-classify', async (req, res) => {
+  try {
+    const acc = await assertProjectAccess(req.userId, req.params.id);
+    if (!acc) return res.status(404).json({ error: 'Projeto não encontrado' });
+    const { text, items, create = true, default_status = 'backlog' } = req.body || {};
+
+    // Aceita array `items` OU texto livre. No texto, quebras duplas OU linhas iniciadas
+    // por "-", "*", "•" ou número contam como separadores; fallback é uma linha por demanda.
+    let demands = [];
+    if (Array.isArray(items) && items.length) {
+      demands = items.map((s) => String(s || '').trim()).filter(Boolean);
+    } else if (typeof text === 'string' && text.trim()) {
+      const raw = text.replace(/\r/g, '');
+      if (/\n\s*\n/.test(raw)) {
+        demands = raw.split(/\n\s*\n/);
+      } else {
+        demands = raw.split(/\n/).map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, ''));
+      }
+      demands = demands.map((s) => s.trim()).filter((s) => s.length >= 3);
+    }
+
+    if (!demands.length) return res.status(400).json({ error: 'Envie text ou items com as demandas.' });
+    if (demands.length > 80) return res.status(400).json({ error: 'Máximo de 80 demandas por lote.' });
+
+    const modules = (await query(`SELECT id, name, description FROM dev_modules WHERE project_id = $1`, [req.params.id])).rows;
+    const phases = (await query(`SELECT id, name, module_id FROM dev_phases WHERE project_id = $1`, [req.params.id])).rows;
+
+    const numbered = demands.map((d, i) => `${i + 1}. ${d}`).join('\n');
+    const data = await aiJSON(
+      acc.org.organization_id,
+      `Você classifica demandas soltas de clientes em um projeto de software JÁ EM ANDAMENTO. Não crie módulos/fases novas — use apenas as existentes ou deixe null. Responda SOMENTE JSON válido.`,
+      `Módulos existentes: ${JSON.stringify(modules)}
+Fases existentes: ${JSON.stringify(phases)}
+
+Demandas (uma por linha, mantenha a mesma ordem no array de saída):
+${numbered}
+
+Formato de resposta:
+{ "tasks": [
+  { "index": 1, "title": "resumo curto até 80 chars", "description": "detalhamento útil pro dev", "module_id": "uuid|null", "phase_id": "uuid|null", "type": "support|implementation|fix|feature|chore", "priority": "low|medium|high", "reasoning": "por que classificou assim" }
+] }`,
+      req.userId
+    );
+
+    const classifications = Array.isArray(data?.tasks) ? data.tasks : [];
+    if (!classifications.length) return res.status(502).json({ error: 'IA não retornou classificações.' });
+
+    const status = ['backlog', 'triage', 'todo'].includes(default_status) ? default_status : 'backlog';
+    const created = [];
+    if (create) {
+      for (let i = 0; i < classifications.length; i++) {
+        const c = classifications[i];
+        const originalIdx = Number.isInteger(c.index) ? c.index - 1 : i;
+        const original = demands[originalIdx] || demands[i] || '';
+        const t = await query(
+          `INSERT INTO dev_tasks (project_id, module_id, phase_id, title, description, type, priority, status, source, ai_reasoning, client_note)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'ai',$9,$10) RETURNING *`,
+          [
+            req.params.id,
+            c.module_id || null,
+            c.phase_id || null,
+            (c.title || original).slice(0, 200),
+            c.description || original,
+            c.type || 'feature',
+            c.priority || 'medium',
+            status,
+            c.reasoning || null,
+            original.slice(0, 5000),
+          ]
+        );
+        created.push(t.rows[0]);
+      }
+    }
+
+    res.json({ classifications, created, total: demands.length });
+  } catch (e) { logError('dev.bulk_classify', e); res.status(500).json({ error: e.message }); }
+});
+
 router.post('/projects/:id/ai/roadmap', async (req, res) => {
   try {
     const acc = await assertProjectAccess(req.userId, req.params.id);
