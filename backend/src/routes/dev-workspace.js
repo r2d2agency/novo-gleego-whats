@@ -90,6 +90,11 @@ const router = Router();
     await query(`CREATE INDEX IF NOT EXISTS idx_dev_tasks_proj ON dev_tasks(project_id)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_dev_phases_proj ON dev_phases(project_id)`);
     await query(`CREATE INDEX IF NOT EXISTS idx_dev_knowledge_proj ON dev_knowledge(project_id)`);
+    // Self-heal new columns for client feedback loop
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS client_feedback TEXT`);
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS client_feedback_note TEXT`);
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS client_feedback_at TIMESTAMPTZ`);
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS contact_email TEXT`);
   } catch (e) { console.error('dev-workspace init error:', e.message); }
 })();
 
