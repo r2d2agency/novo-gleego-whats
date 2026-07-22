@@ -198,7 +198,7 @@ async function runAI(organizationId, systemPrompt, userPrompt, opts) {
   }
 
   const body = {
-    model: 'google/gemini-2.5-flash',
+    model: 'google/gemini-3-flash-preview',
     messages,
     temperature: opts.temperature,
     max_tokens: opts.maxTokens,
