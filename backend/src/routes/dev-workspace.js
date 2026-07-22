@@ -328,7 +328,6 @@ async function runAI(organizationId, systemPrompt, userPrompt, opts, userId = nu
         maxTokens: opts.maxTokens,
         responseFormat: opts.json && cfg.provider !== 'gemini' ? { type: 'json_object' } : null,
       }
-      req.userId
     );
   }
 
