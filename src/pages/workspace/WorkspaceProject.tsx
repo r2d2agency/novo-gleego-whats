@@ -15,7 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
   ArrowLeft, Loader2, Plus, Sparkles, FileText, Upload, Send, Trash2, Copy, ExternalLink,
-  RefreshCw, Calendar, AlertTriangle, Download, Bot,
+  RefreshCw, Calendar, AlertTriangle, Download, Bot, Zap, Bug, Wand2, Map,
 } from "lucide-react";
 import {
   useDevProject, useDevProjectMutations,
@@ -86,6 +86,7 @@ export default function WorkspaceProject() {
             <h1 className="text-xl md:text-2xl font-bold">{project.name}</h1>
             {project.description && <p className="text-sm text-muted-foreground line-clamp-1">{project.description}</p>}
           </div>
+          <QuickRequestButton projectId={id} />
           <Badge variant="secondary">{doneTasks}/{totalTasks} • {pct}%</Badge>
         </div>
         <Progress value={pct} className="h-2" />
