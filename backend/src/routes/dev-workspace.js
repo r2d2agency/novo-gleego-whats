@@ -1056,6 +1056,10 @@ Formato de resposta:
 
     const status = ['backlog', 'triage', 'todo'].includes(default_status) ? default_status : 'backlog';
     const created = [];
+    const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+    const validModuleIds = new Set(modules.map(m => m.id));
+    const validPhaseIds = new Set(phases.map(p => p.id));
+    const cleanUuid = (v, set) => { const s = isUuid(v) ? v : null; return s && set.has(s) ? s : null; };
     if (create) {
       for (let i = 0; i < classifications.length; i++) {
         const c = classifications[i];
@@ -1066,8 +1070,8 @@ Formato de resposta:
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'ai',$9,$10) RETURNING *`,
           [
             req.params.id,
-            c.module_id || null,
-            c.phase_id || null,
+            cleanUuid(c.module_id, validModuleIds),
+            cleanUuid(c.phase_id, validPhaseIds),
             (c.title || original).slice(0, 200),
             c.description || original,
             c.type || 'feature',
