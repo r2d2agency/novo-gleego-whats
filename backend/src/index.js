@@ -41,6 +41,7 @@ import ctwaAnalyticsRoutes from './routes/ctwa-analytics.js';
 import groupSecretaryRoutes from './routes/group-secretary.js';
 import ghostRoutes from './routes/ghost.js';
 import projectsRoutes from './routes/projects.js';
+import devWorkspaceRoutes from './routes/dev-workspace.js';
 import pushRoutes from './routes/push.js';
 import taskBoardsRoutes from './routes/task-boards.js';
 import leadGleegoRoutes from './routes/lead-gleego.js';
