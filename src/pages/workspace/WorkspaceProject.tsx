@@ -28,15 +28,23 @@ import {
 import { isoToBrLocalInput, localInputToBrISO } from "@/lib/timezone";
 
 const TASK_STATUS = [
+  { v: "triage", label: "Triagem" },
   { v: "backlog", label: "Backlog" },
   { v: "todo", label: "A fazer" },
   { v: "doing", label: "Em andamento" },
   { v: "review", label: "Em revisão" },
   { v: "done", label: "Concluída" },
 ];
-const TASK_TYPES = ["support", "implementation", "fix", "feature", "chore"];
+const TASK_TYPES = ["unclassified", "fix", "improvement", "roadmap", "support", "implementation", "feature", "chore"];
 const TASK_TYPE_LABEL: Record<string, string> = {
-  support: "Suporte", implementation: "Implantação", fix: "Correção", feature: "Feature", chore: "Chore",
+  unclassified: "Sem triagem",
+  fix: "Correção",
+  improvement: "Aprimoramento",
+  roadmap: "Roadmap",
+  support: "Suporte",
+  implementation: "Implantação",
+  feature: "Feature",
+  chore: "Chore",
 };
 const PRIORITY = ["low", "medium", "high"];
 const PHASE_STATUS = [
