@@ -304,10 +304,6 @@ async function getWorkspaceAIConfig(organizationId, userId = null) {
 
 // Always use the project's configured OpenAI/Gemini path for Workspace AI.
 async function runAI(organizationId, systemPrompt, userPrompt, opts, userId = null) {
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt },
-  ];
   const cfg = await getWorkspaceAIConfig(organizationId, userId);
 
   if (cfg && cfg.apiKey) {
@@ -317,9 +313,13 @@ async function runAI(organizationId, systemPrompt, userPrompt, opts, userId = nu
       keySource: cfg.keySource,
       organization_id: cfg.organizationId || organizationId,
     });
-    // Use the organization's configured provider directly. If it fails, surface
-    // the actual error to the user instead of silently falling back to another
-    // provider — the user configured OpenAI/Gemini on purpose.
+    // If the combined prompt is too large for the model context, condense the
+    // user prompt via map-reduce summarization first, then run the real call.
+    const safeUserPrompt = await condensePromptIfNeeded(cfg, systemPrompt, userPrompt, opts);
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: safeUserPrompt },
+    ];
     return await callAI(
       { provider: cfg.provider, model: cfg.model, apiKey: cfg.apiKey },
       messages,
@@ -332,6 +332,104 @@ async function runAI(organizationId, systemPrompt, userPrompt, opts, userId = nu
   }
 
   throw new Error('Chave OpenAI/Gemini não encontrada para este Workspace. O sistema tentou a organização do projeto, as organizações vinculadas ao seu usuário e os agentes ativos do chat, mas nenhuma chave utilizável foi localizada.');
+}
+
+// ---------------- Prompt chunking / condensation ----------------
+// Rough char->token ratio for pt-BR/en mixed content. Keep conservative.
+const CHARS_PER_TOKEN = 4;
+// Context budgets per provider/model family (input tokens we allow before
+// condensing). Leave headroom for system prompt + response tokens.
+function inputBudgetTokens(cfg, opts) {
+  const model = String(cfg?.model || '').toLowerCase();
+  const out = Number(opts?.maxTokens) || 2000;
+  // Base context windows (approx.)
+  let ctx = 128000;
+  if (cfg.provider === 'gemini') ctx = 900000; // Gemini 1.5/2.x flash/pro
+  if (/gpt-4o-mini|gpt-4o|gpt-4\.1|gpt-4-turbo/.test(model)) ctx = 128000;
+  if (/gpt-3\.5/.test(model)) ctx = 16000;
+  if (/gpt-5|o1|o3|o4/.test(model)) ctx = 200000;
+  // Reserve response + safety margin.
+  return Math.max(4000, ctx - out - 2000);
+}
+
+function estimateTokens(str) {
+  return Math.ceil((str || '').length / CHARS_PER_TOKEN);
+}
+
+function splitIntoChunks(text, maxChars) {
+  if (!text) return [];
+  const chunks = [];
+  // Prefer paragraph boundaries.
+  const paragraphs = text.split(/\n{2,}/);
+  let current = '';
+  for (const p of paragraphs) {
+    if ((current.length + p.length + 2) <= maxChars) {
+      current += (current ? '\n\n' : '') + p;
+    } else {
+      if (current) chunks.push(current);
+      if (p.length <= maxChars) {
+        current = p;
+      } else {
+        // Hard split by chars if a single paragraph is huge.
+        for (let i = 0; i < p.length; i += maxChars) {
+          chunks.push(p.slice(i, i + maxChars));
+        }
+        current = '';
+      }
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+async function condensePromptIfNeeded(cfg, systemPrompt, userPrompt, opts) {
+  const budgetTokens = inputBudgetTokens(cfg, opts);
+  const total = estimateTokens(systemPrompt) + estimateTokens(userPrompt);
+  if (total <= budgetTokens) return userPrompt;
+
+  logInfo('dev_workspace.ai_condense_start', {
+    provider: cfg.provider,
+    model: cfg.model,
+    estimated_tokens: total,
+    budget_tokens: budgetTokens,
+  });
+
+  // Chunk-size in chars: leave room for system + a summarization instruction.
+  const chunkTokens = Math.max(2000, Math.floor(budgetTokens * 0.6));
+  const chunkChars = chunkTokens * CHARS_PER_TOKEN;
+
+  let text = userPrompt;
+  // Iteratively condense until it fits (or we hit a safety limit).
+  for (let iter = 0; iter < 3; iter++) {
+    const chunks = splitIntoChunks(text, chunkChars);
+    if (chunks.length <= 1) break;
+
+    const summaries = [];
+    for (let i = 0; i < chunks.length; i++) {
+      const sysSum = 'Você é um assistente que RESUME conteúdo preservando fatos, decisões, requisitos, nomes de módulos/fases/tarefas, prazos e dados técnicos. Não invente. Responda em português, denso, sem preâmbulo.';
+      const userSum = `Parte ${i + 1}/${chunks.length} de um contexto maior. Resuma preservando todos os fatos úteis:\n\n${chunks[i]}`;
+      const r = await callAI(
+        { provider: cfg.provider, model: cfg.model, apiKey: cfg.apiKey },
+        [
+          { role: 'system', content: sysSum },
+          { role: 'user', content: userSum },
+        ],
+        { temperature: 0.2, maxTokens: 1200 }
+      );
+      summaries.push(`# Parte ${i + 1}\n${(r.content || '').trim()}`);
+    }
+    text = summaries.join('\n\n');
+    if (estimateTokens(systemPrompt) + estimateTokens(text) <= budgetTokens) break;
+  }
+
+  // Final hard cap if still too large.
+  const maxChars = Math.max(1000, (budgetTokens - estimateTokens(systemPrompt)) * CHARS_PER_TOKEN);
+  if (text.length > maxChars) text = text.slice(0, maxChars);
+
+  logInfo('dev_workspace.ai_condense_done', {
+    final_tokens: estimateTokens(text),
+  });
+  return text;
 }
 
 // =====================================================
