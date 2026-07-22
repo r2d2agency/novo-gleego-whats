@@ -345,7 +345,6 @@ router.get('/portal/:token', async (req, res) => {
         WHERE portal_token = $1 AND portal_enabled = true
         LIMIT 1`,
       [req.params.token]
-      req.userId
     );
     if (p.rows.length === 0) return res.status(404).json({ error: 'Portal não encontrado' });
     const project = p.rows[0];
