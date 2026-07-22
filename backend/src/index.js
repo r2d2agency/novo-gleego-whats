@@ -924,6 +924,7 @@ app.use('/api/ctwa', ctwaAnalyticsRoutes);
 app.use('/api/group-secretary', groupSecretaryRoutes);
 app.use('/api/ghost', ghostRoutes);
 app.use('/api/projects', projectsRoutes);
+app.use('/api/dev-workspace', devWorkspaceRoutes);
 app.use('/api/push', pushRoutes);
 app.use('/api/task-boards', taskBoardsRoutes);
 app.use('/api/lead-gleego', leadGleegoRoutes);
