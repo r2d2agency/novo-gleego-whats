@@ -230,7 +230,7 @@ async function getWorkspaceAIConfig(organizationId, userId = null) {
   // Mesmo fallback usado pelo chat: se a chave global estiver vazia/mascarada,
   // usa um agente ativo da organização que já tenha OpenAI/Gemini configurado.
   const agentsResult = await query(
-    `SELECT id, name, ai_provider::text AS ai_provider, ai_model, ai_api_key, agent_mode, created_at, updated_at
+    `SELECT id, organization_id, name, ai_provider::text AS ai_provider, ai_model, ai_api_key, agent_mode, created_at, updated_at
        FROM ai_agents
       WHERE organization_id = ANY($1::uuid[])
         AND is_active = true
@@ -250,13 +250,14 @@ async function getWorkspaceAIConfig(organizationId, userId = null) {
   for (const agent of agentsResult.rows) {
     const agentCfg = await getAgentAIConfig(agent, agent.organization_id || organizationId).catch(() => null);
     if (isWorkspaceAIConfigUsable(agentCfg)) {
-      return { ...agentCfg, keySource: agentCfg.keySource || `ai_agents.${agent.id}` };
+      return { ...agentCfg, keySource: agentCfg.keySource || `ai_agents.${agent.id}`, organizationId: agent.organization_id || organizationId };
     }
   }
 
   // Agentes globais ativados também podem ter a chave do cliente salva.
   const globalResult = await query(
     `SELECT ga.ai_provider::text AS ai_provider, ga.ai_model,
+            act.organization_id,
             COALESCE(NULLIF(BTRIM(act.client_ai_api_key), ''), NULLIF(BTRIM(ga.ai_api_key), '')) AS ai_api_key
        FROM global_agent_activations act
        JOIN global_ai_agents ga ON ga.id = act.global_agent_id
@@ -280,6 +281,7 @@ async function getWorkspaceAIConfig(organizationId, userId = null) {
         model: resolveModelForProvider(provider, row.ai_model, preferredModel),
         apiKey,
         keySource: 'global_agent_activations.client_ai_api_key',
+        organizationId: row.organization_id || organizationId,
       };
     }
   }
@@ -326,6 +328,7 @@ async function runAI(organizationId, systemPrompt, userPrompt, opts, userId = nu
         maxTokens: opts.maxTokens,
         responseFormat: opts.json && cfg.provider !== 'gemini' ? { type: 'json_object' } : null,
       }
+      req.userId
     );
   }
 
@@ -343,6 +346,7 @@ router.get('/portal/:token', async (req, res) => {
         WHERE portal_token = $1 AND portal_enabled = true
         LIMIT 1`,
       [req.params.token]
+      req.userId
     );
     if (p.rows.length === 0) return res.status(404).json({ error: 'Portal não encontrado' });
     const project = p.rows[0];
@@ -896,7 +900,8 @@ router.post('/projects/:id/ai/ask', async (req, res) => {
       acc.org.organization_id,
       `Você responde perguntas com base APENAS no contexto do projeto abaixo. Se a resposta não estiver no contexto, diga que não sabe.`,
       `CONTEXTO DO PROJETO ${acc.project.name}:\n${brain}\n\nPergunta: ${question}`,
-      1500
+      1500,
+      req.userId
     );
     res.json({ answer: ans });
   } catch (e) { logError('dev.ai_ask', e); res.status(500).json({ error: e.message }); }
@@ -930,7 +935,8 @@ Gere um roadmap Markdown com:
 4. Próximos passos por fase (com datas)
 5. Riscos e itens em atraso
 `,
-      3500
+      3500,
+      req.userId
     );
     res.json({ markdown: md });
   } catch (e) { logError('dev.ai_roadmap', e); res.status(500).json({ error: e.message }); }
