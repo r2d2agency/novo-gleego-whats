@@ -176,24 +176,23 @@ async function runAI(organizationId, systemPrompt, userPrompt, opts) {
   const cfg = await getOrganizationAIConfig(organizationId).catch(() => null);
 
   if (cfg && cfg.apiKey) {
-    try {
-      return await callAI(
-        { provider: cfg.provider, model: cfg.model, apiKey: cfg.apiKey },
-        messages,
-        {
-          temperature: opts.temperature,
-          maxTokens: opts.maxTokens,
-          responseFormat: opts.json && cfg.provider !== 'gemini' ? { type: 'json_object' } : null,
-        }
-      );
-    } catch (err) {
-      logError('dev.ai_org_failed_fallback_lovable', err);
-      // fall through to Lovable Gateway
-    }
+    // Use the organization's configured provider directly. If it fails, surface
+    // the actual error to the user instead of silently falling back to another
+    // provider — the user configured OpenAI/Gemini on purpose.
+    return await callAI(
+      { provider: cfg.provider, model: cfg.model, apiKey: cfg.apiKey },
+      messages,
+      {
+        temperature: opts.temperature,
+        maxTokens: opts.maxTokens,
+        responseFormat: opts.json && cfg.provider !== 'gemini' ? { type: 'json_object' } : null,
+      }
+    );
   }
 
+  // Only reach Lovable Gateway when the organization has no key configured.
   const lovKey = process.env.LOVABLE_API_KEY;
-  if (!lovKey) {
+  if (!lovKey || !lovKey.startsWith('sk_')) {
     throw new Error('Configure a chave de IA da organização em Ajustes → IA (ou defina LOVABLE_API_KEY no servidor).');
   }
 
