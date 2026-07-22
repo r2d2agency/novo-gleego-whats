@@ -803,7 +803,8 @@ Estrutura esperada (responda apenas com JSON):
           "tasks": [ { "title": "...", "description": "...", "type": "implementation|feature|fix|support|chore", "priority": "low|medium|high" } ] }
       ] }
   ]
-}`
+  }`,
+      req.userId
     );
     res.json(data);
   } catch (e) { logError('dev.ai_breakdown', e); res.status(500).json({ error: e.message }); }
@@ -869,7 +870,8 @@ router.post('/projects/:id/ai/classify-demand', async (req, res) => {
       `Módulos: ${JSON.stringify(modules)}
 Fases: ${JSON.stringify(phases)}
 Demanda do cliente: "${text}"
-Responda: {"title": "resumo curto (max 80 chars)", "description": "detalhamento", "module_id": "uuid|null", "phase_id": "uuid|null", "type": "support|implementation|fix|feature|chore", "priority": "low|medium|high", "reasoning": "por que classificou assim"}`
+Responda: {"title": "resumo curto (max 80 chars)", "description": "detalhamento", "module_id": "uuid|null", "phase_id": "uuid|null", "type": "support|implementation|fix|feature|chore", "priority": "low|medium|high", "reasoning": "por que classificou assim"}`,
+      req.userId
     );
 
     // Optionally create the task
