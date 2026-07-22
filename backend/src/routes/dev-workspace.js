@@ -245,6 +245,9 @@ router.post('/portal/:token/requests', async (req, res) => {
        VALUES ($1, $2, $3, 'feature', 'backlog', 'client', $4) RETURNING *`,
       [project.id, title.slice(0, 240), (description || '').slice(0, 5000), contact_email || null]
     );
+    if (contact_email) {
+      try { await query(`UPDATE dev_tasks SET contact_email = $1 WHERE id = $2`, [contact_email, ins.rows[0].id]); } catch (_) {}
+    }
     await logActivity(project.id, 'client', 'request_created', { task_id: ins.rows[0].id, contact_email });
 
     // Async: classify with AI (fire and forget)
