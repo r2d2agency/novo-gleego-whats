@@ -541,6 +541,10 @@ Responda no formato {"module_id": "...", "phase_id": "...", "type": "support|imp
 
 // Client feedback on a task (approve / needs-changes). Public via portal token.
 router.post('/portal/:token/tasks/:taskId/feedback', async (req, res) => {
+  return handleFeedback(req, res);
+});
+
+async function handleFeedback(req, res) {
   try {
     const { feedback, note } = req.body || {};
     if (!['approved', 'needs_changes'].includes(feedback)) {
@@ -585,6 +589,91 @@ router.post('/portal/:token/tasks/:taskId/feedback', async (req, res) => {
   } catch (e) {
     logError('dev_workspace.portal_feedback_error', e);
     res.status(500).json({ error: 'Erro ao registrar feedback' });
+  }
+}
+
+// Public bulk request: cliente envia várias demandas de uma vez; IA classifica e cria tasks.
+router.post('/portal/:token/requests/bulk', async (req, res) => {
+  try {
+    const { text, items, contact_email } = req.body || {};
+    const p = await query(
+      `SELECT id, organization_id, owner_user_id FROM dev_projects WHERE portal_token = $1 AND portal_enabled = true LIMIT 1`,
+      [req.params.token]
+    );
+    if (p.rows.length === 0) return res.status(404).json({ error: 'Portal não encontrado' });
+    const project = p.rows[0];
+
+    let demands = [];
+    if (Array.isArray(items) && items.length) {
+      demands = items.map((s) => String(s || '').trim()).filter(Boolean);
+    } else if (typeof text === 'string' && text.trim()) {
+      const raw = text.replace(/\r/g, '');
+      if (/\n\s*\n/.test(raw)) demands = raw.split(/\n\s*\n/);
+      else demands = raw.split(/\n/).map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, ''));
+      demands = demands.map((s) => s.trim()).filter((s) => s.length >= 3);
+    }
+    if (!demands.length) return res.status(400).json({ error: 'Envie text ou items com as demandas.' });
+    if (demands.length > 50) return res.status(400).json({ error: 'Máximo de 50 demandas por lote.' });
+
+    const modules = (await query(`SELECT id, name, description FROM dev_modules WHERE project_id = $1`, [project.id])).rows;
+    const phases = (await query(`SELECT id, name, module_id FROM dev_phases WHERE project_id = $1`, [project.id])).rows;
+
+    // Cria imediatamente como backlog (source=client) — resiliente se a IA falhar.
+    const created = [];
+    for (const d of demands) {
+      const title = d.split('\n')[0].slice(0, 200);
+      const ins = await query(
+        `INSERT INTO dev_tasks (project_id, title, description, type, status, source, client_note, contact_email)
+         VALUES ($1,$2,$3,'feature','backlog','client',$4,$5) RETURNING *`,
+        [project.id, title, d.slice(0, 5000), d.slice(0, 5000), contact_email || null]
+      ).catch(async () => query(
+        `INSERT INTO dev_tasks (project_id, title, description, type, status, source, client_note)
+         VALUES ($1,$2,$3,'feature','backlog','client',$4) RETURNING *`,
+        [project.id, title, d.slice(0, 5000), d.slice(0, 5000)]
+      ));
+      created.push(ins.rows[0]);
+    }
+    await logActivity(project.id, 'client', 'bulk_request_created', { count: created.length, contact_email });
+
+    // Async: IA classifica em segundo plano (fire-and-forget)
+    (async () => {
+      try {
+        if (!modules.length) return;
+        const numbered = demands.map((d, i) => `${i + 1}. ${d}`).join('\n');
+        const data = await aiJSON(
+          project.organization_id,
+          `Você classifica demandas de clientes num projeto de software JÁ EM ANDAMENTO. Use apenas módulos/fases existentes ou null. Responda SOMENTE JSON válido.`,
+          `Módulos: ${JSON.stringify(modules)}
+Fases: ${JSON.stringify(phases)}
+
+Demandas (mesma ordem):
+${numbered}
+
+Formato: { "tasks": [ { "index": 1, "title": "resumo curto", "module_id": "uuid|null", "phase_id": "uuid|null", "type": "support|implementation|fix|feature|chore", "priority": "low|medium|high", "reasoning": "..." } ] }`,
+          project.owner_user_id
+        );
+        const isUuid = (v) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+        const validM = new Set(modules.map(m => m.id));
+        const validP = new Set(phases.map(p => p.id));
+        const clean = (v, set) => { const s = isUuid(v) ? v : null; return s && set.has(s) ? s : null; };
+        const list = Array.isArray(data?.tasks) ? data.tasks : [];
+        for (let i = 0; i < list.length; i++) {
+          const c = list[i];
+          const idx = Number.isInteger(c.index) ? c.index - 1 : i;
+          const task = created[idx];
+          if (!task) continue;
+          await query(
+            `UPDATE dev_tasks SET module_id = $1, phase_id = $2, type = COALESCE($3, type), priority = COALESCE($4, priority), ai_reasoning = $5, title = COALESCE($6, title) WHERE id = $7`,
+            [clean(c.module_id, validM), clean(c.phase_id, validP), c.type || null, c.priority || null, c.reasoning || null, (c.title || '').slice(0, 200) || null, task.id]
+          );
+        }
+      } catch (e) { logError('dev_workspace.portal_bulk_classify_error', e); }
+    })();
+
+    res.status(201).json({ ok: true, created: created.length });
+  } catch (e) {
+    logError('dev_workspace.portal_bulk_error', e);
+    res.status(500).json({ error: 'Erro ao registrar pedidos' });
   }
 });
 
