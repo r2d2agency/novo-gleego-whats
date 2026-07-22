@@ -23,7 +23,7 @@ export interface DevProject {
 }
 export interface DevModule { id: string; project_id: string; name: string; description: string | null; color: string; icon: string | null; position: number; }
 export interface DevPhase { id: string; project_id: string; module_id: string | null; name: string; description: string | null; position: number; start_date: string | null; due_date: string | null; status: string; completed_at: string | null; }
-export interface DevTask { id: string; project_id: string; module_id: string | null; phase_id: string | null; title: string; description: string | null; type: string; priority: string; status: string; source: string; client_note: string | null; ai_reasoning: string | null; due_date: string | null; completed_at: string | null; }
+export interface DevTask { id: string; project_id: string; module_id: string | null; phase_id: string | null; title: string; description: string | null; type: string; priority: string; status: string; source: string; client_note: string | null; ai_reasoning: string | null; due_date: string | null; completed_at: string | null; created_at?: string; updated_at?: string; }
 export interface DevTaskGlobal extends DevTask { project_name: string; phase_name: string | null; module_name: string | null; module_color: string | null; client_feedback?: string | null; client_feedback_note?: string | null; }
 export interface DevKnowledge { id: string; title: string; kind: string; source_url: string | null; tokens: number; preview?: string; created_at: string; }
 export interface DevGanttPhase extends DevPhase { module_name: string | null; module_color: string | null; deadline_status: "ok" | "warning" | "overdue"; }
