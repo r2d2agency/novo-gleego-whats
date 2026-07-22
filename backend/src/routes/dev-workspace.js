@@ -144,12 +144,12 @@ function newPortalToken() {
 }
 
 // -------------------- AI helper --------------------
-async function aiJSON(organizationId, systemPrompt, userPrompt) {
+async function aiJSON(organizationId, systemPrompt, userPrompt, userId = null) {
   const result = await runAI(organizationId, systemPrompt, userPrompt, {
     temperature: 0.3,
     maxTokens: 2500,
     json: true,
-  });
+  }, userId);
   const raw = (result.content || '').trim();
   const jsonText = raw
     .replace(/^```json\s*/i, '')
@@ -166,11 +166,11 @@ async function aiJSON(organizationId, systemPrompt, userPrompt) {
   }
 }
 
-async function aiText(organizationId, systemPrompt, userPrompt, maxTokens = 3000) {
+async function aiText(organizationId, systemPrompt, userPrompt, maxTokens = 3000, userId = null) {
   const result = await runAI(organizationId, systemPrompt, userPrompt, {
     temperature: 0.5,
     maxTokens,
-  });
+  }, userId);
   return result.content || '';
 }
 
@@ -180,13 +180,48 @@ function isWorkspaceAIConfigUsable(cfg) {
   return Boolean(cfg?.apiKey && WORKSPACE_AI_PROVIDERS.has(normalizeProvider(cfg.provider)));
 }
 
-async function getWorkspaceAIConfig(organizationId) {
-  const orgCfg = await getOrganizationAIConfig(organizationId).catch((error) => {
-    logError('dev_workspace.ai_org_config_error', error);
-    return null;
+async function getUserAIOrganizationIds(userId, primaryOrganizationId) {
+  const ids = [primaryOrganizationId].filter(Boolean);
+  if (!userId) return ids;
+
+  const membershipResult = await query(
+    `SELECT om.organization_id
+       FROM organization_members om
+      WHERE om.user_id = $1
+      ORDER BY CASE om.role
+        WHEN 'owner' THEN 1
+        WHEN 'admin' THEN 2
+        WHEN 'manager' THEN 3
+        WHEN 'agent' THEN 4
+        ELSE 5
+      END,
+      om.created_at ASC NULLS LAST`,
+    [userId]
+  ).catch((error) => {
+    logError('dev_workspace.ai_user_orgs_lookup_error', error);
+    return { rows: [] };
   });
-  if (isWorkspaceAIConfigUsable(orgCfg)) {
-    return { ...orgCfg, keySource: orgCfg.keySource || 'organizations.ai_api_key' };
+
+  for (const row of membershipResult.rows) {
+    if (row.organization_id) ids.push(row.organization_id);
+  }
+
+  return [...new Set(ids)];
+}
+
+async function getWorkspaceAIConfig(organizationId, userId = null) {
+  const candidateOrgIds = await getUserAIOrganizationIds(userId, organizationId);
+  let orgCfg = null;
+
+  for (const orgId of candidateOrgIds) {
+    const cfg = await getOrganizationAIConfig(orgId).catch((error) => {
+      logError('dev_workspace.ai_org_config_error', error, { organization_id: orgId });
+      return null;
+    });
+    if (isWorkspaceAIConfigUsable(cfg)) {
+      return { ...cfg, keySource: cfg.keySource || 'organizations.ai_api_key', organizationId: orgId };
+    }
+    orgCfg = orgCfg || cfg;
   }
 
   const preferredProvider = normalizeProvider(orgCfg?.provider);
@@ -197,22 +232,23 @@ async function getWorkspaceAIConfig(organizationId) {
   const agentsResult = await query(
     `SELECT id, name, ai_provider::text AS ai_provider, ai_model, ai_api_key, agent_mode, created_at, updated_at
        FROM ai_agents
-      WHERE organization_id = $1
+      WHERE organization_id = ANY($1::uuid[])
         AND is_active = true
       ORDER BY
+        CASE WHEN organization_id = $2::uuid THEN 0 ELSE 1 END,
         CASE WHEN NULLIF(BTRIM(ai_api_key), '') IS NOT NULL THEN 0 ELSE 1 END,
         CASE WHEN COALESCE(agent_mode, 'standard') = 'autoreply' THEN 0 ELSE 1 END,
         updated_at DESC NULLS LAST,
         created_at DESC
       LIMIT 10`,
-    [organizationId]
+    [candidateOrgIds, organizationId]
   ).catch((error) => {
     if (error?.code !== '42P01' && error?.code !== '42703') logError('dev_workspace.ai_agents_lookup_error', error);
     return { rows: [] };
   });
 
   for (const agent of agentsResult.rows) {
-    const agentCfg = await getAgentAIConfig(agent, organizationId).catch(() => null);
+    const agentCfg = await getAgentAIConfig(agent, agent.organization_id || organizationId).catch(() => null);
     if (isWorkspaceAIConfigUsable(agentCfg)) {
       return { ...agentCfg, keySource: agentCfg.keySource || `ai_agents.${agent.id}` };
     }
@@ -224,11 +260,12 @@ async function getWorkspaceAIConfig(organizationId) {
             COALESCE(NULLIF(BTRIM(act.client_ai_api_key), ''), NULLIF(BTRIM(ga.ai_api_key), '')) AS ai_api_key
        FROM global_agent_activations act
        JOIN global_ai_agents ga ON ga.id = act.global_agent_id
-      WHERE act.organization_id = $1
+      WHERE act.organization_id = ANY($1::uuid[])
         AND act.is_active = true
-      ORDER BY act.updated_at DESC NULLS LAST, act.created_at DESC
+      ORDER BY CASE WHEN act.organization_id = $2::uuid THEN 0 ELSE 1 END,
+               act.updated_at DESC NULLS LAST, act.created_at DESC
       LIMIT 10`,
-    [organizationId]
+    [candidateOrgIds, organizationId]
   ).catch((error) => {
     if (error?.code !== '42P01' && error?.code !== '42703') logError('dev_workspace.global_agents_lookup_error', error);
     return { rows: [] };
@@ -264,14 +301,20 @@ async function getWorkspaceAIConfig(organizationId) {
 }
 
 // Always use the project's configured OpenAI/Gemini path for Workspace AI.
-async function runAI(organizationId, systemPrompt, userPrompt, opts) {
+async function runAI(organizationId, systemPrompt, userPrompt, opts, userId = null) {
   const messages = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt },
   ];
-  const cfg = await getWorkspaceAIConfig(organizationId);
+  const cfg = await getWorkspaceAIConfig(organizationId, userId);
 
   if (cfg && cfg.apiKey) {
+    logInfo('dev_workspace.ai_config_resolved', {
+      provider: cfg.provider,
+      model: cfg.model,
+      keySource: cfg.keySource,
+      organization_id: cfg.organizationId || organizationId,
+    });
     // Use the organization's configured provider directly. If it fails, surface
     // the actual error to the user instead of silently falling back to another
     // provider — the user configured OpenAI/Gemini on purpose.
@@ -286,7 +329,7 @@ async function runAI(organizationId, systemPrompt, userPrompt, opts) {
     );
   }
 
-  throw new Error('Chave OpenAI/Gemini não encontrada para este Workspace. O sistema tentou a configuração global da organização e os agentes ativos do chat, mas nenhuma chave utilizável foi localizada.');
+  throw new Error('Chave OpenAI/Gemini não encontrada para este Workspace. O sistema tentou a organização do projeto, as organizações vinculadas ao seu usuário e os agentes ativos do chat, mas nenhuma chave utilizável foi localizada.');
 }
 
 // =====================================================
@@ -351,7 +394,7 @@ router.post('/portal/:token/requests', async (req, res) => {
     const { title, description, contact_email } = req.body || {};
     if (!title) return res.status(400).json({ error: 'title obrigatório' });
     const p = await query(
-      `SELECT id, organization_id FROM dev_projects WHERE portal_token = $1 AND portal_enabled = true LIMIT 1`,
+      `SELECT id, organization_id, owner_user_id FROM dev_projects WHERE portal_token = $1 AND portal_enabled = true LIMIT 1`,
       [req.params.token]
     );
     if (p.rows.length === 0) return res.status(404).json({ error: 'Portal não encontrado' });
@@ -379,7 +422,8 @@ router.post('/portal/:token/requests', async (req, res) => {
           `Módulos disponíveis: ${JSON.stringify(modules)}
 Fases: ${JSON.stringify(phases)}
 Demanda: "${title}\n${description || ''}"
-Responda no formato {"module_id": "...", "phase_id": "...", "type": "support|implementation|fix|feature|chore", "priority": "low|medium|high", "reasoning": "..."}`
+Responda no formato {"module_id": "...", "phase_id": "...", "type": "support|implementation|fix|feature|chore", "priority": "low|medium|high", "reasoning": "..."}`,
+          project.owner_user_id
         );
         await query(
           `UPDATE dev_tasks SET module_id = $1, phase_id = $2, type = COALESCE($3, type), priority = COALESCE($4, priority), ai_reasoning = $5 WHERE id = $6`,
