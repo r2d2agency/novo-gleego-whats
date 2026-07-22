@@ -167,7 +167,7 @@ async function aiText(organizationId, systemPrompt, userPrompt, maxTokens = 3000
   return result.content || '';
 }
 
-// Try organization AI config first, then fall back to Lovable AI Gateway.
+// Always use the organization AI config for Workspace AI.
 async function runAI(organizationId, systemPrompt, userPrompt, opts) {
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -190,38 +190,7 @@ async function runAI(organizationId, systemPrompt, userPrompt, opts) {
     );
   }
 
-  // Only reach Lovable Gateway when the organization has no key configured.
-  const lovKey = process.env.LOVABLE_API_KEY;
-  if (!lovKey || !lovKey.startsWith('sk_')) {
-    throw new Error('Configure a chave de IA da organização em Ajustes → IA (ou defina LOVABLE_API_KEY no servidor).');
-  }
-
-  const body = {
-    model: 'google/gemini-3-flash-preview',
-    messages,
-    temperature: opts.temperature,
-    max_tokens: opts.maxTokens,
-  };
-  if (opts.json) body.response_format = { type: 'json_object' };
-
-  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Lovable-API-Key': lovKey,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) {
-    const txt = await resp.text().catch(() => '');
-    throw new Error(`Lovable AI Gateway ${resp.status}: ${txt.slice(0, 300)}`);
-  }
-  const data = await resp.json();
-  return {
-    content: data.choices?.[0]?.message?.content || '',
-    tokensUsed: data.usage?.total_tokens || 0,
-    model: data.model,
-  };
+  throw new Error('Chave de IA da organização não encontrada. Em Ajustes → IA, teste a conexão e clique em Salvar Configurações.');
 }
 
 // =====================================================

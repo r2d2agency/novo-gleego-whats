@@ -109,8 +109,12 @@ export function AIConfigPanel() {
         method: 'POST',
         body: config,
       });
+      await api('/api/organizations/ai-config', {
+        method: 'PUT',
+        body: config,
+      });
       setTestResult('success');
-      toast.success('Conexão com IA testada com sucesso!');
+      toast.success('Conexão com IA testada e salva com sucesso!');
     } catch (error: any) {
       setTestResult('error');
       toast.error(error.message || 'Falha na conexão com a IA');
