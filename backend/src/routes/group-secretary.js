@@ -285,8 +285,16 @@ router.get('/available-users', async (req, res) => {
 // Get monitored groups (conversations that are groups)
 router.get('/groups', async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'Sem organização' });
+    // Aggregate across ALL organizations the user belongs to.
+    // Some users manage multiple orgs; a LIMIT 1 lookup would silently hide
+    // groups belonging to the "other" org even when the secretary is
+    // configured there.
+    const orgsRes = await query(
+      `SELECT organization_id FROM organization_members WHERE user_id = $1`,
+      [req.userId]
+    );
+    const orgIds = orgsRes.rows.map((r) => r.organization_id);
+    if (orgIds.length === 0) return res.status(403).json({ error: 'Sem organização' });
 
     // Aceita tanto is_group=true quanto remote_jid terminando com @g.us
     // (em alguns providers o flag não é populado corretamente).
@@ -298,16 +306,16 @@ router.get('/groups', async (req, res) => {
               conn.name AS connection_name
          FROM conversations conv
          JOIN connections conn ON conn.id = conv.connection_id
-        WHERE conn.organization_id = $1
+        WHERE conn.organization_id = ANY($1::uuid[])
           AND (
                COALESCE(conv.is_group, false) = true
                OR conv.remote_jid LIKE '%@g.us'
               )
         ORDER BY connection_name, group_name`,
-      [org.organization_id]
+      [orgIds]
     );
 
-    console.log(`[GroupSecretary] /groups org=${org.organization_id} retornou ${result.rows.length} grupo(s)`);
+    console.log(`[GroupSecretary] /groups orgs=${orgIds.join(',')} retornou ${result.rows.length} grupo(s)`);
     res.json(result.rows);
   } catch (error) {
     console.error('Get groups error:', error);
