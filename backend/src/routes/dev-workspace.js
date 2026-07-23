@@ -102,6 +102,8 @@ const router = Router();
     await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS client_feedback_note TEXT`);
     await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS client_feedback_at TIMESTAMPTZ`);
     await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS contact_email TEXT`);
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS completion_notes TEXT`);
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS knowledge_id UUID`);
   } catch (e) { console.error('dev-workspace init error:', e.message); }
 })();
 
