@@ -8,6 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Calendar, Clock, Loader2, LayoutGrid, MessageSquare, AlertTriangle, GripVertical } from "lucide-react";
 import { useDevAllTasks, useDevTaskStatusMutation, DevTaskGlobal } from "@/hooks/use-dev-workspace";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Brain } from "lucide-react";
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable, closestCorners, DragStartEvent, DragEndEvent,
@@ -129,6 +132,8 @@ export default function WorkspaceKanban() {
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [sortMode, setSortMode] = useState<SortMode>("oldest");
   const [activeTask, setActiveTask] = useState<DevTaskGlobal | null>(null);
+  const [doneTarget, setDoneTarget] = useState<DevTaskGlobal | null>(null);
+  const [doneNotes, setDoneNotes] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const projects = useMemo(() => {
@@ -174,7 +179,23 @@ export default function WorkspaceKanban() {
     const t = (tasks || []).find((x) => x.id === taskId);
     if (!t || t.status === overId) return;
     if (!COLUMNS.find((c) => c.key === overId)) return;
+    if (overId === "done") {
+      setDoneNotes(t.completion_notes || "");
+      setDoneTarget(t);
+      return;
+    }
     move.mutate({ id: taskId, status: overId });
+  };
+
+  const confirmDone = (skip: boolean) => {
+    if (!doneTarget) return;
+    move.mutate({
+      id: doneTarget.id,
+      status: "done",
+      completion_notes: skip ? undefined : doneNotes.trim() || undefined,
+    });
+    setDoneTarget(null);
+    setDoneNotes("");
   };
 
   return (
@@ -224,6 +245,40 @@ export default function WorkspaceKanban() {
             </DragOverlay>
           </DndContext>
         )}
+
+        <Dialog open={!!doneTarget} onOpenChange={(o) => { if (!o) { setDoneTarget(null); setDoneNotes(""); } }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Brain className="h-5 w-5 text-primary" /> Concluir tarefa</DialogTitle>
+              <DialogDescription>
+                Registre o que foi feito e como funciona. Esse resumo é somado automaticamente ao cérebro do projeto para consultas futuras da IA.
+              </DialogDescription>
+            </DialogHeader>
+            {doneTarget && (
+              <div className="space-y-3">
+                <div className="text-sm">
+                  <div className="font-medium">{doneTarget.title}</div>
+                  <div className="text-xs text-muted-foreground">{doneTarget.project_name}{doneTarget.phase_name ? ` · ${doneTarget.phase_name}` : ""}</div>
+                </div>
+                <Textarea
+                  autoFocus
+                  rows={6}
+                  placeholder="Ex.: Adicionei botão de teste de push nas configurações. Chama POST /api/push/test que envia uma notificação de exemplo com som e vibração. Requer permissão concedida no navegador."
+                  value={doneNotes}
+                  onChange={(e) => setDoneNotes(e.target.value)}
+                />
+                <div className="text-[11px] text-muted-foreground">
+                  Dica: descreva a solução, endpoints/arquivos alterados e como o usuário utiliza. Fica indexado como conhecimento do projeto.
+                </div>
+              </div>
+            )}
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button variant="ghost" onClick={() => { setDoneTarget(null); setDoneNotes(""); }}>Cancelar</Button>
+              <Button variant="outline" onClick={() => confirmDone(true)}>Concluir sem anotação</Button>
+              <Button onClick={() => confirmDone(false)} disabled={!doneNotes.trim()}>Concluir e salvar no cérebro</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
   );
