@@ -894,7 +894,7 @@ router.patch('/tasks/:id', async (req, res) => {
   if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
   const acc = await assertProjectAccess(req.userId, r.rows[0].project_id);
   if (!acc) return res.status(403).json({ error: 'Acesso negado' });
-  const fields = ['module_id', 'phase_id', 'title', 'description', 'type', 'priority', 'status', 'due_date', 'completed_at', 'position'];
+  const fields = ['module_id', 'phase_id', 'title', 'description', 'type', 'priority', 'status', 'due_date', 'completed_at', 'position', 'completion_notes'];
   const sets = []; const vals = []; let i = 1;
   for (const f of fields) if (req.body[f] !== undefined) { sets.push(`${f} = $${i++}`); vals.push(req.body[f]); }
   if (req.body.status === 'done' && req.body.completed_at === undefined) { sets.push(`completed_at = NOW()`); }
@@ -902,7 +902,32 @@ router.patch('/tasks/:id', async (req, res) => {
   if (sets.length === 1) return res.json({ ok: true });
   vals.push(req.params.id);
   const upd = await query(`UPDATE dev_tasks SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
-  res.json(upd.rows[0]);
+  const task = upd.rows[0];
+  // If the task is now done and has completion notes, index it into the project's brain (knowledge base)
+  try {
+    if (task && task.status === 'done' && task.completion_notes && task.completion_notes.trim().length > 0) {
+      const title = `[Concluído] ${task.title}`;
+      const content = `Tarefa: ${task.title}\nTipo: ${task.type || 'feature'}\nPrioridade: ${task.priority || 'medium'}\nConcluída em: ${(task.completed_at || new Date().toISOString())}\n\n${task.description ? `Descrição original:\n${task.description}\n\n` : ''}O que foi feito e como funciona:\n${task.completion_notes}`;
+      const tokens = Math.ceil(content.length / 4);
+      if (task.knowledge_id) {
+        await query(
+          `UPDATE dev_knowledge SET title = $1, content = $2, tokens = $3 WHERE id = $4`,
+          [title, content, tokens, task.knowledge_id]
+        );
+      } else {
+        const ki = await query(
+          `INSERT INTO dev_knowledge (project_id, kind, title, content, tokens)
+           VALUES ($1, 'completion', $2, $3, $4) RETURNING id`,
+          [task.project_id, title, content, tokens]
+        );
+        await query(`UPDATE dev_tasks SET knowledge_id = $1 WHERE id = $2`, [ki.rows[0].id, task.id]);
+        task.knowledge_id = ki.rows[0].id;
+      }
+    }
+  } catch (e) {
+    console.error('dev-workspace completion->knowledge error:', e.message);
+  }
+  res.json(task);
 });
 
 router.delete('/tasks/:id', async (req, res) => {
