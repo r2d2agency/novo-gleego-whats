@@ -47,6 +47,13 @@ const TASK_TYPE_LABEL: Record<string, string> = {
   chore: "Chore",
 };
 const PRIORITY = ["low", "medium", "high"];
+
+function moduleLabel(m: any, all: any[]): string {
+  if (!m) return "";
+  if (!m.parent_id) return m.name;
+  const parent = all.find((x) => x.id === m.parent_id);
+  return parent ? `${parent.name} → ${m.name}` : m.name;
+}
 const PHASE_STATUS = [
   { v: "planned", label: "Planejada" },
   { v: "in_progress", label: "Em andamento" },
