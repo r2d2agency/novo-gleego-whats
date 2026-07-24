@@ -104,6 +104,9 @@ const router = Router();
     await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS contact_email TEXT`);
     await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS completion_notes TEXT`);
     await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS knowledge_id UUID`);
+    // Sub-modules: hierarchical modules via parent_id
+    await query(`ALTER TABLE dev_modules ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES dev_modules(id) ON DELETE CASCADE`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_dev_modules_parent ON dev_modules(parent_id)`);
   } catch (e) { console.error('dev-workspace init error:', e.message); }
 })();
 
