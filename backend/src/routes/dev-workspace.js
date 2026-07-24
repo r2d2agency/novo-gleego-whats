@@ -790,13 +790,17 @@ router.get('/projects/:id/modules', async (req, res) => {
 router.post('/projects/:id/modules', async (req, res) => {
   const acc = await assertProjectAccess(req.userId, req.params.id);
   if (!acc) return res.status(404).json({ error: 'Projeto não encontrado' });
-  const { name, description, color, icon } = req.body || {};
+  const { name, description, color, icon, parent_id } = req.body || {};
   if (!name) return res.status(400).json({ error: 'name obrigatório' });
-  const pos = (await query(`SELECT COALESCE(MAX(position),-1)+1 AS p FROM dev_modules WHERE project_id = $1`, [req.params.id])).rows[0].p;
+  const parent = parent_id || null;
+  const pos = (await query(
+    `SELECT COALESCE(MAX(position),-1)+1 AS p FROM dev_modules WHERE project_id = $1 AND parent_id IS NOT DISTINCT FROM $2`,
+    [req.params.id, parent]
+  )).rows[0].p;
   const r = await query(
-    `INSERT INTO dev_modules (project_id, name, description, color, icon, position)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [req.params.id, name, description || null, color || '#6366f1', icon || null, pos]
+    `INSERT INTO dev_modules (project_id, name, description, color, icon, position, parent_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [req.params.id, name, description || null, color || '#6366f1', icon || null, pos, parent]
   );
   res.status(201).json(r.rows[0]);
 });
@@ -806,9 +810,12 @@ router.patch('/modules/:id', async (req, res) => {
   if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
   const acc = await assertProjectAccess(req.userId, r.rows[0].project_id);
   if (!acc) return res.status(403).json({ error: 'Acesso negado' });
-  const fields = ['name', 'description', 'color', 'icon', 'position'];
+  const fields = ['name', 'description', 'color', 'icon', 'position', 'parent_id'];
   const sets = []; const vals = []; let i = 1;
-  for (const f of fields) if (req.body[f] !== undefined) { sets.push(`${f} = $${i++}`); vals.push(req.body[f]); }
+  for (const f of fields) if (req.body[f] !== undefined) {
+    sets.push(`${f} = $${i++}`);
+    vals.push(f === 'parent_id' ? (req.body[f] || null) : req.body[f]);
+  }
   if (sets.length === 0) return res.json({ ok: true });
   vals.push(req.params.id);
   const upd = await query(`UPDATE dev_modules SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, vals);
