@@ -444,7 +444,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
               <div className="grid grid-cols-2 gap-2">
                 <Select value={nt.type} onValueChange={(v) => setNt({ ...nt, type: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{TASK_TYPES.map(t => <SelectItem key={t} value={t}>{TASK_TYPE_LABEL[t]}</SelectItem>)}</SelectContent></Select>
                 <Select value={nt.priority} onValueChange={(v) => setNt({ ...nt, priority: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{PRIORITY.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select>
-                <Select value={nt.module_id || undefined} onValueChange={(v) => setNt({ ...nt, module_id: v })}><SelectTrigger><SelectValue placeholder="Módulo" /></SelectTrigger><SelectContent>{modules.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select>
+                <Select value={nt.module_id || undefined} onValueChange={(v) => setNt({ ...nt, module_id: v })}><SelectTrigger><SelectValue placeholder="Módulo" /></SelectTrigger><SelectContent>{modules.map((m: any) => <SelectItem key={m.id} value={m.id}>{moduleLabel(m, modules)}</SelectItem>)}</SelectContent></Select>
                 <Select value={nt.phase_id || undefined} onValueChange={(v) => setNt({ ...nt, phase_id: v })}><SelectTrigger><SelectValue placeholder="Fase" /></SelectTrigger><SelectContent>{phases.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
               </div>
             </div>
