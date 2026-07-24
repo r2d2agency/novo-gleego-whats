@@ -342,7 +342,7 @@ function PhasesTab({ id, modules, phases }: any) {
           <Select value={form.module_id || undefined} onValueChange={(v) => setForm({ ...form, module_id: v })}>
             <SelectTrigger><SelectValue placeholder="Módulo (opcional)" /></SelectTrigger>
             <SelectContent>
-              {modules.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+              {modules.map((m: any) => <SelectItem key={m.id} value={m.id}>{moduleLabel(m, modules)}</SelectItem>)}
             </SelectContent>
           </Select>
           <Input placeholder="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
