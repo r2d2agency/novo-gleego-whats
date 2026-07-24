@@ -134,6 +134,19 @@ export function useDevTaskStatusMutation() {
   });
 }
 
+export function useDevTaskUpdateGlobal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...rest }: { id: string } & Partial<DevTask>) =>
+      api(`${base}/tasks/${id}`, { method: "PATCH", body: rest, auth: true }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dev-tasks-all"] });
+      qc.invalidateQueries({ queryKey: ["dev-tasks"] });
+    },
+    onError: (e: any) => toast.error(e?.message || "Falha ao atualizar"),
+  });
+}
+
 export function useDevTaskMutations(projectId: string | null) {
   const qc = useQueryClient();
   const inv = () => qc.invalidateQueries({ queryKey: ["dev-tasks", projectId] });

@@ -424,7 +424,29 @@ function TasksTab({ id, modules, phases, tasks }: any) {
                   <Badge variant={t.priority === "high" ? "destructive" : "secondary"}>{t.priority}</Badge>
                   {t.source === "client" && <Badge className="bg-blue-500">cliente</Badge>}
                   {t.source === "ai" && <Badge className="bg-purple-500">IA</Badge>}
+                  {mod && (
+                    <Badge
+                      variant="outline"
+                      className="gap-1"
+                      style={{ borderColor: `${mod.color}66`, background: `${mod.color}1a`, color: mod.color }}
+                    >
+                      <span className="w-2 h-2 rounded-full" style={{ background: mod.color }} />
+                      {mod.name}
+                    </Badge>
+                  )}
                   <Input defaultValue={t.title} onBlur={(e) => e.target.value !== t.title && update.mutate({ id: t.id, title: e.target.value })} className="flex-1 min-w-[180px]" />
+                  <Select
+                    value={t.module_id || "__none"}
+                    onValueChange={(v) => update.mutate({ id: t.id, module_id: v === "__none" ? null : v })}
+                  >
+                    <SelectTrigger className="w-40"><SelectValue placeholder="Módulo" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none">Sem módulo</SelectItem>
+                      {modules.map((m: any) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Select value={t.status} onValueChange={(v) => update.mutate({ id: t.id, status: v })}>
                     <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
                     <SelectContent>{TASK_STATUS.map(s => <SelectItem key={s.v} value={s.v}>{s.label}</SelectItem>)}</SelectContent>

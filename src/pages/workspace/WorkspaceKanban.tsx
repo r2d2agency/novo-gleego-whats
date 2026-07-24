@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Calendar, Clock, Loader2, LayoutGrid, MessageSquare, AlertTriangle, GripVertical } from "lucide-react";
-import { useDevAllTasks, useDevTaskStatusMutation, DevTaskGlobal } from "@/hooks/use-dev-workspace";
+import { useDevAllTasks, useDevTaskStatusMutation, useDevTaskUpdateGlobal, useDevModules, DevTaskGlobal } from "@/hooks/use-dev-workspace";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Brain } from "lucide-react";
+import { Brain, Layers, Check } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   useDraggable, useDroppable, closestCorners, DragStartEvent, DragEndEvent,
@@ -35,12 +36,65 @@ function daysSince(iso?: string | null) {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
 }
 
+function ModulePicker({ task }: { task: DevTaskGlobal }) {
+  const [open, setOpen] = useState(false);
+  const { data: modules, isLoading } = useDevModules(open ? task.project_id : null);
+  const upd = useDevTaskUpdateGlobal();
+  const color = task.module_color || "#94a3b8";
+  const label = task.module_name || "Sem módulo";
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded border hover:bg-muted/70 transition-colors max-w-[160px]"
+          style={{ borderColor: `${color}66`, background: `${color}1a`, color }}
+          title="Alterar módulo"
+        >
+          <Layers className="h-3 w-3 shrink-0" />
+          <span className="truncate">{label}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56 p-1" align="start" onClick={(e) => e.stopPropagation()}>
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground px-2 py-1">Módulo</div>
+        <button
+          className="w-full flex items-center gap-2 text-sm px-2 py-1.5 rounded hover:bg-muted text-left"
+          onClick={() => { upd.mutate({ id: task.id, module_id: null as any }); setOpen(false); }}
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-muted-foreground/40" />
+          <span className="flex-1">Sem módulo</span>
+          {!task.module_id && <Check className="h-3.5 w-3.5" />}
+        </button>
+        {isLoading && <div className="px-2 py-2 text-xs text-muted-foreground">Carregando…</div>}
+        {(modules || []).map((m) => (
+          <button
+            key={m.id}
+            className="w-full flex items-center gap-2 text-sm px-2 py-1.5 rounded hover:bg-muted text-left"
+            onClick={() => { upd.mutate({ id: task.id, module_id: m.id }); setOpen(false); }}
+          >
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: m.color || "#6366f1" }} />
+            <span className="flex-1 truncate">{m.name}</span>
+            {task.module_id === m.id && <Check className="h-3.5 w-3.5" />}
+          </button>
+        ))}
+        {!isLoading && (modules || []).length === 0 && (
+          <div className="px-2 py-2 text-xs text-muted-foreground">Nenhum módulo no projeto</div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function TaskCardBody({ task, dragHandle }: { task: DevTaskGlobal; dragHandle?: React.ReactNode }) {
   const daysOpen = daysSince(task.created_at);
   const dueLeft = task.due_date ? Math.round((new Date(task.due_date).getTime() - Date.now()) / 86400000) : null;
   const overdue = dueLeft !== null && dueLeft < 0 && task.status !== "done";
+  const accent = task.module_color || "#94a3b8";
   return (
-    <Card className="border hover:border-primary/40 transition-colors bg-card">
+    <Card
+      className="border hover:border-primary/40 transition-colors bg-card border-l-4"
+      style={{ borderLeftColor: accent }}
+    >
       <CardContent className="p-3 space-y-2">
         <div className="flex items-start gap-2">
           {dragHandle}
@@ -53,10 +107,17 @@ function TaskCardBody({ task, dragHandle }: { task: DevTaskGlobal; dragHandle?: 
                 </Badge>
               )}
             </div>
-            <Link to={`/workspace/${task.project_id}`} className="text-[11px] text-muted-foreground hover:text-primary flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
-              <span className="w-2 h-2 rounded-full" style={{ background: task.module_color || "#94a3b8" }} />
-              <span className="truncate">{task.project_name}</span>
-            </Link>
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <ModulePicker task={task} />
+              <Link
+                to={`/workspace/${task.project_id}`}
+                className="text-[11px] text-muted-foreground hover:text-primary truncate max-w-[140px]"
+                onClick={(e) => e.stopPropagation()}
+                title={task.project_name}
+              >
+                {task.project_name}
+              </Link>
+            </div>
           </div>
         </div>
 
