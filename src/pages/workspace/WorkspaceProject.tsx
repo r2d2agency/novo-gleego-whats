@@ -478,7 +478,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
                       style={{ borderColor: `${mod.color}66`, background: `${mod.color}1a`, color: mod.color }}
                     >
                       <span className="w-2 h-2 rounded-full" style={{ background: mod.color }} />
-                      {mod.name}
+                      {moduleLabel(mod, modules)}
                     </Badge>
                   )}
                   <Input defaultValue={t.title} onBlur={(e) => e.target.value !== t.title && update.mutate({ id: t.id, title: e.target.value })} className="flex-1 min-w-[180px]" />
@@ -490,7 +490,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
                     <SelectContent>
                       <SelectItem value="__none">Sem módulo</SelectItem>
                       {modules.map((m: any) => (
-                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                        <SelectItem key={m.id} value={m.id}>{moduleLabel(m, modules)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -500,7 +500,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
                   </Select>
                   <Button size="icon" variant="ghost" onClick={() => remove.mutate(t.id)}><Trash2 className="h-4 w-4" /></Button>
                 </div>
-                {(mod || ph) && <div className="text-xs text-muted-foreground pl-1">{mod?.name} {ph && `• ${ph.name}`}</div>}
+                {(mod || ph) && <div className="text-xs text-muted-foreground pl-1">{mod ? moduleLabel(mod, modules) : ""} {ph && `• ${ph.name}`}</div>}
                 {t.description && <p className="text-xs text-muted-foreground pl-1 whitespace-pre-wrap">{t.description}</p>}
                 {t.ai_reasoning && <p className="text-xs text-purple-600 italic pl-1">IA: {t.ai_reasoning}</p>}
                 <SolutionEditor task={t} update={update} />
