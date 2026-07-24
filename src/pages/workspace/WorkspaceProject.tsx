@@ -391,6 +391,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
                 {(mod || ph) && <div className="text-xs text-muted-foreground pl-1">{mod?.name} {ph && `• ${ph.name}`}</div>}
                 {t.description && <p className="text-xs text-muted-foreground pl-1 whitespace-pre-wrap">{t.description}</p>}
                 {t.ai_reasoning && <p className="text-xs text-purple-600 italic pl-1">IA: {t.ai_reasoning}</p>}
+                <SolutionEditor task={t} update={update} />
               </div>
             );
           })}
