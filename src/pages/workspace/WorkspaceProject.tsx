@@ -327,6 +327,49 @@ function PhasesTab({ id, modules, phases }: any) {
 }
 
 // -------------------- TASKS --------------------
+function SolutionEditor({ task, update }: { task: any; update: any }) {
+  const [open, setOpen] = useState(false);
+  const [notes, setNotes] = useState<string>(task.completion_notes || "");
+  const has = !!(task.completion_notes && task.completion_notes.trim());
+  const save = async (markDone: boolean) => {
+    const body: any = { id: task.id, completion_notes: notes };
+    if (markDone) body.status = "done";
+    await update.mutateAsync(body);
+    toast.success(markDone ? "Solução salva e enviada ao cérebro" : "Solução salva");
+    setOpen(false);
+  };
+  return (
+    <div className="pl-1">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="text-[11px] text-primary hover:underline flex items-center gap-1"
+      >
+        <Wand2 className="h-3 w-3" />
+        {has ? "Editar solução aplicada" : "Adicionar solução aplicada"}
+        {has && <Badge variant="outline" className="ml-1 text-[10px] py-0 px-1">no cérebro</Badge>}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2 border rounded p-2 bg-muted/30">
+          <Textarea
+            rows={4}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="O que foi feito e como funciona? (essa anotação vai para o cérebro do projeto e alimenta a IA)"
+          />
+          <div className="flex gap-2 justify-end">
+            <Button size="sm" variant="ghost" onClick={() => { setNotes(task.completion_notes || ""); setOpen(false); }}>Cancelar</Button>
+            <Button size="sm" variant="outline" disabled={!notes.trim() || update.isPending} onClick={() => save(false)}>Salvar</Button>
+            {task.status !== "done" && (
+              <Button size="sm" disabled={!notes.trim() || update.isPending} onClick={() => save(true)}>Salvar e concluir</Button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TasksTab({ id, modules, phases, tasks }: any) {
   const { create, update, remove } = useDevTaskMutations(id);
   const [filter, setFilter] = useState<string>("all");
@@ -391,6 +434,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
                 {(mod || ph) && <div className="text-xs text-muted-foreground pl-1">{mod?.name} {ph && `• ${ph.name}`}</div>}
                 {t.description && <p className="text-xs text-muted-foreground pl-1 whitespace-pre-wrap">{t.description}</p>}
                 {t.ai_reasoning && <p className="text-xs text-purple-600 italic pl-1">IA: {t.ai_reasoning}</p>}
+                <SolutionEditor task={t} update={update} />
               </div>
             );
           })}
