@@ -260,22 +260,62 @@ function SetupTab({ id, projectDescription }: any) {
 function ModulesTab({ id, modules }: any) {
   const { create, update, remove } = useDevModuleMutations(id);
   const [name, setName] = useState("");
+  const [subName, setSubName] = useState<Record<string, string>>({});
+  const roots = (modules as any[]).filter((m) => !m.parent_id);
+  const childrenOf = (parentId: string) =>
+    (modules as any[]).filter((m) => m.parent_id === parentId);
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Módulos</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="text-base">Módulos</CardTitle>
+        <p className="text-xs text-muted-foreground">Organize em módulos e subitens para maior precisão (ex.: Chat → Notificações, Chat → Anexos).</p>
+      </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex gap-2">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do módulo" />
           <Button onClick={() => { if (name) { create.mutate({ name }); setName(""); } }}><Plus className="h-4 w-4" /></Button>
         </div>
         <div className="space-y-2">
-          {modules.map((m: any) => (
-            <div key={m.id} className="flex items-center gap-2 border rounded p-2">
-              <input type="color" value={m.color} onChange={(e) => update.mutate({ id: m.id, color: e.target.value })} className="w-8 h-8 rounded cursor-pointer" />
-              <Input defaultValue={m.name} onBlur={(e) => e.target.value !== m.name && update.mutate({ id: m.id, name: e.target.value })} className="flex-1" />
-              <Button size="icon" variant="ghost" onClick={() => remove.mutate(m.id)}><Trash2 className="h-4 w-4" /></Button>
-            </div>
-          ))}
+          {roots.map((m: any) => {
+            const kids = childrenOf(m.id);
+            return (
+              <div key={m.id} className="border rounded">
+                <div className="flex items-center gap-2 p-2">
+                  <input type="color" value={m.color} onChange={(e) => update.mutate({ id: m.id, color: e.target.value })} className="w-8 h-8 rounded cursor-pointer" />
+                  <Input defaultValue={m.name} onBlur={(e) => e.target.value !== m.name && update.mutate({ id: m.id, name: e.target.value })} className="flex-1" />
+                  <Button size="icon" variant="ghost" onClick={() => remove.mutate(m.id)}><Trash2 className="h-4 w-4" /></Button>
+                </div>
+                <div className="pl-6 pr-2 pb-2 space-y-1 border-l-2 ml-4" style={{ borderColor: m.color }}>
+                  {kids.map((s: any) => (
+                    <div key={s.id} className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">└</span>
+                      <input type="color" value={s.color} onChange={(e) => update.mutate({ id: s.id, color: e.target.value })} className="w-6 h-6 rounded cursor-pointer" />
+                      <Input defaultValue={s.name} onBlur={(e) => e.target.value !== s.name && update.mutate({ id: s.id, name: e.target.value })} className="flex-1 h-8" />
+                      <Button size="icon" variant="ghost" onClick={() => remove.mutate(s.id)}><Trash2 className="h-3 w-3" /></Button>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2 pt-1">
+                    <Input
+                      value={subName[m.id] || ""}
+                      onChange={(e) => setSubName({ ...subName, [m.id]: e.target.value })}
+                      placeholder="Novo subitem"
+                      className="h-8"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const n = (subName[m.id] || "").trim();
+                        if (!n) return;
+                        create.mutate({ name: n, parent_id: m.id, color: m.color } as any);
+                        setSubName({ ...subName, [m.id]: "" });
+                      }}
+                    ><Plus className="h-3 w-3" /></Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
           {modules.length === 0 && <p className="text-sm text-muted-foreground">Nenhum módulo. Adicione ou use o setup por IA.</p>}
         </div>
       </CardContent>
