@@ -66,17 +66,20 @@ function ModulePicker({ task }: { task: DevTaskGlobal }) {
           {!task.module_id && <Check className="h-3.5 w-3.5" />}
         </button>
         {isLoading && <div className="px-2 py-2 text-xs text-muted-foreground">Carregando…</div>}
-        {(modules || []).map((m) => (
-          <button
-            key={m.id}
-            className="w-full flex items-center gap-2 text-sm px-2 py-1.5 rounded hover:bg-muted text-left"
-            onClick={() => { upd.mutate({ id: task.id, module_id: m.id }); setOpen(false); }}
-          >
-            <span className="w-2.5 h-2.5 rounded-full" style={{ background: m.color || "#6366f1" }} />
-            <span className="flex-1 truncate">{m.name}</span>
-            {task.module_id === m.id && <Check className="h-3.5 w-3.5" />}
-          </button>
-        ))}
+        {(modules || []).map((m) => {
+          const parent = m.parent_id ? (modules || []).find((x) => x.id === m.parent_id) : null;
+          return (
+            <button
+              key={m.id}
+              className="w-full flex items-center gap-2 text-sm px-2 py-1.5 rounded hover:bg-muted text-left"
+              onClick={() => { upd.mutate({ id: task.id, module_id: m.id }); setOpen(false); }}
+            >
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: m.color || "#6366f1" }} />
+              <span className="flex-1 truncate">{parent ? `${parent.name} → ${m.name}` : m.name}</span>
+              {task.module_id === m.id && <Check className="h-3.5 w-3.5" />}
+            </button>
+          );
+        })}
         {!isLoading && (modules || []).length === 0 && (
           <div className="px-2 py-2 text-xs text-muted-foreground">Nenhum módulo no projeto</div>
         )}

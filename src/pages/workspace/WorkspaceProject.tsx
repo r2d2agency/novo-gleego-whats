@@ -47,6 +47,13 @@ const TASK_TYPE_LABEL: Record<string, string> = {
   chore: "Chore",
 };
 const PRIORITY = ["low", "medium", "high"];
+
+function moduleLabel(m: any, all: any[]): string {
+  if (!m) return "";
+  if (!m.parent_id) return m.name;
+  const parent = all.find((x) => x.id === m.parent_id);
+  return parent ? `${parent.name} → ${m.name}` : m.name;
+}
 const PHASE_STATUS = [
   { v: "planned", label: "Planejada" },
   { v: "in_progress", label: "Em andamento" },
@@ -260,22 +267,62 @@ function SetupTab({ id, projectDescription }: any) {
 function ModulesTab({ id, modules }: any) {
   const { create, update, remove } = useDevModuleMutations(id);
   const [name, setName] = useState("");
+  const [subName, setSubName] = useState<Record<string, string>>({});
+  const roots = (modules as any[]).filter((m) => !m.parent_id);
+  const childrenOf = (parentId: string) =>
+    (modules as any[]).filter((m) => m.parent_id === parentId);
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Módulos</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="text-base">Módulos</CardTitle>
+        <p className="text-xs text-muted-foreground">Organize em módulos e subitens para maior precisão (ex.: Chat → Notificações, Chat → Anexos).</p>
+      </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex gap-2">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do módulo" />
           <Button onClick={() => { if (name) { create.mutate({ name }); setName(""); } }}><Plus className="h-4 w-4" /></Button>
         </div>
         <div className="space-y-2">
-          {modules.map((m: any) => (
-            <div key={m.id} className="flex items-center gap-2 border rounded p-2">
-              <input type="color" value={m.color} onChange={(e) => update.mutate({ id: m.id, color: e.target.value })} className="w-8 h-8 rounded cursor-pointer" />
-              <Input defaultValue={m.name} onBlur={(e) => e.target.value !== m.name && update.mutate({ id: m.id, name: e.target.value })} className="flex-1" />
-              <Button size="icon" variant="ghost" onClick={() => remove.mutate(m.id)}><Trash2 className="h-4 w-4" /></Button>
-            </div>
-          ))}
+          {roots.map((m: any) => {
+            const kids = childrenOf(m.id);
+            return (
+              <div key={m.id} className="border rounded">
+                <div className="flex items-center gap-2 p-2">
+                  <input type="color" value={m.color} onChange={(e) => update.mutate({ id: m.id, color: e.target.value })} className="w-8 h-8 rounded cursor-pointer" />
+                  <Input defaultValue={m.name} onBlur={(e) => e.target.value !== m.name && update.mutate({ id: m.id, name: e.target.value })} className="flex-1" />
+                  <Button size="icon" variant="ghost" onClick={() => remove.mutate(m.id)}><Trash2 className="h-4 w-4" /></Button>
+                </div>
+                <div className="pl-6 pr-2 pb-2 space-y-1 border-l-2 ml-4" style={{ borderColor: m.color }}>
+                  {kids.map((s: any) => (
+                    <div key={s.id} className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">└</span>
+                      <input type="color" value={s.color} onChange={(e) => update.mutate({ id: s.id, color: e.target.value })} className="w-6 h-6 rounded cursor-pointer" />
+                      <Input defaultValue={s.name} onBlur={(e) => e.target.value !== s.name && update.mutate({ id: s.id, name: e.target.value })} className="flex-1 h-8" />
+                      <Button size="icon" variant="ghost" onClick={() => remove.mutate(s.id)}><Trash2 className="h-3 w-3" /></Button>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2 pt-1">
+                    <Input
+                      value={subName[m.id] || ""}
+                      onChange={(e) => setSubName({ ...subName, [m.id]: e.target.value })}
+                      placeholder="Novo subitem"
+                      className="h-8"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const n = (subName[m.id] || "").trim();
+                        if (!n) return;
+                        create.mutate({ name: n, parent_id: m.id, color: m.color } as any);
+                        setSubName({ ...subName, [m.id]: "" });
+                      }}
+                    ><Plus className="h-3 w-3" /></Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
           {modules.length === 0 && <p className="text-sm text-muted-foreground">Nenhum módulo. Adicione ou use o setup por IA.</p>}
         </div>
       </CardContent>
@@ -295,7 +342,7 @@ function PhasesTab({ id, modules, phases }: any) {
           <Select value={form.module_id || undefined} onValueChange={(v) => setForm({ ...form, module_id: v })}>
             <SelectTrigger><SelectValue placeholder="Módulo (opcional)" /></SelectTrigger>
             <SelectContent>
-              {modules.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+              {modules.map((m: any) => <SelectItem key={m.id} value={m.id}>{moduleLabel(m, modules)}</SelectItem>)}
             </SelectContent>
           </Select>
           <Input placeholder="Nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -397,7 +444,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
               <div className="grid grid-cols-2 gap-2">
                 <Select value={nt.type} onValueChange={(v) => setNt({ ...nt, type: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{TASK_TYPES.map(t => <SelectItem key={t} value={t}>{TASK_TYPE_LABEL[t]}</SelectItem>)}</SelectContent></Select>
                 <Select value={nt.priority} onValueChange={(v) => setNt({ ...nt, priority: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{PRIORITY.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select>
-                <Select value={nt.module_id || undefined} onValueChange={(v) => setNt({ ...nt, module_id: v })}><SelectTrigger><SelectValue placeholder="Módulo" /></SelectTrigger><SelectContent>{modules.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select>
+                <Select value={nt.module_id || undefined} onValueChange={(v) => setNt({ ...nt, module_id: v })}><SelectTrigger><SelectValue placeholder="Módulo" /></SelectTrigger><SelectContent>{modules.map((m: any) => <SelectItem key={m.id} value={m.id}>{moduleLabel(m, modules)}</SelectItem>)}</SelectContent></Select>
                 <Select value={nt.phase_id || undefined} onValueChange={(v) => setNt({ ...nt, phase_id: v })}><SelectTrigger><SelectValue placeholder="Fase" /></SelectTrigger><SelectContent>{phases.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select>
               </div>
             </div>
@@ -431,7 +478,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
                       style={{ borderColor: `${mod.color}66`, background: `${mod.color}1a`, color: mod.color }}
                     >
                       <span className="w-2 h-2 rounded-full" style={{ background: mod.color }} />
-                      {mod.name}
+                      {moduleLabel(mod, modules)}
                     </Badge>
                   )}
                   <Input defaultValue={t.title} onBlur={(e) => e.target.value !== t.title && update.mutate({ id: t.id, title: e.target.value })} className="flex-1 min-w-[180px]" />
@@ -443,7 +490,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
                     <SelectContent>
                       <SelectItem value="__none">Sem módulo</SelectItem>
                       {modules.map((m: any) => (
-                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                        <SelectItem key={m.id} value={m.id}>{moduleLabel(m, modules)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -453,7 +500,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
                   </Select>
                   <Button size="icon" variant="ghost" onClick={() => remove.mutate(t.id)}><Trash2 className="h-4 w-4" /></Button>
                 </div>
-                {(mod || ph) && <div className="text-xs text-muted-foreground pl-1">{mod?.name} {ph && `• ${ph.name}`}</div>}
+                {(mod || ph) && <div className="text-xs text-muted-foreground pl-1">{mod ? moduleLabel(mod, modules) : ""} {ph && `• ${ph.name}`}</div>}
                 {t.description && <p className="text-xs text-muted-foreground pl-1 whitespace-pre-wrap">{t.description}</p>}
                 {t.ai_reasoning && <p className="text-xs text-purple-600 italic pl-1">IA: {t.ai_reasoning}</p>}
                 <SolutionEditor task={t} update={update} />
