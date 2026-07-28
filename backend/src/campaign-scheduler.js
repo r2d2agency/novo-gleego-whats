@@ -488,6 +488,8 @@ export async function executeCampaignMessages() {
           wapi_token: msg.wapi_token,
           uazapi_url: msg.uazapi_url,
           uazapi_token: msg.uazapi_token,
+          meta_token: msg.meta_token,
+          meta_phone_number_id: msg.meta_phone_number_id,
         };
 
         // Build contact object for variable replacement
