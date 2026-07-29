@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Send, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, Send, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft } from "lucide-react";
 import { getPublicForm, submitPublicForm, ExternalForm, FormField } from "@/hooks/use-external-forms";
 
 interface ChatMessage {
@@ -75,14 +75,16 @@ export default function PublicFormPage() {
     
     setForm(result);
     setLoading(false);
-    
-    // Start chat with welcome message
-    setTimeout(() => {
-      addBotMessage(result.welcome_message || "Olá! Vamos começar?");
+
+    const mode = result.display_mode || "chat";
+    if (mode === "chat") {
       setTimeout(() => {
-        askNextQuestion(0, result.fields || []);
-      }, 800);
-    }, 500);
+        addBotMessage(result.welcome_message || "Olá! Vamos começar?");
+        setTimeout(() => {
+          askNextQuestion(0, result.fields || []);
+        }, 800);
+      }, 500);
+    }
   };
 
   const addBotMessage = (content: string, field?: FormField) => {
