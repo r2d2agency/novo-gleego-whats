@@ -359,7 +359,15 @@ export function ExternalFormEditorDialog({
                                     value={(field.options || []).join("\n")}
                                     onChange={(e) =>
                                       updateField(index, {
-                                        options: e.target.value.split("\n").filter(Boolean),
+                                        options: e.target.value.split("\n"),
+                                      })
+                                    }
+                                    onBlur={(e) =>
+                                      updateField(index, {
+                                        options: e.target.value
+                                          .split("\n")
+                                          .map((s) => s.trim())
+                                          .filter(Boolean),
                                       })
                                     }
                                     placeholder="Opção 1&#10;Opção 2&#10;Opção 3"
