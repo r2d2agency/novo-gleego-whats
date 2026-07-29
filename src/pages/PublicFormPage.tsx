@@ -285,6 +285,62 @@ export default function PublicFormPage() {
   const bgColor = form.background_color || "#ffffff";
   const textColor = form.text_color || "#1f2937";
 
+  const mode = (form.display_mode as "chat" | "typeform" | "standard") || "chat";
+
+  const doSubmit = async (data: Record<string, string>) => {
+    if (!slug) return null;
+    setSubmitting(true);
+    try {
+      const result = await submitPublicForm(slug, data, {
+        utm_source: searchParams.get("utm_source") || undefined,
+        utm_medium: searchParams.get("utm_medium") || undefined,
+        utm_campaign: searchParams.get("utm_campaign") || undefined,
+        referrer: document.referrer || undefined,
+      });
+      setSubmitted(true);
+      setThankYouMessage(result.thank_you_message || form.thank_you_message || "Obrigado!");
+      if (result.redirect_url) {
+        setTimeout(() => { window.location.href = result.redirect_url!; }, 2000);
+      }
+      return result;
+    } catch (err: any) {
+      alert(`Erro ao enviar: ${err.message}`);
+      return null;
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (mode === "typeform") {
+    return (
+      <TypeformView
+        form={form}
+        primaryColor={primaryColor}
+        bgColor={bgColor}
+        textColor={textColor}
+        submitted={submitted}
+        submitting={submitting}
+        thankYouMessage={thankYouMessage}
+        onSubmit={doSubmit}
+      />
+    );
+  }
+
+  if (mode === "standard") {
+    return (
+      <StandardView
+        form={form}
+        primaryColor={primaryColor}
+        bgColor={bgColor}
+        textColor={textColor}
+        submitted={submitted}
+        submitting={submitting}
+        thankYouMessage={thankYouMessage}
+        onSubmit={doSubmit}
+      />
+    );
+  }
+
   return (
     <div
       className="min-h-screen flex flex-col"
