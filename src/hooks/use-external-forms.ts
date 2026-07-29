@@ -35,6 +35,7 @@ export interface ExternalForm {
   redirect_url?: string;
   trigger_flow_id?: string;
   connection_id?: string;
+  display_mode?: "chat" | "typeform" | "standard";
   
   // Stats
   views_count: number;

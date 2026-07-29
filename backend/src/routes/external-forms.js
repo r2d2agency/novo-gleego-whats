@@ -116,6 +116,7 @@ router.post('/', authenticate, async (req, res) => {
       redirect_url,
       trigger_flow_id,
       connection_id,
+      display_mode,
       fields
     } = req.body;
 
@@ -131,8 +132,8 @@ router.post('/', authenticate, async (req, res) => {
         organization_id, name, slug, description, logo_url, 
         primary_color, background_color, text_color, button_text,
         welcome_message, thank_you_message, redirect_url,
-        trigger_flow_id, connection_id, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        trigger_flow_id, connection_id, created_by, display_mode
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *`,
       [
         org.organization_id, name, slug, description, logo_url,
@@ -140,7 +141,8 @@ router.post('/', authenticate, async (req, res) => {
         text_color || '#1f2937', button_text || 'Enviar',
         welcome_message || 'Olá! Vamos começar?',
         thank_you_message || 'Obrigado pelo contato! Em breve entraremos em contato.',
-        redirect_url, trigger_flow_id || null, connection_id || null, req.userId
+        redirect_url, trigger_flow_id || null, connection_id || null, req.userId,
+        ['chat', 'typeform', 'standard'].includes(display_mode) ? display_mode : 'chat'
       ]
     );
 
@@ -205,6 +207,7 @@ router.put('/:id', authenticate, async (req, res) => {
       redirect_url,
       trigger_flow_id,
       connection_id,
+      display_mode,
       fields
     } = req.body;
 
@@ -224,13 +227,15 @@ router.put('/:id', authenticate, async (req, res) => {
         redirect_url = $11,
         trigger_flow_id = $12,
         connection_id = $13,
+        display_mode = COALESCE($16, display_mode),
         updated_at = NOW()
        WHERE id = $14 AND organization_id = $15`,
       [
         name, description, is_active, logo_url, primary_color,
         background_color, text_color, button_text, welcome_message,
         thank_you_message, redirect_url, trigger_flow_id || null,
-        connection_id || null, req.params.id, org.organization_id
+        connection_id || null, req.params.id, org.organization_id,
+        ['chat', 'typeform', 'standard'].includes(display_mode) ? display_mode : null
       ]
     );
 
@@ -352,7 +357,7 @@ router.get('/public/:slug', async (req, res) => {
     const formResult = await query(
       `SELECT f.id, f.name, f.slug, f.description, f.logo_url,
         f.primary_color, f.background_color, f.text_color,
-        f.button_text, f.welcome_message, f.is_active,
+        f.button_text, f.welcome_message, f.is_active, f.display_mode,
         o.name as organization_name
        FROM external_forms f
        JOIN organizations o ON o.id = f.organization_id
