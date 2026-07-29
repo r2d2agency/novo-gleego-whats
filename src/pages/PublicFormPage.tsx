@@ -236,6 +236,22 @@ export default function PublicFormPage() {
 
   const currentField = form?.fields?.[currentFieldIndex];
 
+  // Normalize options: JSONB may arrive as array, JSON string, or newline text
+  const normalizeOptions = (opts: unknown): string[] => {
+    if (!opts) return [];
+    if (Array.isArray(opts)) return opts.map((o) => String(o).trim()).filter(Boolean);
+    if (typeof opts === "string") {
+      try {
+        const parsed = JSON.parse(opts);
+        if (Array.isArray(parsed)) return parsed.map((o) => String(o).trim()).filter(Boolean);
+      } catch {
+        return opts.split("\n").map((s) => s.trim()).filter(Boolean);
+      }
+    }
+    return [];
+  };
+  const currentOptions = currentField ? normalizeOptions((currentField as any).options) : [];
+
   // Loading state
   if (loading) {
     return (
@@ -335,7 +351,7 @@ export default function PublicFormPage() {
             className="border-t pt-4"
             style={{ borderColor: `${primaryColor}20` }}
           >
-            {currentField.field_type === "select" && currentField.options ? (
+            {currentField.field_type === "select" && currentOptions.length > 0 ? (
               <Select onValueChange={handleSelectChange}>
                 <SelectTrigger
                   className="w-full"
@@ -344,7 +360,7 @@ export default function PublicFormPage() {
                   <SelectValue placeholder="Selecione uma opção..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {currentField.options.map((option, idx) => (
+                  {currentOptions.map((option, idx) => (
                     <SelectItem key={idx} value={option}>
                       {option}
                     </SelectItem>
