@@ -80,6 +80,7 @@ export function ExternalFormEditorDialog({
     redirect_url: "",
     trigger_flow_id: "",
     connection_id: "",
+    display_mode: "chat" as "chat" | "typeform" | "standard",
   });
   
   const [fields, setFields] = useState<FormField[]>(DEFAULT_FIELDS);
@@ -123,6 +124,7 @@ export function ExternalFormEditorDialog({
         redirect_url: fullForm.redirect_url || "",
         trigger_flow_id: fullForm.trigger_flow_id || "",
         connection_id: fullForm.connection_id || "",
+        display_mode: (fullForm.display_mode as any) || "chat",
       });
       setFields(fullForm.fields || DEFAULT_FIELDS);
     }
@@ -142,6 +144,7 @@ export function ExternalFormEditorDialog({
       redirect_url: "",
       trigger_flow_id: "",
       connection_id: "",
+      display_mode: "chat",
     });
     setFields(DEFAULT_FIELDS);
     setActiveTab("fields");
@@ -399,6 +402,42 @@ export function ExternalFormEditorDialog({
           <TabsContent value="style" className="mt-4 flex-1 min-h-0">
             <ScrollArea className="h-[calc(90vh-280px)] min-h-[250px]">
               <div className="pr-4 space-y-4">
+                <div className="grid gap-2">
+                  <Label>Layout do Formulário</Label>
+                  <div className="grid sm:grid-cols-3 gap-2">
+                    {[
+                      { value: "chat", label: "Chat", desc: "Conversa em bolhas (atual)" },
+                      { value: "typeform", label: "Typeform", desc: "1 pergunta por vez com animação" },
+                      { value: "standard", label: "Padrão", desc: "Formulário clássico (embed)" },
+                    ].map((opt) => {
+                      const active = formData.display_mode === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, display_mode: opt.value as any })}
+                          className={`text-left border rounded-lg p-3 transition-all ${
+                            active
+                              ? "border-primary ring-2 ring-primary/30 bg-primary/5"
+                              : "border-border hover:border-primary/50"
+                          }`}
+                        >
+                          <div className="font-medium text-sm">{opt.label}</div>
+                          <div className="text-xs text-muted-foreground mt-1">{opt.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {formData.display_mode === "standard" && (
+                    <p className="text-xs text-muted-foreground">
+                      No modo padrão o formulário pode ser inserido em qualquer site via iframe:
+                      <code className="ml-1 px-1 py-0.5 rounded bg-muted">
+                        {`<iframe src="${window.location.origin}/f/SEU-SLUG" width="100%" height="600" frameborder="0"></iframe>`}
+                      </code>
+                    </p>
+                  )}
+                </div>
+
                 <div className="grid gap-2">
                   <Label>Logo (opcional)</Label>
                   <FileUploadInput
