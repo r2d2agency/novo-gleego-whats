@@ -499,3 +499,285 @@ export default function PublicFormPage() {
     </div>
   );
 }
+
+// ============ Shared helpers ============
+
+function normalizeOpts(opts: unknown): string[] {
+  if (!opts) return [];
+  if (Array.isArray(opts)) return opts.map((o) => String(o).trim()).filter(Boolean);
+  if (typeof opts === "string") {
+    try {
+      const parsed = JSON.parse(opts);
+      if (Array.isArray(parsed)) return parsed.map((o) => String(o).trim()).filter(Boolean);
+    } catch {
+      return opts.split("\n").map((s) => s.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function validateField(value: string, field: FormField): string | null {
+  if (field.is_required && !value.trim()) return "Este campo é obrigatório.";
+  if (field.field_type === "email" && value.trim()) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "E-mail inválido.";
+  }
+  if (field.field_type === "phone" && value.trim()) {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length < 10 || digits.length > 15) return "Telefone inválido.";
+  }
+  return null;
+}
+
+interface ViewProps {
+  form: ExternalForm;
+  primaryColor: string;
+  bgColor: string;
+  textColor: string;
+  submitted: boolean;
+  submitting: boolean;
+  thankYouMessage: string;
+  onSubmit: (data: Record<string, string>) => Promise<any>;
+}
+
+// ============ TYPEFORM VIEW ============
+function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit }: ViewProps) {
+  const fields = form.fields || [];
+  const [index, setIndex] = useState(0);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [animKey, setAnimKey] = useState(0);
+
+  const total = fields.length;
+  const current = fields[index];
+  const progress = total ? Math.round(((index) / total) * 100) : 0;
+
+  useEffect(() => {
+    setAnimKey((k) => k + 1);
+    setError(null);
+  }, [index]);
+
+  const goNext = async () => {
+    if (!current) return;
+    const val = values[current.field_key] || "";
+    const err = validateField(val, current);
+    if (err) { setError(err); return; }
+    if (index + 1 >= total) {
+      await onSubmit(values);
+    } else {
+      setIndex(index + 1);
+    }
+  };
+
+  const goPrev = () => { if (index > 0) setIndex(index - 1); };
+
+  const setVal = (v: string) => setValues({ ...values, [current.field_key]: v });
+  const opts = current ? normalizeOpts((current as any).options) : [];
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-8" style={{ backgroundColor: bgColor, color: textColor }}>
+        <CheckCircle2 className="h-16 w-16 mb-4" style={{ color: primaryColor }} />
+        <p className="text-xl text-center max-w-md">{thankYouMessage}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: bgColor, color: textColor }}>
+      {/* Progress */}
+      <div className="w-full h-1 bg-black/5">
+        <div className="h-full transition-all duration-500" style={{ width: `${progress}%`, backgroundColor: primaryColor }} />
+      </div>
+
+      {/* Header with logo + title */}
+      <header className="py-6 px-6 flex flex-col items-center gap-3 border-b" style={{ borderColor: `${primaryColor}15` }}>
+        {form.logo_url && (
+          <img src={form.logo_url} alt="Logo" className="h-12 object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
+        )}
+        <h1 className="text-xl font-semibold text-center" style={{ color: textColor }}>{form.name}</h1>
+      </header>
+
+      {/* Question */}
+      <main className="flex-1 flex items-center justify-center p-6">
+        <div key={animKey} className="w-full max-w-xl animate-fade-in">
+          <div className="mb-4 text-sm opacity-60">{index + 1} / {total}</div>
+          <h2 className="text-2xl sm:text-3xl font-medium mb-6" style={{ color: textColor }}>
+            {current?.field_label}
+            {current?.is_required && <span style={{ color: primaryColor }}> *</span>}
+          </h2>
+
+          {current?.field_type === "select" && opts.length > 0 ? (
+            <div className="space-y-2">
+              {opts.map((opt) => {
+                const selected = values[current.field_key] === opt;
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => { setVal(opt); setTimeout(goNext, 200); }}
+                    className="w-full text-left px-4 py-3 rounded-lg border transition-all hover:scale-[1.01]"
+                    style={{
+                      borderColor: selected ? primaryColor : `${primaryColor}40`,
+                      backgroundColor: selected ? `${primaryColor}15` : "transparent",
+                      color: textColor,
+                    }}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+          ) : current?.field_type === "textarea" ? (
+            <Textarea
+              value={values[current.field_key] || ""}
+              onChange={(e) => setVal(e.target.value)}
+              placeholder={current.placeholder || "Digite sua resposta..."}
+              className="min-h-[120px] text-lg"
+              style={{ borderColor: primaryColor }}
+              autoFocus
+            />
+          ) : current ? (
+            <Input
+              type={current.field_type === "email" ? "email" : current.field_type === "phone" ? "tel" : "text"}
+              value={values[current.field_key] || ""}
+              onChange={(e) => setVal(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); goNext(); } }}
+              placeholder={current.placeholder || "Digite sua resposta..."}
+              className="text-lg py-6"
+              style={{ borderColor: primaryColor }}
+              autoFocus
+            />
+          ) : null}
+
+          {error && <p className="text-sm mt-2 text-destructive">{error}</p>}
+
+          <div className="flex items-center justify-between mt-8">
+            <Button variant="ghost" onClick={goPrev} disabled={index === 0}>
+              <ArrowLeft className="h-4 w-4 mr-1" /> Voltar
+            </Button>
+            <Button
+              onClick={goNext}
+              disabled={submitting}
+              style={{ backgroundColor: primaryColor }}
+              className="text-white gap-2"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (
+                <>
+                  {index + 1 >= total ? (form.button_text || "Enviar") : "Próximo"}
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </main>
+
+      <footer className="py-3 text-center text-xs opacity-60">
+        {form.organization_name && <span>© {new Date().getFullYear()} {form.organization_name}</span>}
+      </footer>
+    </div>
+  );
+}
+
+// ============ STANDARD FORM VIEW (embed-friendly) ============
+function StandardView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit }: ViewProps) {
+  const fields = form.fields || [];
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs: Record<string, string> = {};
+    for (const f of fields) {
+      const err = validateField(values[f.field_key] || "", f);
+      if (err) errs[f.field_key] = err;
+    }
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+    await onSubmit(values);
+  };
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-8" style={{ backgroundColor: bgColor, color: textColor }}>
+        <CheckCircle2 className="h-16 w-16 mb-4" style={{ color: primaryColor }} />
+        <p className="text-lg text-center max-w-md">{thankYouMessage}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen py-8 px-4" style={{ backgroundColor: bgColor, color: textColor }}>
+      <div className="max-w-lg mx-auto">
+        {/* Header */}
+        <div className="text-center mb-6">
+          {form.logo_url && (
+            <img src={form.logo_url} alt="Logo" className="h-14 mx-auto mb-3 object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
+          )}
+          <h1 className="text-2xl font-semibold" style={{ color: textColor }}>{form.name}</h1>
+          {form.welcome_message && (
+            <p className="mt-2 text-sm opacity-80">{form.welcome_message}</p>
+          )}
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-4 border rounded-xl p-6" style={{ borderColor: `${primaryColor}25`, backgroundColor: "#ffffff08" }}>
+          {fields.map((f) => {
+            const opts = normalizeOpts((f as any).options);
+            const err = errors[f.field_key];
+            return (
+              <div key={f.field_key} className="space-y-1">
+                <label className="text-sm font-medium" style={{ color: textColor }}>
+                  {f.field_label}
+                  {f.is_required && <span style={{ color: primaryColor }}> *</span>}
+                </label>
+                {f.field_type === "select" && opts.length > 0 ? (
+                  <Select
+                    value={values[f.field_key] || ""}
+                    onValueChange={(v) => setValues({ ...values, [f.field_key]: v })}
+                  >
+                    <SelectTrigger style={{ borderColor: primaryColor }}>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {opts.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                ) : f.field_type === "textarea" ? (
+                  <Textarea
+                    value={values[f.field_key] || ""}
+                    onChange={(e) => setValues({ ...values, [f.field_key]: e.target.value })}
+                    placeholder={f.placeholder}
+                    style={{ borderColor: primaryColor }}
+                  />
+                ) : (
+                  <Input
+                    type={f.field_type === "email" ? "email" : f.field_type === "phone" ? "tel" : "text"}
+                    value={values[f.field_key] || ""}
+                    onChange={(e) => setValues({ ...values, [f.field_key]: e.target.value })}
+                    placeholder={f.placeholder}
+                    style={{ borderColor: primaryColor }}
+                  />
+                )}
+                {err && <p className="text-xs text-destructive">{err}</p>}
+              </div>
+            );
+          })}
+
+          <Button
+            type="submit"
+            disabled={submitting}
+            className="w-full text-white"
+            style={{ backgroundColor: primaryColor }}
+          >
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (form.button_text || "Enviar")}
+          </Button>
+        </form>
+
+        {form.organization_name && (
+          <p className="text-center text-xs mt-4 opacity-60">© {new Date().getFullYear()} {form.organization_name}</p>
+        )}
+      </div>
+    </div>
+  );
+}
