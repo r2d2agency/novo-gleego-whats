@@ -442,6 +442,13 @@ const Chat = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.search, filters.tag, filters.assigned, filters.connection, filters.archived, filters.attendance_status, filters.department, filters.favorite, filters.startDate, filters.endDate, activeTab]);
 
+  // Clear the list instantly when switching between chats/groups so the UI
+  // doesn't keep showing the previous tab's conversations while loading
+  useEffect(() => {
+    setConversations([]);
+    setHasMoreConversations(false);
+  }, [activeTab]);
+
   const loadTags = async () => {
     try {
       const data = await getTags();

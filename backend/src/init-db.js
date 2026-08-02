@@ -1077,6 +1077,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_quick_replies_shortcut_org ON quick_replies
 CREATE INDEX IF NOT EXISTS idx_user_alerts_user_unread ON user_alerts(user_id, is_read) WHERE is_read = false;
 CREATE INDEX IF NOT EXISTS idx_chat_contacts_conn ON chat_contacts(connection_id);
 CREATE INDEX IF NOT EXISTS idx_chat_contacts_phone ON chat_contacts(phone);
+
+-- Chat list performance (group/chat tab switching)
+CREATE INDEX IF NOT EXISTS idx_chat_messages_conv_ts ON chat_messages(conversation_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_conversations_org_last ON conversations(organization_id, last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conv_tag_links_conv ON conversation_tag_links(conversation_id);
 `;
 
 // Step 12: Attendance Status
