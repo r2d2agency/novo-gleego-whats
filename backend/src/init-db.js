@@ -1080,7 +1080,7 @@ CREATE INDEX IF NOT EXISTS idx_chat_contacts_phone ON chat_contacts(phone);
 
 -- Chat list performance (group/chat tab switching)
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conv_ts ON chat_messages(conversation_id, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_conversations_org_group_last ON conversations(organization_id, is_group, is_archived, last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversations_org_last ON conversations(organization_id, last_message_at DESC);
 CREATE INDEX IF NOT EXISTS idx_conv_tag_links_conv ON conversation_tag_links(conversation_id);
 `;
 
