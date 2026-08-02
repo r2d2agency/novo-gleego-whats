@@ -682,10 +682,12 @@ async function persistIncomingMessage(connection, payload) {
              AND timestamp > NOW() - INTERVAL '180 seconds'
              AND message_type = $2
              AND (
-               -- Only optimistic rows (still without a real provider id) can be reconciled.
-               -- Rows that already carry a real message_id are DISTINCT messages
-               -- (e.g. several files sent in sequence) and must never be collapsed.
-               (message_id LIKE 'temp_%' OR message_id IS NULL)
+               -- ONLY optimistic rows created by the web chat can be reconciled.
+               -- message_id IS NULL rows come from the phone/provider itself and are
+               -- REAL distinct messages (e.g. several files sent from WhatsApp) —
+               -- collapsing them made only the first file show up in the chat.
+               message_id LIKE 'temp_%'
+               AND sender_id IS NOT NULL
                AND status IN ('pending','sent')
                AND (
                  -- Text: match by exact content (safe: distinct texts don't collide)
