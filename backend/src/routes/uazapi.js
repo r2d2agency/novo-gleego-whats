@@ -659,6 +659,11 @@ async function persistIncomingMessage(connection, payload) {
 
   // Dedup + reconcile pending optimistic messages sent via chat (temp_ message_id)
   {
+    // Some UAZAPI echoes (mainly media sent from the phone) arrive without an id.
+    // Give them a stable synthetic id so distinct messages never collide.
+    if (!message.messageId) {
+      message.messageId = `wa_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
+    }
     const existingMessage = await query(
       `SELECT id, message_id, conversation_id FROM chat_messages WHERE message_id = $1 LIMIT 1`,
       [message.messageId]
