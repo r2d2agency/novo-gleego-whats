@@ -743,12 +743,20 @@ export function ChatArea({
       const { file, preview } = filesToSend[i];
       setUploadStatus({ active: true, current: i + 1, total: filesToSend.length, fileName: file.name });
       try {
+        // Small pause between files: providers (UAZAPI/W-API/Meta) frequently drop
+        // media sent back-to-back in the same instant.
+        if (i > 0) await new Promise((r) => setTimeout(r, 900));
         const url = await uploadFile(file);
         if (url) {
           const type = inferMessageTypeFromFile(file);
           const content = type === 'document' ? file.name : '';
-          await onSendMessage(content, type, url, undefined, file.type);
-          successCount++;
+          try {
+            await onSendMessage(content, type, url, undefined, file.type);
+            successCount++;
+          } catch (sendError) {
+            const msg = sendError instanceof Error ? sendError.message : 'Erro desconhecido';
+            toast.error(`Erro ao enviar ${file.name}: ${msg}`);
+          }
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
