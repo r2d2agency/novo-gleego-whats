@@ -680,26 +680,22 @@ async function persistIncomingMessage(connection, payload) {
              AND from_me = true
              AND COALESCE(is_deleted, false) = false
              AND timestamp > NOW() - INTERVAL '180 seconds'
+             AND message_type = $2
              AND (
-               ((message_id LIKE 'temp_%' OR message_id IS NULL) AND status IN ('pending','sent'))
-               OR (
-                 status IN ('pending','sent')
-                 AND message_type = $2
-                 AND (
-                   -- Text: match by exact content (safe: distinct texts don't collide)
-                   ($2 = 'text' AND sender_id IS NOT NULL AND COALESCE(content,'') = COALESCE($3,''))
-                   -- Media sent from the web chat: match by type within window
-                   -- (content placeholders like '[Áudio]' from the webhook differ from '')
-                   OR ($2 <> 'text' AND sender_id IS NOT NULL AND timestamp > NOW() - INTERVAL '120 seconds')
-                   -- AI-sent messages (sender_id NULL, real id): dedupe echo by content
-                   OR (sender_id IS NULL AND message_id IS NOT NULL AND message_id NOT LIKE 'temp_%'
-                       AND COALESCE(content,'') = COALESCE($3,''))
-                 )
+               -- Only optimistic rows (still without a real provider id) can be reconciled.
+               -- Rows that already carry a real message_id are DISTINCT messages
+               -- (e.g. several files sent in sequence) and must never be collapsed.
+               (message_id LIKE 'temp_%' OR message_id IS NULL)
+               AND status IN ('pending','sent')
+               AND (
+                 -- Text: match by exact content (safe: distinct texts don't collide)
+                 ($2 = 'text' AND COALESCE(content,'') = COALESCE($3,''))
+                 -- Media sent from the web chat: match the oldest pending item of same type
+                 OR ($2 <> 'text' AND timestamp > NOW() - INTERVAL '180 seconds')
                )
              )
            ORDER BY
-             CASE WHEN message_id LIKE 'temp_%' OR message_id IS NULL OR status = 'pending' THEN 0 ELSE 1 END,
-             timestamp DESC
+             timestamp ASC
            LIMIT 1`,
           [convId, message.messageType, message.content || '']
         );
