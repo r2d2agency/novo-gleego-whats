@@ -705,13 +705,20 @@ router.get('/conversations', authenticate, async (req, res) => {
            WHERE ctl.conversation_id = conv.id
           ), '[]'::json
         ) as tags,
-        (SELECT content FROM chat_messages WHERE conversation_id = conv.id ORDER BY timestamp DESC LIMIT 1) as last_message,
-        (SELECT message_type FROM chat_messages WHERE conversation_id = conv.id ORDER BY timestamp DESC LIMIT 1) as last_message_type,
-        (SELECT timestamp FROM chat_messages WHERE conversation_id = conv.id ORDER BY timestamp DESC LIMIT 1) as last_message_at
+        lm.content as last_message,
+        lm.message_type as last_message_type,
+        lm.timestamp as last_message_at
        FROM conversations conv
        JOIN connections conn ON conn.id = conv.connection_id
        LEFT JOIN users u ON u.id = conv.assigned_to
        LEFT JOIN departments d ON d.id = conv.department_id
+       LEFT JOIN LATERAL (
+         SELECT content, message_type, timestamp
+         FROM chat_messages
+         WHERE conversation_id = conv.id
+         ORDER BY timestamp DESC
+         LIMIT 1
+       ) lm ON true
        WHERE ${filter}
        ORDER BY COALESCE(conv.is_pinned, false) DESC, conv.last_message_at DESC NULLS LAST, conv.created_at DESC
        LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
