@@ -2327,23 +2327,21 @@ async function handleOutgoingMessage(connection, payload) {
             AND from_me = true
             AND COALESCE(is_deleted, false) = false
             AND timestamp > NOW() - INTERVAL '180 seconds'
+            AND message_type = $3
             AND (
-              ((message_id LIKE 'temp_%' OR message_id IS NULL) AND status IN ('pending','sent'))
-              OR (
-                status IN ('pending','sent')
-                AND message_type = $3
-                AND (
-                  ($3 = 'text' AND sender_id IS NOT NULL AND COALESCE(content,'') = COALESCE($4,''))
-                  OR ($3 <> 'text' AND sender_id IS NOT NULL AND timestamp > NOW() - INTERVAL '120 seconds')
-                  OR (sender_id IS NULL AND message_id IS NOT NULL AND message_id NOT LIKE 'temp_%'
-                      AND COALESCE(content,'') = COALESCE($4,''))
-                )
+              -- Only optimistic rows (no real provider id yet) may be reconciled.
+              -- Rows with a real message_id are distinct messages (e.g. multiple files).
+              (message_id LIKE 'temp_%' OR message_id IS NULL)
+              AND status IN ('pending','sent')
+              AND (
+                ($3 = 'text' AND COALESCE(content,'') = COALESCE($4,''))
+                OR ($3 <> 'text' AND timestamp > NOW() - INTERVAL '180 seconds')
               )
             )
           )
        ORDER BY
-         CASE WHEN message_id = $1 THEN 0 WHEN message_id LIKE 'temp_%' OR message_id IS NULL OR status = 'pending' THEN 1 ELSE 2 END,
-         timestamp DESC
+         CASE WHEN message_id = $1 THEN 0 ELSE 1 END,
+         timestamp ASC
        LIMIT 1`,
       [messageId, conversationId, messageType, content || '']
     );
