@@ -2329,9 +2329,11 @@ async function handleOutgoingMessage(connection, payload) {
             AND timestamp > NOW() - INTERVAL '180 seconds'
             AND message_type = $3
             AND (
-              -- Only optimistic rows (no real provider id yet) may be reconciled.
-              -- Rows with a real message_id are distinct messages (e.g. multiple files).
-              (message_id LIKE 'temp_%' OR message_id IS NULL)
+              -- ONLY optimistic rows created by the web chat may be reconciled.
+              -- Rows with a real (or NULL) provider id are distinct messages,
+              -- e.g. several files sent directly from the phone.
+              message_id LIKE 'temp_%'
+              AND sender_id IS NOT NULL
               AND status IN ('pending','sent')
               AND (
                 ($3 = 'text' AND COALESCE(content,'') = COALESCE($4,''))
