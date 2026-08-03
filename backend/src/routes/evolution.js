@@ -2408,17 +2408,21 @@ router.get('/typing/:conversationId', authenticate, async (req, res) => {
   try {
     const { conversationId } = req.params;
     
-    // Verify user has access to this conversation
-    const connectionIds = await getUserConnectionIds(req.userId);
-    
-    const convResult = await query(
-      `SELECT id FROM conversations 
-       WHERE id = $1 AND connection_id = ANY($2)`,
-      [conversationId, connectionIds]
-    );
-    
-    if (convResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Conversa não encontrada' });
+    // Check if UUID
+    const isUuid = /^[0-9a-fA-F-]{36}$/.test(conversationId);
+    let connectionIds = [];
+
+    if (isUuid) {
+      connectionIds = await getUserConnectionIds(req.userId);
+      const convResult = await query(
+        `SELECT id FROM conversations 
+         WHERE id = $1 AND connection_id = ANY($2)`,
+        [conversationId, connectionIds]
+      );
+      
+      if (convResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Conversa não encontrada' });
+      }
     }
     
     const status = typingStatus.get(conversationId);

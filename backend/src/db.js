@@ -64,8 +64,8 @@ const dbConfig = {
   max: Number(process.env.PG_POOL_MAX || 20),
   idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
   connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 10000),
-  statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 12000),
-  query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 12000),
+  statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 25000),
+  query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 25000),
   keepAlive: true,
 };
 

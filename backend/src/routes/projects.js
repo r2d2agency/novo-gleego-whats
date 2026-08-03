@@ -229,7 +229,7 @@ router.post('/stages/reorder', async (req, res) => {
 // TEMPLATES (must be before /:id to avoid conflict)
 // ========================
 
-router.get('/templates', async (req, res) => {
+router.get('/templates', authenticate, async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
     if (!org) return res.status(403).json({ error: 'No org' });
