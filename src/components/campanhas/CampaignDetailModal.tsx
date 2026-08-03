@@ -110,8 +110,8 @@ const translateError = (error?: string): string => {
   }
 
   // If no translation found, return a cleaned version
-  if (error.length > 50) {
-    return error.substring(0, 47) + "...";
+  if (error.length > 200) {
+    return error.substring(0, 197) + "...";
   }
   
   return error;
@@ -417,7 +417,7 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
                           {msg.status === 'failed' && (
                             <div className="text-xs text-right">
                               <span className="text-red-500 font-medium">Falhou</span>
-                              <div className="text-red-400 max-w-[180px]" title={msg.error_message}>
+                              <div className="text-red-400 max-w-[300px] break-words" title={msg.error_message}>
                                 {translateError(msg.error_message)}
                               </div>
                             </div>
