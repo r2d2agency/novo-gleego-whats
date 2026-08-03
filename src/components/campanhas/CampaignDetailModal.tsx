@@ -101,7 +101,7 @@ const translateError = (error?: string): string => {
     "server error": "Erro do servidor",
   };
 
-  const lowerError = error.toLowerCase();
+  const lowerError = String(error || "").toLowerCase();
   
   for (const [key, translation] of Object.entries(errorTranslations)) {
     if (lowerError.includes(key)) {
