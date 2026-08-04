@@ -179,6 +179,7 @@ const executeApiRequest = async <T>(endpoint: string, options: ApiOptions = {}):
 
         if (shouldLogNow(`network:${url}`)) {
           // Silent in UI, but keep for telemetry if needed
+          if (isLocalhost) console.error('[api] network failure', normalizedError);
         }
 
         const shouldTryNextBase = method === 'GET' && baseIndex < baseCandidates.length - 1;
