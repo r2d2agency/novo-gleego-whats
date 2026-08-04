@@ -178,12 +178,7 @@ const executeApiRequest = async <T>(endpoint: string, options: ApiOptions = {}):
         }
 
         if (shouldLogNow(`network:${url}`)) {
-          // eslint-disable-next-line no-console
-          console.error('[api] network failure', {
-            url,
-            method,
-            message: normalizedError?.message || 'Erro de rede',
-          });
+          // Silent in UI, but keep for telemetry if needed
         }
 
         const shouldTryNextBase = method === 'GET' && baseIndex < baseCandidates.length - 1;
