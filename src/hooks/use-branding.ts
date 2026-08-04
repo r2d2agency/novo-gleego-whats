@@ -1,6 +1,38 @@
 import { useState, useEffect, useCallback } from 'react';
 import { API_URL, getAuthToken } from '@/lib/api';
 
+const BRANDING_CACHE_KEY = 'app-branding-cache';
+const BRANDING_CACHE_TTL_MS = 5 * 60 * 1000;
+let brandingRequest: Promise<BrandingSettings | null> | null = null;
+
+function getCachedBranding(): BrandingSettings | null {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(BRANDING_CACHE_KEY) || 'null');
+    if (cached?.value && Date.now() - cached.savedAt < BRANDING_CACHE_TTL_MS) {
+      return cached.value as BrandingSettings;
+    }
+  } catch { /* ignore invalid cache */ }
+  return null;
+}
+
+function requestBranding(orgParam: string): Promise<BrandingSettings | null> {
+  if (brandingRequest) return brandingRequest;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 7000);
+  brandingRequest = fetch(`${API_URL}/api/admin/branding${orgParam}`, { signal: controller.signal })
+    .then(async (response) => response.ok ? response.json() as Promise<BrandingSettings> : null)
+    .then((value) => {
+      if (value) sessionStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify({ value, savedAt: Date.now() }));
+      return value;
+    })
+    .catch(() => null)
+    .finally(() => {
+      window.clearTimeout(timeout);
+      brandingRequest = null;
+    });
+  return brandingRequest;
+}
+
 export interface BrandingSettings {
   logo_login: string | null;
   logo_sidebar: string | null;
@@ -194,7 +226,7 @@ export function applyThemeColors(preset: string | null, customColors: string | n
 }
 
 export function useBranding() {
-  const [branding, setBranding] = useState<BrandingSettings>({
+  const [branding, setBranding] = useState<BrandingSettings>(() => getCachedBranding() || ({
     logo_login: null,
     logo_sidebar: null,
     logo_topbar: null,
@@ -202,8 +234,8 @@ export function useBranding() {
     company_name: null,
     theme_preset: null,
     theme_custom_colors: null,
-  });
-  const [loading, setLoading] = useState(true);
+  }));
+  const [loading, setLoading] = useState(() => !getCachedBranding());
 
   const fetchBranding = useCallback(async () => {
     try {
@@ -213,9 +245,8 @@ export function useBranding() {
         orgParam = `?org_id=${cachedOrgId}`;
       }
 
-      const response = await fetch(`${API_URL}/api/admin/branding${orgParam}`);
-      if (response.ok) {
-        const data = await response.json();
+      const data = getCachedBranding() || await requestBranding(orgParam);
+      if (data) {
         setBranding(data);
         
         if (data.favicon) {
@@ -227,8 +258,8 @@ export function useBranding() {
         
         applyThemeColors(data.theme_preset, data.theme_custom_colors);
       }
-    } catch (error) {
-      console.error('Error fetching branding:', error);
+    } catch {
+      // Keep cached/default branding when the backend is temporarily unavailable.
     } finally {
       setLoading(false);
     }

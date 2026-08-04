@@ -65,6 +65,7 @@ export function MessageNotifications() {
   const previousUnreadRef = useRef<number>(0);
   const previousConversationIdsRef = useRef<Set<string>>(new Set());
   const previousUnreadByConversationRef = useRef<Map<string, number>>(new Map());
+  const isFetchingRef = useRef(false);
   
   const { playSound, playNewConversationSound, settings, isConnectionMuted, isConversationMuted, isGroupMuted } = useNotificationSound();
 
@@ -81,8 +82,14 @@ export function MessageNotifications() {
 
   // Fetch unread conversations
   const fetchUnreadConversations = useCallback(async (emitEvent = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     try {
-      const data = dedupeUnreadConversations(await api<UnreadConversation[]>("/api/chat/conversations/unread"));
+      const data = dedupeUnreadConversations(await api<UnreadConversation[]>("/api/chat/conversations/unread", {
+        timeoutMs: 8000,
+        retryCount: 0,
+        allowBaseFallback: false,
+      }));
       setUnreadConversations(data);
       
       const newTotal = data.reduce((sum, c) => sum + c.unread_count, 0);
@@ -141,14 +148,16 @@ export function MessageNotifications() {
       setTotalUnread(newTotal);
     } catch (error) {
       console.error("Error fetching unread conversations:", error);
+    } finally {
+      isFetchingRef.current = false;
     }
   }, [soundEnabled, settings.soundEnabled, playSound, playNewConversationSound, isConnectionMuted, isConversationMuted, isGroupMuted]);
 
-  // Poll for unread messages - faster polling (every 3 seconds)
+  // Avoid request storms when the backend is under load.
   useEffect(() => {
     fetchUnreadConversations(false); // Initial fetch without event
     
-    const interval = setInterval(() => fetchUnreadConversations(true), 3000);
+    const interval = setInterval(() => fetchUnreadConversations(true), 10000);
     
     return () => clearInterval(interval);
   }, [fetchUnreadConversations]);

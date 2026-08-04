@@ -24,6 +24,7 @@ const MAX_GET_RETRIES = 2;
 const ERROR_LOG_COOLDOWN_MS = 15000;
 const REQUEST_TIMEOUT_MS = 15000;
 const lastErrorLogByKey = new Map<string, number>();
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -62,7 +63,7 @@ class HttpError extends Error {
   }
 }
 
-export const api = async <T>(endpoint: string, options: ApiOptions = {}): Promise<T> => {
+const executeApiRequest = async <T>(endpoint: string, options: ApiOptions = {}): Promise<T> => {
   const {
     method = 'GET',
     body,
@@ -198,6 +199,23 @@ export const api = async <T>(endpoint: string, options: ApiOptions = {}): Promis
 
   if (lastError) throw lastError;
   throw new Error('Falha inesperada na requisição');
+};
+
+export const api = <T>(endpoint: string, options: ApiOptions = {}): Promise<T> => {
+  const method = options.method || 'GET';
+  if (method !== 'GET') return executeApiRequest<T>(endpoint, options);
+
+  const key = `${endpoint}|${options.auth !== false ? 'auth' : 'public'}`;
+  const existing = inFlightGetRequests.get(key);
+  if (existing) return existing as Promise<T>;
+
+  const request = executeApiRequest<T>(endpoint, options).finally(() => {
+    if (inFlightGetRequests.get(key) === request) {
+      inFlightGetRequests.delete(key);
+    }
+  });
+  inFlightGetRequests.set(key, request);
+  return request;
 };
 
 // Auth helpers
