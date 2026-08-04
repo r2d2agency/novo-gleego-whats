@@ -210,6 +210,13 @@ const upload = multer({
 });
 
 // Upload single file
+router.options('/', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.sendStatus(200);
+});
+
 router.post('/', authenticate, (req, res) => {
   upload.single('file')(req, res, async (err) => {
     try {
@@ -285,6 +292,13 @@ router.post('/', authenticate, (req, res) => {
 // Public download with forced filename (keeps extension visible in the URL)
 // Useful for providers that require a file extension to be present.
 // Example: GET /api/uploads/public/<stored>/<downloadName.pdf>
+router.options('/public/:stored/:downloadName', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.sendStatus(200);
+});
+
 router.get('/public/:stored/:downloadName', (req, res) => {
   try {
     const stored = String(req.params.stored || '');
