@@ -100,11 +100,25 @@ router.use(authenticate);
 
 // Helper
 async function getUserOrg(userId) {
-  const r = await query(
-    `SELECT organization_id, role FROM organization_members WHERE user_id = $1 LIMIT 1`,
-    [userId]
-  );
-  return r.rows[0] || null;
+  try {
+    const r = await query(
+      `SELECT organization_id, role FROM organization_members WHERE user_id = $1 LIMIT 1`,
+      [userId]
+    );
+    if (r.rows.length > 0) return r.rows[0];
+    
+    // Fallback for superadmin or orphaned users
+    const userRes = await query(`SELECT is_superadmin FROM users WHERE id = $1`, [userId]);
+    if (userRes.rows[0]?.is_superadmin) {
+      const anyOrg = await query(`SELECT id as organization_id, 'owner' as role FROM organizations LIMIT 1`);
+      return anyOrg.rows[0] || null;
+    }
+    
+    return null;
+  } catch (e) {
+    console.error('getUserOrg error:', e);
+    return null;
+  }
 }
 
 function isMissing(e) {
