@@ -2443,9 +2443,13 @@ router.get('/typing/:conversationId', authenticate, async (req, res) => {
 // Helper to get user's connection IDs
 async function getUserConnectionIds(userId) {
   const result = await query(
-    `SELECT c.id FROM connections c
-     LEFT JOIN connection_members cm ON cm.connection_id = c.id
-     WHERE c.user_id = $1 OR cm.user_id = $1`,
+    `SELECT id FROM connections 
+     WHERE user_id = $1 
+     OR id IN (SELECT connection_id FROM connection_members WHERE user_id = $1)
+     OR organization_id IN (
+       SELECT organization_id FROM organization_members 
+       WHERE user_id = $1 AND role IN ('owner', 'admin', 'manager')
+     )`,
     [userId]
   );
   return result.rows.map(r => r.id);

@@ -536,13 +536,11 @@ router.get('/conversations/unread', authenticate, async (req, res) => {
        ) as active_flow
       FROM conversations conv
       JOIN connections conn ON conn.id = conv.connection_id
-      LEFT JOIN LATERAL (
-        SELECT content, message_type, timestamp
-        FROM chat_messages
-        WHERE conversation_id = conv.id
-        ORDER BY timestamp DESC
-        LIMIT 1
-      ) lm ON true
+      LEFT JOIN chat_messages lm ON lm.id = (
+        SELECT id FROM chat_messages 
+        WHERE conversation_id = conv.id 
+        ORDER BY timestamp DESC LIMIT 1
+      )
       WHERE conv.connection_id = ANY($1)
         AND conv.unread_count > 0
         AND conv.is_archived = false
