@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,70 +12,70 @@ import { useBranding } from "@/hooks/use-branding";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { PWAUpdateBanner } from "@/components/layout/PWAUpdateBanner";
 import LandingPage from "./pages/LandingPage";
-import Index from "./pages/Index";
 import Login from "./pages/Login";
-import Cadastro from "./pages/Cadastro";
-import Conexao from "./pages/Conexao";
-import Contatos from "./pages/Contatos";
-import Mensagens from "./pages/Mensagens";
-import Campanhas from "./pages/Campanhas";
-import Chat from "./pages/Chat";
-import Cobranca from "./pages/Cobranca";
-import Organizacoes from "./pages/Organizacoes";
-import Admin from "./pages/Admin";
-import AdminMetaSaas from "./pages/AdminMetaSaas";
-import MetaConnect from "./pages/MetaConnect";
-import MetaLeadAds from "./pages/MetaLeadAds";
-import MetaOnboarding from "./pages/MetaOnboarding";
-import Configuracoes from "./pages/Configuracoes";
-import Agendamentos from "./pages/Agendamentos";
-import Tags from "./pages/Tags";
-import ContatosChat from "./pages/ContatosChat";
-import Chatbots from "./pages/Chatbots";
-import Fluxos from "./pages/Fluxos";
-import Departamentos from "./pages/Departamentos";
-import AgentesIA from "./pages/AgentesIA";
-import CRMNegociacoes from "./pages/CRMNegociacoes";
-import CRMProspects from "./pages/CRMProspects";
-import CRMEmpresas from "./pages/CRMEmpresas";
-import CRMTarefas from "./pages/CRMTarefas";
-import CRMAgenda from "./pages/CRMAgenda";
-import CRMConfiguracoes from "./pages/CRMConfiguracoes";
-import CRMRelatorios from "./pages/CRMRelatorios";
-import Mapa from "./pages/Mapa";
-import PoliticaPrivacidade from "./pages/PoliticaPrivacidade";
-import TermosServico from "./pages/TermosServico";
-import ExclusaoDados from "./pages/ExclusaoDados";
-import FluxosExternos from "./pages/FluxosExternos";
-import PublicFormPage from "./pages/PublicFormPage";
-import LeadWebhooks from "./pages/LeadWebhooks";
-import SequenciasNurturing from "./pages/SequenciasNurturing";
-import CTWAAnalytics from "./pages/CTWAAnalytics";
-import RevenueIntelligence from "./pages/RevenueIntelligence";
-import SecretariaGrupos from "./pages/SecretariaGrupos";
-import ModuloFantasma from "./pages/ModuloFantasma";
-import SalesSEOAnalytics from "./pages/SalesSEOAnalytics";
-import Projetos from "./pages/Projetos";
-import TarefasKanban from "./pages/TarefasKanban";
-import LeadGleego from "./pages/LeadGleego";
-import AgentesIACliente from "./pages/AgentesIACliente";
-import AgentesModos from "./pages/AgentesModos";
-import RespostasRapidas from "./pages/RespostasRapidas";
-import ApiDocumentation from "./pages/ApiDocumentation";
-import MetaTemplates from "./pages/MetaTemplates";
-import Assinaturas from "./pages/Assinaturas";
-import AssinarDocumento from "./pages/AssinarDocumento";
-import VerificarDocumento from "./pages/VerificarDocumento";
-import Teleatendimento from "./pages/Teleatendimento";
-import SupervisorIA from "./pages/SupervisorIA";
-import MarinaTestChat from "./pages/MarinaTestChat";
-import MinhaEquipe from "./pages/MinhaEquipe";
-import WorkspaceHome from "./pages/workspace/WorkspaceHome";
-import WorkspaceProject from "./pages/workspace/WorkspaceProject";
-import ClientPortal from "./pages/workspace/ClientPortal";
-import WorkspaceKanban from "./pages/workspace/WorkspaceKanban";
 
-import NotFound from "./pages/NotFound";
+const Index = lazy(() => import("./pages/Index"));
+const Cadastro = lazy(() => import("./pages/Cadastro"));
+const Conexao = lazy(() => import("./pages/Conexao"));
+const Contatos = lazy(() => import("./pages/Contatos"));
+const Mensagens = lazy(() => import("./pages/Mensagens"));
+const Campanhas = lazy(() => import("./pages/Campanhas"));
+const Chat = lazy(() => import("./pages/Chat"));
+const Cobranca = lazy(() => import("./pages/Cobranca"));
+const Organizacoes = lazy(() => import("./pages/Organizacoes"));
+const Admin = lazy(() => import("./pages/Admin"));
+const AdminMetaSaas = lazy(() => import("./pages/AdminMetaSaas"));
+const MetaConnect = lazy(() => import("./pages/MetaConnect"));
+const MetaLeadAds = lazy(() => import("./pages/MetaLeadAds"));
+const MetaOnboarding = lazy(() => import("./pages/MetaOnboarding"));
+const Configuracoes = lazy(() => import("./pages/Configuracoes"));
+const Agendamentos = lazy(() => import("./pages/Agendamentos"));
+const Tags = lazy(() => import("./pages/Tags"));
+const ContatosChat = lazy(() => import("./pages/ContatosChat"));
+const Chatbots = lazy(() => import("./pages/Chatbots"));
+const Fluxos = lazy(() => import("./pages/Fluxos"));
+const Departamentos = lazy(() => import("./pages/Departamentos"));
+const AgentesIA = lazy(() => import("./pages/AgentesIA"));
+const CRMNegociacoes = lazy(() => import("./pages/CRMNegociacoes"));
+const CRMProspects = lazy(() => import("./pages/CRMProspects"));
+const CRMEmpresas = lazy(() => import("./pages/CRMEmpresas"));
+const CRMTarefas = lazy(() => import("./pages/CRMTarefas"));
+const CRMAgenda = lazy(() => import("./pages/CRMAgenda"));
+const CRMConfiguracoes = lazy(() => import("./pages/CRMConfiguracoes"));
+const CRMRelatorios = lazy(() => import("./pages/CRMRelatorios"));
+const Mapa = lazy(() => import("./pages/Mapa"));
+const PoliticaPrivacidade = lazy(() => import("./pages/PoliticaPrivacidade"));
+const TermosServico = lazy(() => import("./pages/TermosServico"));
+const ExclusaoDados = lazy(() => import("./pages/ExclusaoDados"));
+const FluxosExternos = lazy(() => import("./pages/FluxosExternos"));
+const PublicFormPage = lazy(() => import("./pages/PublicFormPage"));
+const LeadWebhooks = lazy(() => import("./pages/LeadWebhooks"));
+const SequenciasNurturing = lazy(() => import("./pages/SequenciasNurturing"));
+const CTWAAnalytics = lazy(() => import("./pages/CTWAAnalytics"));
+const RevenueIntelligence = lazy(() => import("./pages/RevenueIntelligence"));
+const SecretariaGrupos = lazy(() => import("./pages/SecretariaGrupos"));
+const ModuloFantasma = lazy(() => import("./pages/ModuloFantasma"));
+const SalesSEOAnalytics = lazy(() => import("./pages/SalesSEOAnalytics"));
+const Projetos = lazy(() => import("./pages/Projetos"));
+const TarefasKanban = lazy(() => import("./pages/TarefasKanban"));
+const LeadGleego = lazy(() => import("./pages/LeadGleego"));
+const AgentesIACliente = lazy(() => import("./pages/AgentesIACliente"));
+const AgentesModos = lazy(() => import("./pages/AgentesModos"));
+const RespostasRapidas = lazy(() => import("./pages/RespostasRapidas"));
+const ApiDocumentation = lazy(() => import("./pages/ApiDocumentation"));
+const MetaTemplates = lazy(() => import("./pages/MetaTemplates"));
+const Assinaturas = lazy(() => import("./pages/Assinaturas"));
+const AssinarDocumento = lazy(() => import("./pages/AssinarDocumento"));
+const VerificarDocumento = lazy(() => import("./pages/VerificarDocumento"));
+const Teleatendimento = lazy(() => import("./pages/Teleatendimento"));
+const SupervisorIA = lazy(() => import("./pages/SupervisorIA"));
+const MarinaTestChat = lazy(() => import("./pages/MarinaTestChat"));
+const MinhaEquipe = lazy(() => import("./pages/MinhaEquipe"));
+const WorkspaceHome = lazy(() => import("./pages/workspace/WorkspaceHome"));
+const WorkspaceProject = lazy(() => import("./pages/workspace/WorkspaceProject"));
+const ClientPortal = lazy(() => import("./pages/workspace/ClientPortal"));
+const WorkspaceKanban = lazy(() => import("./pages/workspace/WorkspaceKanban"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
 
@@ -119,6 +119,14 @@ function SmartRedirect() {
   return <LandingPage />;
 }
 
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -128,6 +136,7 @@ const App = () => (
       <PWAUpdateBanner />
       <BrowserRouter>
         <AuthProvider>
+          <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/cadastro" element={<Cadastro />} />
@@ -197,6 +206,7 @@ const App = () => (
             <Route path="/exclusao-dados" element={<ExclusaoDados />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

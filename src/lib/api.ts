@@ -46,6 +46,8 @@ interface ApiOptions {
   body?: unknown;
   auth?: boolean;
   timeoutMs?: number;
+  retryCount?: number;
+  allowBaseFallback?: boolean;
 }
 
 class HttpError extends Error {
@@ -61,7 +63,14 @@ class HttpError extends Error {
 }
 
 export const api = async <T>(endpoint: string, options: ApiOptions = {}): Promise<T> => {
-  const { method = 'GET', body, auth = true, timeoutMs } = options;
+  const {
+    method = 'GET',
+    body,
+    auth = true,
+    timeoutMs,
+    retryCount,
+    allowBaseFallback = true,
+  } = options;
   const effectiveTimeout = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : REQUEST_TIMEOUT_MS;
 
   const headers: Record<string, string> = {
@@ -75,8 +84,9 @@ export const api = async <T>(endpoint: string, options: ApiOptions = {}): Promis
     }
   }
 
-  const baseCandidates = getBaseCandidates(endpoint);
-  const retries = method === 'GET' ? MAX_GET_RETRIES : 0;
+  const allBaseCandidates = getBaseCandidates(endpoint);
+  const baseCandidates = allowBaseFallback ? allBaseCandidates : allBaseCandidates.slice(0, 1);
+  const retries = method === 'GET' ? Math.max(0, retryCount ?? MAX_GET_RETRIES) : 0;
   let lastError: Error | null = null;
 
   for (let baseIndex = 0; baseIndex < baseCandidates.length; baseIndex++) {
@@ -205,7 +215,11 @@ export const authApi = {
     ),
 
   getMe: () =>
-    api<{ user: { id: string; email: string; name: string } }>('/api/auth/me'),
+    api<{ user: { id: string; email: string; name: string } }>('/api/auth/me', {
+      timeoutMs: 7000,
+      retryCount: 0,
+      allowBaseFallback: false,
+    }),
 
   getSignupPlans: () =>
     api<Array<{
