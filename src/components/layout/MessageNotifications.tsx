@@ -147,7 +147,7 @@ export function MessageNotifications() {
       previousUnreadRef.current = newTotal;
       setTotalUnread(newTotal);
     } catch (error) {
-      console.error("Error fetching unread conversations:", error);
+      // Quiet fail - backend may be temporarily busy
     } finally {
       isFetchingRef.current = false;
     }
