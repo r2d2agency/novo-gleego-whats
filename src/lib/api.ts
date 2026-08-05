@@ -3,15 +3,9 @@ const isBrowser = typeof window !== 'undefined';
 const isLocalhost = isBrowser && ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
 const getBaseCandidates = (endpoint: string) => {
-  const sameOriginBase = '';
-  const supportsSameOrigin = endpoint.startsWith('/api/') || endpoint.startsWith('/uploads/');
-  const shouldPreferSameOrigin = isBrowser && !isLocalhost && supportsSameOrigin;
-
-  const ordered = shouldPreferSameOrigin
-    ? [sameOriginBase, ENV_API_URL]
-    : [ENV_API_URL, sameOriginBase];
-
-  return [...new Set(ordered.filter((base) => base !== undefined && base !== null))];
+  // NUNCA use sameOriginBase ('') para evitar vazamento entre domínios no Easypanel
+  // Se estivermos no navegador, usamos estritamente a URL do backend configurada
+  return [ENV_API_URL];
 };
 
 const buildUrl = (base: string, endpoint: string) =>
@@ -85,8 +79,7 @@ const executeApiRequest = async <T>(endpoint: string, options: ApiOptions = {}):
     }
   }
 
-  const allBaseCandidates = getBaseCandidates(endpoint);
-  const baseCandidates = allowBaseFallback ? allBaseCandidates : allBaseCandidates.slice(0, 1);
+  const baseCandidates = getBaseCandidates(endpoint);
   const retries = method === 'GET' ? Math.max(0, retryCount ?? MAX_GET_RETRIES) : 0;
   let lastError: Error | null = null;
 
