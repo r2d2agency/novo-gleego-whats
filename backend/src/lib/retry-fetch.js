@@ -35,7 +35,7 @@ export async function fetchWithRetry(url, options = {}, retryOptions = {}) {
     try {
       const fetchOptions = { ...options };
       // Add timeout via AbortController if not already set
-      const timeoutMs = retryOptions.timeout || 15000;
+      const timeoutMs = retryOptions.timeout || 60000;
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       if (!fetchOptions.signal) fetchOptions.signal = controller.signal;
