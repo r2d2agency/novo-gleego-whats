@@ -59,8 +59,12 @@ function paramTypes(params) {
   });
 }
 
+const dbUrl = process.env.DATABASE_URL?.includes('gleego_whats-bd') 
+  ? 'postgres://postgres:bc3hptmj5wgnowz62nf0@whats2.gleego.com.br:5432/whats-bd?sslmode=disable'
+  : process.env.DATABASE_URL;
+
 const dbConfig = {
-  connectionString: process.env.DATABASE_URL,
+  connectionString: dbUrl,
   ssl: { rejectUnauthorized: false },
   max: Number(process.env.PG_POOL_MAX || 20),
   idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
