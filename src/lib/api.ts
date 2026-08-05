@@ -1,4 +1,4 @@
-const ENV_API_URL = import.meta.env.VITE_API_URL || 'https://gleego-whats-back.ckilhl.easypanel.host';
+const ENV_API_URL = 'https://gleego-whats-back.ckilhl.easypanel.host';
 const isBrowser = typeof window !== 'undefined';
 const isLocalhost = isBrowser && ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
