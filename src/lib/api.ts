@@ -22,7 +22,7 @@ export const API_URL = ENV_API_URL;
 const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
 const MAX_GET_RETRIES = 2;
 const ERROR_LOG_COOLDOWN_MS = 15000;
-const REQUEST_TIMEOUT_MS = 15000;
+const REQUEST_TIMEOUT_MS = 60000;
 const lastErrorLogByKey = new Map<string, number>();
 const inFlightGetRequests = new Map<string, Promise<unknown>>();
 
