@@ -1,7 +1,1 @@
-project_id = "llqjrkltfkkctdpydemj"
-
-[functions.meta-webhook]
-verify_jwt = false
-
-[functions.meta-oauth-callback]
-verify_jwt = false
+project_id = "jkhwuimcjvzmdsbdyswx"
