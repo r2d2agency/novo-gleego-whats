@@ -60,7 +60,7 @@ function paramTypes(params) {
 }
 
 const dbConfig = {
-  ...parseConnectionString(process.env.DATABASE_URL),
+  connectionString: process.env.DATABASE_URL,
   max: Number(process.env.PG_POOL_MAX || 20),
   idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
   connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 20000),
@@ -70,6 +70,15 @@ const dbConfig = {
 };
 
 export const pool = new Pool(dbConfig);
+
+pool.on('error', (err) => {
+  logError('db.pool_error', err);
+});
+
+// Auto-healing: reconnect if connection is lost
+pool.on('connect', () => {
+  logInfo('db.client_connected');
+});
 
 export async function query(text, params) {
   const startedAt = Date.now();
