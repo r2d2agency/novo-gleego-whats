@@ -119,9 +119,9 @@
 
     /* Neon tokens - Dark mode */
     --neon-blue: 217 75% 58%;
-    --neon-glow: 24 92% 58%;
-    --gradient-primary: linear-gradient(135deg, hsl(24 92% 55%), hsl(35 95% 58%));
-    --gradient-hero: linear-gradient(135deg, hsl(217 75% 52%) 0%, hsl(24 92% 55%) 50%, hsl(152 55% 48%) 100%);
+    --neon-glow: 217 92% 58%;
+    --gradient-primary: linear-gradient(135deg, hsl(217 92% 55%), hsl(210 95% 58%));
+    --gradient-hero: linear-gradient(135deg, hsl(217 75% 52%) 0%, hsl(217 92% 55%) 50%, hsl(152 55% 48%) 100%);
     --gradient-card: linear-gradient(180deg, hsl(225 25% 9%) 0%, hsl(225 25% 7%) 100%);
     --shadow-card: 0 4px 24px -4px hsl(0 0% 0% / 0.5);
     --shadow-elevated: 0 12px 40px -12px hsl(0 0% 0% / 0.6);
