@@ -61,6 +61,7 @@ function paramTypes(params) {
 
 const dbConfig = {
   connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
   max: Number(process.env.PG_POOL_MAX || 20),
   idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
   connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 20000),
