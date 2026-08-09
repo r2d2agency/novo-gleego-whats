@@ -838,7 +838,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                 )}
               </TabsTrigger>
             )}
-            <TabsTrigger value="history">Histórico</TabsTrigger>
+            <TabsTrigger value="history">Auditoria</TabsTrigger>
           </TabsList>
 
           <ScrollArea className="flex-1 mt-4 h-[calc(95vh-260px)]">
