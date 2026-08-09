@@ -3138,6 +3138,33 @@ router.post('/conversations/:id/notes', authenticate, async (req, res) => {
       [id, req.userId, content.trim()]
     );
 
+    // Also link note to CRM deals for this contact
+    try {
+      const contactResult = await query(
+        `SELECT contact_phone FROM conversations WHERE id = $1`,
+        [id]
+      );
+      const phone = contactResult.rows[0]?.contact_phone;
+      if (phone) {
+        const dealsResult = await query(
+          `SELECT d.id FROM crm_deals d
+           JOIN crm_deal_contacts dc ON dc.deal_id = d.id
+           JOIN contacts c ON c.id = dc.contact_id
+           WHERE c.phone = $1 AND d.status = 'open'`,
+          [phone]
+        );
+        for (const deal of dealsResult.rows) {
+          await query(
+            `INSERT INTO crm_deal_history (deal_id, user_id, action, notes)
+             VALUES ($1, $2, 'note', $3)`,
+            [deal.id, req.userId, 'note', content.trim()]
+          );
+        }
+      }
+    } catch (e) {
+      console.error('Error auto-syncing chat note to CRM:', e);
+    }
+
     // Get user name
     const user = await query(`SELECT name FROM users WHERE id = $1`, [req.userId]);
     const note = {
