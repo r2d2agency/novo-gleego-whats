@@ -838,7 +838,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                 )}
               </TabsTrigger>
             )}
-            <TabsTrigger value="history">Histórico</TabsTrigger>
+            <TabsTrigger value="history">Auditoria</TabsTrigger>
           </TabsList>
 
           <ScrollArea className="flex-1 mt-4 h-[calc(95vh-260px)]">
@@ -1099,27 +1099,18 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                   </Card>
                 )}
 
-                {/* History Quick View - Above Predictive Analytics as requested */}
+                {/* Annotations Section - Seller's daily notes */}
                 <Card className="p-4 col-span-2">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="font-medium flex items-center gap-2">
                       <ClipboardList className="h-4 w-4" />
-                      Histórico
+                      Anotações
                     </h4>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="h-8 text-xs" 
-                      onClick={() => setActiveTab("history")}
-                    >
-                      Ver todos
-                      <ChevronRight className="h-3 w-3 ml-1" />
-                    </Button>
                   </div>
                   
                   <div className="flex gap-2 mb-4">
                     <Input 
-                      placeholder="Adicionar observação..." 
+                      placeholder="Adicionar anotação..." 
                       value={historyNotes}
                       onChange={(e) => setHistoryNotes(e.target.value)}
                       onKeyDown={(e) => {
@@ -1143,48 +1134,29 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                   </div>
 
                   <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                    {fullDeal?.history?.slice(0, 5).map((item: any) => (
+                    {fullDeal?.history?.filter((item: any) => item.action === 'note').slice(0, 10).map((item: any) => (
                       <div key={item.id} className="flex gap-3 text-sm border-b border-muted/30 pb-3 last:border-0">
                         <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
                         <div className="flex-1">
                           <div className="flex justify-between items-start">
                             <p className="font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
-                              {item.user_name || "Sistema"}
+                              {item.user_name || "Vendedor"}
                             </p>
                             <p className="text-[10px] text-muted-foreground">
                               {format(parseISO(item.created_at), "dd/MM HH:mm", { locale: ptBR })}
                             </p>
                           </div>
-                          <p className="text-sm mt-0.5">
-                            {item.action === 'created' && "criou a negociação"}
-                            {item.action === 'stage_changed' && `moveu de "${item.from_value}" para "${item.to_value}"`}
-                            {item.action === 'value_changed' && `alterou o valor de ${item.from_value} para ${item.to_value}`}
-                            {item.action === 'status_changed' && `alterou o status de "${item.from_value}" para "${item.to_value}"`}
-                            {item.action === 'owner_changed' && `alterou o responsável de "${item.from_value}" para "${item.to_value}"`}
-                            {item.action === 'description_changed' && "atualizou a descrição"}
-                            {item.action === 'title_changed' && `alterou o título para "${item.to_value}"`}
-                            {item.action === 'company_changed' && `alterou a empresa para "${item.to_value}"`}
-                            {item.action === 'task_created' && `agendou a tarefa: "${item.to_value}"`}
-                            {item.action === 'task_completed' && `concluiu a tarefa: "${item.to_value}"`}
-                            {item.action === 'task_deleted' && `removeu a tarefa: "${item.from_value}"`}
-                            {item.action === 'contact_added' && `vinculou o contato: "${item.to_value}"`}
-                            {item.action === 'contact_removed' && `desvinculou o contato: "${item.from_value}"`}
-                            {item.action === 'appointment_scheduled' && `agendou compromisso: "${item.to_value}"`}
-                            {item.action === 'whatsapp_scheduled' && `agendou WhatsApp: "${item.to_value}"`}
-                            {item.action === 'note' && "adicionou uma nota"}
-                            {!['created', 'stage_changed', 'value_changed', 'status_changed', 'owner_changed', 'description_changed', 'title_changed', 'company_changed', 'task_created', 'task_completed', 'task_deleted', 'contact_added', 'contact_removed', 'appointment_scheduled', 'whatsapp_scheduled', 'note'].includes(item.action) && item.action}
-                          </p>
                           {item.notes && (
-                            <div className="bg-muted/50 p-2 rounded mt-2 text-xs whitespace-pre-wrap border-l-2 border-primary/30">
+                            <div className="bg-muted/50 p-2 rounded mt-1 text-sm whitespace-pre-wrap border-l-2 border-primary/30">
                               {item.notes}
                             </div>
                           )}
                         </div>
                       </div>
                     ))}
-                    {(!fullDeal?.history || fullDeal.history.length === 0) && (
+                    {(!fullDeal?.history || fullDeal.history.filter((item: any) => item.action === 'note').length === 0) && (
                       <p className="text-center text-xs text-muted-foreground py-4">
-                        Nenhum histórico disponível
+                        Nenhuma anotação adicionada
                       </p>
                     )}
                   </div>
@@ -1986,9 +1958,15 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
 
             <TabsContent value="history" className="m-0">
               <div className="space-y-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4" />
+                    Auditoria de Movimentação
+                  </h4>
+                </div>
                 <div className="flex gap-2 mb-4">
                   <Input 
-                    placeholder="Adicionar observação ao histórico..." 
+                    placeholder="Adicionar nota de auditoria..." 
                     value={historyNotes}
                     onChange={(e) => setHistoryNotes(e.target.value)}
                     onKeyDown={(e) => {
