@@ -217,10 +217,8 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
 
   // Sync description with deal
   useEffect(() => {
-    if (currentDeal?.description) {
-      setDescription(currentDeal.description);
-    }
-  }, [currentDeal?.description]);
+    setDescription(currentDeal?.description || "");
+  }, [currentDeal?.id, currentDeal?.description]);
 
   // Create new contact and link to deal
   const handleCreateAndLinkContact = async () => {
