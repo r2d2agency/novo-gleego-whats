@@ -3156,7 +3156,7 @@ router.post('/conversations/:id/notes', authenticate, async (req, res) => {
         for (const deal of dealsResult.rows) {
           await query(
             `INSERT INTO crm_deal_history (deal_id, user_id, action, notes)
-             VALUES ($1, $2, 'note', $3)`,
+             VALUES ($1, $2, $3, $4)`,
             [deal.id, req.userId, 'note', content.trim()]
           );
         }
