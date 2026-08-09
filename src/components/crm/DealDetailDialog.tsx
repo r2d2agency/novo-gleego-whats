@@ -1958,9 +1958,15 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
 
             <TabsContent value="history" className="m-0">
               <div className="space-y-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4" />
+                    Auditoria de Movimentação
+                  </h4>
+                </div>
                 <div className="flex gap-2 mb-4">
                   <Input 
-                    placeholder="Adicionar observação ao histórico..." 
+                    placeholder="Adicionar nota de auditoria..." 
                     value={historyNotes}
                     onChange={(e) => setHistoryNotes(e.target.value)}
                     onKeyDown={(e) => {
