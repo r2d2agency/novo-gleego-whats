@@ -53,7 +53,7 @@ export function NotesPanel({ conversationId, onClose }: NotesPanelProps) {
     if (!newNote.trim()) return;
 
     setSaving(true);
-    const note = await createNote(conversationId, newNote.trim());
+    const note = await createNote(conversationId, `💭 Anotação do Chat: ${newNote.trim()}`);
     setSaving(false);
 
     if (note) {
