@@ -487,6 +487,30 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
     }
   };
 
+  const handleAddHistoryNote = async () => {
+    if (!historyNotes.trim() || !deal?.id) return;
+    
+    setIsAddingNote(true);
+    try {
+      await api(`/api/crm/deals/${deal.id}/history`, {
+        method: "POST",
+        body: {
+          action: "note",
+          notes: historyNotes.trim()
+        }
+      });
+      
+      setHistoryNotes("");
+      queryClient.invalidateQueries({ queryKey: ["crm-deal", deal.id] });
+      toast.success("Histórico adicionado!");
+    } catch (error) {
+      toast.error("Erro ao adicionar histórico");
+      console.error(error);
+    } finally {
+      setIsAddingNote(false);
+    }
+  };
+
   const handleOpenChat = () => {
     const primaryContact = currentDeal?.contacts?.find(c => c.is_primary) || currentDeal?.contacts?.[0];
     if (primaryContact?.phone) {
