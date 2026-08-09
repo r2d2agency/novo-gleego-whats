@@ -131,6 +131,9 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
   const [showSignatureDialog, setShowSignatureDialog] = useState(false);
   const [dealDocuments, setDealDocuments] = useState<DocSignatureDocument[]>([]);
   const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [historyNotes, setHistoryNotes] = useState("");
+  const [isAddingNote, setIsAddingNote] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: fullDeal, isLoading } = useCRMDeal(deal?.id || null);
   const { data: funnelData } = useCRMFunnel(deal?.funnel_id || null);
@@ -481,6 +484,30 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
       toast.error(error.message || "Erro ao agendar retorno");
     } finally {
       setIsScheduling(false);
+    }
+  };
+
+  const handleAddHistoryNote = async () => {
+    if (!historyNotes.trim() || !deal?.id) return;
+    
+    setIsAddingNote(true);
+    try {
+      await api(`/api/crm/deals/${deal.id}/history`, {
+        method: "POST",
+        body: {
+          action: "note",
+          notes: historyNotes.trim()
+        }
+      });
+      
+      setHistoryNotes("");
+      queryClient.invalidateQueries({ queryKey: ["crm-deal", deal.id] });
+      toast.success("Histórico adicionado!");
+    } catch (error) {
+      toast.error("Erro ao adicionar histórico");
+      console.error(error);
+    } finally {
+      setIsAddingNote(false);
     }
   };
 
@@ -1867,47 +1894,76 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
             )}
 
             <TabsContent value="history" className="m-0">
-              <div className="space-y-3">
-                {fullDeal?.history?.map((item: any) => (
-                  <div key={item.id} className="flex gap-3 text-sm">
-                    <div className="w-2 h-2 rounded-full bg-primary mt-2" />
-                    <div className="flex-1">
-                      <p>
-                        <span className="font-medium">{item.user_name || "Sistema"}</span>
-                        {" "}
-                        {item.action === 'created' && "criou a negociação"}
-                        {item.action === 'stage_changed' && `moveu de "${item.from_value}" para "${item.to_value}"`}
-                        {item.action === 'value_changed' && `alterou o valor de ${item.from_value} para ${item.to_value}`}
-                        {item.action === 'status_changed' && `alterou o status de "${item.from_value}" para "${item.to_value}"`}
-                        {item.action === 'owner_changed' && `alterou o responsável de "${item.from_value}" para "${item.to_value}"`}
-                        {item.action === 'description_changed' && "atualizou a descrição"}
-                        {item.action === 'title_changed' && `alterou o título para "${item.to_value}"`}
-                        {item.action === 'company_changed' && `alterou a empresa para "${item.to_value}"`}
-                        {item.action === 'task_created' && `agendou a tarefa: "${item.to_value}"`}
-                        {item.action === 'task_completed' && `concluiu a tarefa: "${item.to_value}"`}
-                        {item.action === 'task_deleted' && `removeu a tarefa: "${item.from_value}"`}
-                        {item.action === 'contact_added' && `vinculou o contato: "${item.to_value}"`}
-                        {item.action === 'contact_removed' && `desvinculou o contato: "${item.from_value}"`}
-                        {item.action === 'appointment_scheduled' && `agendou compromisso: "${item.to_value}"`}
-                        {item.action === 'whatsapp_scheduled' && `agendou WhatsApp: "${item.to_value}"`}
-                        {!['created', 'stage_changed', 'value_changed', 'status_changed', 'owner_changed', 'description_changed', 'title_changed', 'company_changed', 'task_created', 'task_completed', 'task_deleted', 'contact_added', 'contact_removed'].includes(item.action) && item.action}
-                      </p>
-                      {item.notes && (
-                        <p className="text-xs italic text-muted-foreground mt-0.5">
-                          {item.notes}
+              <div className="space-y-4">
+                <div className="flex gap-2 mb-4">
+                  <Input 
+                    placeholder="Adicionar observação ao histórico..." 
+                    value={historyNotes}
+                    onChange={(e) => setHistoryNotes(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleAddHistoryNote();
+                      }
+                    }}
+                    disabled={isAddingNote}
+                  />
+                  <Button 
+                    size="sm" 
+                    onClick={handleAddHistoryNote}
+                    disabled={isAddingNote || !historyNotes.trim()}
+                  >
+                    {isAddingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+                    Mais
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  {fullDeal?.history?.map((item: any) => (
+                    <div key={item.id} className="flex gap-3 text-sm border-b border-muted/30 pb-3 last:border-0">
+                      <div className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0" />
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start">
+                          <p className="font-medium text-xs text-muted-foreground uppercase tracking-wider">
+                            {item.user_name || "Sistema"}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {format(parseISO(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                          </p>
+                        </div>
+                        <p className="mt-1">
+                          {item.action === 'created' && "criou a negociação"}
+                          {item.action === 'stage_changed' && `moveu de "${item.from_value}" para "${item.to_value}"`}
+                          {item.action === 'value_changed' && `alterou o valor de ${item.from_value} para ${item.to_value}`}
+                          {item.action === 'status_changed' && `alterou o status de "${item.from_value}" para "${item.to_value}"`}
+                          {item.action === 'owner_changed' && `alterou o responsável de "${item.from_value}" para "${item.to_value}"`}
+                          {item.action === 'description_changed' && "atualizou a descrição"}
+                          {item.action === 'title_changed' && `alterou o título para "${item.to_value}"`}
+                          {item.action === 'company_changed' && `alterou a empresa para "${item.to_value}"`}
+                          {item.action === 'task_created' && `agendou a tarefa: "${item.to_value}"`}
+                          {item.action === 'task_completed' && `concluiu a tarefa: "${item.to_value}"`}
+                          {item.action === 'task_deleted' && `removeu a tarefa: "${item.from_value}"`}
+                          {item.action === 'contact_added' && `vinculou o contato: "${item.to_value}"`}
+                          {item.action === 'contact_removed' && `desvinculou o contato: "${item.from_value}"`}
+                          {item.action === 'appointment_scheduled' && `agendou compromisso: "${item.to_value}"`}
+                          {item.action === 'whatsapp_scheduled' && `agendou WhatsApp: "${item.to_value}"`}
+                          {item.action === 'note' && "adicionou uma nota"}
+                          {!['created', 'stage_changed', 'value_changed', 'status_changed', 'owner_changed', 'description_changed', 'title_changed', 'company_changed', 'task_created', 'task_completed', 'task_deleted', 'contact_added', 'contact_removed', 'appointment_scheduled', 'whatsapp_scheduled', 'note'].includes(item.action) && item.action}
                         </p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        {format(parseISO(item.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                      </p>
+                        {item.notes && (
+                          <div className="bg-muted/50 p-2 rounded mt-2 text-sm whitespace-pre-wrap border-l-2 border-primary/30">
+                            {item.notes}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {(!fullDeal?.history || fullDeal.history.length === 0) && (
-                  <p className="text-center text-muted-foreground py-8">
-                    Nenhum histórico disponível
-                  </p>
-                )}
+                  ))}
+                  {(!fullDeal?.history || fullDeal.history.length === 0) && (
+                    <p className="text-center text-muted-foreground py-8">
+                      Nenhum histórico disponível
+                    </p>
+                  )}
+                </div>
               </div>
             </TabsContent>
           </ScrollArea>
