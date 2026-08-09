@@ -449,38 +449,6 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
         
         toast.success("Reunião agendada no Google Calendar!");
       } else {
-        // ... (existing code for task creation)
-      }
-    } catch (err) {
-      toast.error("Erro ao agendar reunião");
-    } finally {
-      setIsScheduling(false);
-    }
-  };
-
-  const handleAddHistoryNote = async () => {
-    if (!historyNotes.trim() || !deal?.id) return;
-    
-    setIsAddingNote(true);
-    try {
-      await api(`/api/crm/deals/${deal.id}/history`, {
-        method: "POST",
-        body: {
-          action: "note",
-          notes: historyNotes.trim()
-        }
-      });
-      
-      setHistoryNotes("");
-      queryClient.invalidateQueries({ queryKey: ["crm-deal", deal.id] });
-      toast.success("Histórico adicionado!");
-    } catch (error) {
-      toast.error("Erro ao adicionar histórico");
-      console.error(error);
-    } finally {
-      setIsAddingNote(false);
-    }
-  };
         // Create a task
         createTask.mutate({
           deal_id: deal.id,
