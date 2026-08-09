@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
  import { LossReasonDialog } from "./LossReasonDialog";
 import { useCRMCustomFields, CRMCustomField } from "@/hooks/use-crm-config";
 import { api } from "@/lib/api";
-import { Building2, User, Phone, Calendar as CalendarIcon, Clock, CheckCircle, Plus, Trash2, Paperclip, MessageSquare, ChevronRight, Edit2, Save, X, FileText, Image, Loader2, Upload, Search, UserPlus, Building, Mail, Video, Send, ClipboardList, RefreshCw, Flame, FileSignature, ThumbsUp, ThumbsDown, Pause, Play } from "lucide-react";
+import { Building2, User, Phone, Calendar as CalendarIcon, Clock, CheckCircle, Plus, Trash2, Paperclip, MessageSquare, ChevronRight, Edit2, Save, X, FileText, Image, Loader2, Upload, Search, UserPlus, Building, Mail, Video, Send, ClipboardList, RefreshCw, Flame, FileSignature, ThumbsUp, ThumbsDown, Pause, Play, Sparkles } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -1134,18 +1134,35 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                   <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                     {fullDeal?.history?.filter((item: any) => item.action === 'note').slice(0, 10).map((item: any) => (
                       <div key={item.id} className="flex gap-3 text-sm border-b border-muted/30 pb-3 last:border-0">
-                        <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
+                        <div className={cn(
+                          "w-1.5 h-1.5 rounded-full mt-2 shrink-0",
+                          item.notes?.includes("📝 Resumo IA") ? "bg-purple-500" : 
+                          item.notes?.includes("💭 Anotação do Chat") ? "bg-blue-500" : "bg-primary"
+                        )} />
                         <div className="flex-1">
                           <div className="flex justify-between items-start">
-                            <p className="font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
-                              {item.user_name || "Vendedor"}
-                            </p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
+                                {item.user_name || (item.notes?.includes("📝 Resumo IA") ? "Inteligência Artificial" : "Vendedor")}
+                              </p>
+                              {item.notes?.includes("📝 Resumo IA") && (
+                                <Sparkles className="h-2.5 w-2.5 text-purple-500" />
+                              )}
+                              {item.notes?.includes("💭 Anotação do Chat") && (
+                                <MessageSquare className="h-2.5 w-2.5 text-blue-500" />
+                              )}
+                            </div>
                             <p className="text-[10px] text-muted-foreground">
                               {format(parseISO(item.created_at), "dd/MM HH:mm", { locale: ptBR })}
                             </p>
                           </div>
                           {item.notes && (
-                            <div className="bg-muted/50 p-2 rounded mt-1 text-sm whitespace-pre-wrap border-l-2 border-primary/30">
+                            <div className={cn(
+                              "p-2 rounded mt-1 text-sm whitespace-pre-wrap border-l-2",
+                              item.notes?.includes("📝 Resumo IA") ? "bg-purple-500/5 border-purple-500/30" : 
+                              item.notes?.includes("💭 Anotação do Chat") ? "bg-blue-500/5 border-blue-500/30" : 
+                              "bg-muted/50 border-primary/30"
+                            )}>
                               {item.notes}
                             </div>
                           )}

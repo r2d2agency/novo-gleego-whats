@@ -477,13 +477,40 @@ router.post('/:conversationId/generate', async (req, res) => {
         updated_at = NOW()
       RETURNING *
     `, [
-      conversationId, org.organization_id, aiResult.summary, 
+      conversationId, org.organization_id, `📝 Resumo IA: ${aiResult.summary}`, 
       JSON.stringify(aiResult.key_points), aiResult.sentiment,
       JSON.stringify(aiResult.topics), JSON.stringify(aiResult.action_items),
       aiResult.resolution, messagesResult.rows.length, 'ai_agent',
       aiConfig.ai_provider, aiConfig.ai_model, aiResult.processing_time_ms,
       req.userId
     ]);
+
+    // Also link this summary to associated CRM deals as a note
+    try {
+      const contactResult = await query(
+        `SELECT contact_phone FROM conversations WHERE id = $1`,
+        [conversationId]
+      );
+      const phone = contactResult.rows[0]?.contact_phone;
+      if (phone) {
+        const dealsResult = await query(
+          `SELECT d.id FROM crm_deals d
+           JOIN crm_deal_contacts dc ON dc.deal_id = d.id
+           JOIN contacts c ON c.id = dc.contact_id
+           WHERE c.phone = $1 AND d.status = 'open'`,
+          [phone]
+        );
+        for (const deal of dealsResult.rows) {
+          await query(
+            `INSERT INTO crm_deal_history (deal_id, user_id, action, notes)
+             VALUES ($1, $2, 'note', $3)`,
+            [deal.id, req.userId, `📝 Resumo IA: ${aiResult.summary}`]
+          );
+        }
+      }
+    } catch (e) {
+      logError('Error linking auto-summary to CRM:', e);
+    }
 
     // Update conversation with quick-access fields
     await query(`
