@@ -1639,8 +1639,131 @@ router.delete('/deals/:dealId/contacts/:contactId', async (req, res) => {
 });
 
 // ============================================
+// ATTACHMENTS
+// ============================================
+
+// List attachments for a deal
+router.get('/deals/:id/attachments', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+
+    // Ensure the crm_deal_attachments table exists (self-healing)
+    await query(`
+      CREATE TABLE IF NOT EXISTS crm_deal_attachments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        deal_id UUID REFERENCES crm_deals(id) ON DELETE CASCADE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        url TEXT NOT NULL,
+        mimetype VARCHAR(100),
+        size INTEGER,
+        uploaded_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+    await query(`CREATE INDEX IF NOT EXISTS idx_crm_deal_attachments_deal ON crm_deal_attachments(deal_id)`);
+
+    const result = await query(
+      `SELECT a.*, u.name as uploaded_by_name 
+       FROM crm_deal_attachments a
+       LEFT JOIN users u ON u.id = a.uploaded_by
+       WHERE a.deal_id = $1
+       ORDER BY a.created_at DESC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching deal attachments:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Add attachment to a deal
+router.post('/deals/:id/attachments', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+
+    const { name, url, mimetype, size } = req.body;
+    if (!name || !url) {
+      return res.status(400).json({ error: 'Nome e URL são obrigatórios' });
+    }
+
+    // Self-healing table creation
+    await query(`
+      CREATE TABLE IF NOT EXISTS crm_deal_attachments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        deal_id UUID REFERENCES crm_deals(id) ON DELETE CASCADE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        url TEXT NOT NULL,
+        mimetype VARCHAR(100),
+        size INTEGER,
+        uploaded_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
+    const result = await query(
+      `INSERT INTO crm_deal_attachments (deal_id, name, url, mimetype, size, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [req.params.id, name, url, mimetype, size, req.userId]
+    );
+
+    // Update deal last activity
+    await query(`UPDATE crm_deals SET last_activity_at = NOW() WHERE id = $1`, [req.params.id]);
+
+    // Log history
+    await query(
+      `INSERT INTO crm_deal_history (deal_id, user_id, action, notes) VALUES ($1, $2, 'attachment_added', $3)`,
+      [req.params.id, req.userId, `Arquivo anexado: ${name}`]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error adding attachment to deal:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Remove attachment from a deal
+router.delete('/deals/:dealId/attachments/:attachmentId', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+
+    const attachmentResult = await query(
+      `SELECT name FROM crm_deal_attachments WHERE id = $1 AND deal_id = $2`,
+      [req.params.attachmentId, req.params.dealId]
+    );
+
+    if (attachmentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Anexo não encontrado' });
+    }
+
+    const attachmentName = attachmentResult.rows[0].name;
+
+    await query(
+      `DELETE FROM crm_deal_attachments WHERE id = $1 AND deal_id = $2`,
+      [req.params.attachmentId, req.params.dealId]
+    );
+
+    // Log history
+    await query(
+      `INSERT INTO crm_deal_history (deal_id, user_id, action, notes) VALUES ($1, $2, 'attachment_removed', $3)`,
+      [req.params.dealId, req.userId, `Arquivo removido: ${attachmentName}`]
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error removing attachment from deal:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
 // TASKS
 // ============================================
+
 
 // List tasks (with filters)
 router.get('/tasks', async (req, res) => {
