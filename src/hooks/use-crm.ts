@@ -83,6 +83,18 @@ export interface CRMDealContact {
   role?: string;
 }
 
+export interface DealAttachment {
+  id: string;
+  deal_id: string;
+  name: string;
+  url: string;
+  mimetype?: string;
+  size: number;
+  uploaded_by?: string;
+  uploaded_by_name?: string;
+  created_at: string;
+}
+
 export interface CRMDeal {
   id: string;
   funnel_id: string;
@@ -111,6 +123,7 @@ export interface CRMDeal {
   scheduled_messages?: number;
   project_count?: number;
   contacts?: CRMDealContact[];
+  attachments?: DealAttachment[];
   last_activity_at: string;
   last_opened_at: string;
   custom_fields?: Record<string, any>;
@@ -118,6 +131,7 @@ export interface CRMDeal {
   created_at: string;
   automation_active?: boolean;
 }
+
 
 export interface CRMTask {
   id: string;
@@ -443,7 +457,7 @@ export function useCRMDeal(id: string | null) {
     queryKey: ["crm-deal", id],
     queryFn: async () => {
       if (!id) return null;
-      return api<CRMDeal & { contacts: any[]; history: any[]; tasks: CRMTask[] }>(`/api/crm/deals/${id}`);
+      return api<CRMDeal & { contacts: any[]; history: any[]; tasks: CRMTask[]; attachments: DealAttachment[] }>(`/api/crm/deals/${id}`);
     },
     enabled: !!id,
   });
@@ -517,7 +531,25 @@ export function useCRMDealMutations() {
     },
   });
 
-  return { createDeal, updateDeal, moveDeal, addContact, removeContact, bulkAction };
+  const addAttachment = useMutation({
+    mutationFn: async ({ dealId, ...data }: { dealId: string; name: string; url: string; mimetype?: string; size: number }) => {
+      return api<DealAttachment>(`/api/crm/deals/${dealId}/attachments`, { method: "POST", body: data });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["crm-deal"] });
+    },
+  });
+
+  const removeAttachment = useMutation({
+    mutationFn: async ({ dealId, attachmentId }: { dealId: string; attachmentId: string }) => {
+      return api<void>(`/api/crm/deals/${dealId}/attachments/${attachmentId}`, { method: "DELETE" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["crm-deal"] });
+    },
+  });
+
+  return { createDeal, updateDeal, moveDeal, addContact, removeContact, bulkAction, addAttachment, removeAttachment };
 }
 
 // Tasks

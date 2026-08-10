@@ -83,7 +83,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
   const [editProbability, setEditProbability] = useState("");
   const [editExpectedClose, setEditExpectedClose] = useState("");
   const [editOwnerId, setEditOwnerId] = useState("");
-  const [attachments, setAttachments] = useState<DealAttachment[]>([]);
+  const { addAttachment, removeAttachment } = useCRMDealMutations();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Task scheduling states (replacing "Agendar Retorno")
@@ -380,20 +380,18 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !deal) return;
 
     try {
       const url = await uploadFile(file);
       if (url) {
-        const newAttachment: DealAttachment = {
-          id: crypto.randomUUID(),
+        await addAttachment.mutateAsync({
+          dealId: deal.id,
           name: file.name,
           url,
           mimetype: file.type,
           size: file.size,
-          created_at: new Date().toISOString(),
-        };
-        setAttachments(prev => [...prev, newAttachment]);
+        });
         toast.success("Arquivo anexado!");
       }
     } catch (error) {
@@ -405,9 +403,19 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
     }
   };
 
-  const handleRemoveAttachment = (id: string) => {
-    setAttachments(prev => prev.filter(a => a.id !== id));
+  const handleRemoveAttachment = async (attachmentId: string) => {
+    if (!deal) return;
+    try {
+      await removeAttachment.mutateAsync({
+        dealId: deal.id,
+        attachmentId,
+      });
+      toast.success("Anexo removido");
+    } catch (error) {
+      toast.error("Erro ao remover anexo");
+    }
   };
+
 
   const handleScheduleReturn = async () => {
     if (!scheduleDate || !deal) {
@@ -810,12 +818,13 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
             <TabsTrigger value="contacts">Contatos</TabsTrigger>
             <TabsTrigger value="attachments">
               Arquivos
-              {attachments.length > 0 && (
+              {fullDeal?.attachments && fullDeal.attachments.length > 0 && (
                 <Badge variant="secondary" className="ml-1 text-xs">
-                  {attachments.length}
+                  {fullDeal.attachments.length}
                 </Badge>
               )}
             </TabsTrigger>
+
             {projectsEnabled && (
               <TabsTrigger value="projects">
                 Projetos
@@ -1791,7 +1800,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
               </Card>
 
               <div className="space-y-2">
-                {attachments.map((attachment) => (
+                {(fullDeal?.attachments || []).map((attachment: any) => (
                   <Card key={attachment.id} className="p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -1823,7 +1832,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                     </div>
                   </Card>
                 ))}
-                {attachments.length === 0 && (
+                {(!fullDeal?.attachments || fullDeal.attachments.length === 0) && (
                   <p className="text-center text-muted-foreground py-8">
                     Nenhum arquivo anexado
                   </p>
