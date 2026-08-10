@@ -457,7 +457,7 @@ export function useCRMDeal(id: string | null) {
     queryKey: ["crm-deal", id],
     queryFn: async () => {
       if (!id) return null;
-      return api<CRMDeal & { contacts: any[]; history: any[]; tasks: CRMTask[] }>(`/api/crm/deals/${id}`);
+      return api<CRMDeal & { contacts: any[]; history: any[]; tasks: CRMTask[]; attachments: DealAttachment[] }>(`/api/crm/deals/${id}`);
     },
     enabled: !!id,
   });
@@ -531,7 +531,25 @@ export function useCRMDealMutations() {
     },
   });
 
-  return { createDeal, updateDeal, moveDeal, addContact, removeContact, bulkAction };
+  const addAttachment = useMutation({
+    mutationFn: async ({ dealId, ...data }: { dealId: string; name: string; url: string; mimetype?: string; size: number }) => {
+      return api<DealAttachment>(`/api/crm/deals/${dealId}/attachments`, { method: "POST", body: data });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["crm-deal"] });
+    },
+  });
+
+  const removeAttachment = useMutation({
+    mutationFn: async ({ dealId, attachmentId }: { dealId: string; attachmentId: string }) => {
+      return api<void>(`/api/crm/deals/${dealId}/attachments/${attachmentId}`, { method: "DELETE" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["crm-deal"] });
+    },
+  });
+
+  return { createDeal, updateDeal, moveDeal, addContact, removeContact, bulkAction, addAttachment, removeAttachment };
 }
 
 // Tasks

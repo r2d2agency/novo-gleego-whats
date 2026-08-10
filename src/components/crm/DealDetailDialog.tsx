@@ -83,7 +83,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
   const [editProbability, setEditProbability] = useState("");
   const [editExpectedClose, setEditExpectedClose] = useState("");
   const [editOwnerId, setEditOwnerId] = useState("");
-  const [attachments, setAttachments] = useState<DealAttachment[]>([]);
+  const { addAttachment, removeAttachment } = useCRMDealMutations();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Task scheduling states (replacing "Agendar Retorno")
@@ -1791,7 +1791,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
               </Card>
 
               <div className="space-y-2">
-                {attachments.map((attachment) => (
+                {(fullDeal?.attachments || []).map((attachment: any) => (
                   <Card key={attachment.id} className="p-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -1823,7 +1823,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                     </div>
                   </Card>
                 ))}
-                {attachments.length === 0 && (
+                {(!fullDeal?.attachments || fullDeal.attachments.length === 0) && (
                   <p className="text-center text-muted-foreground py-8">
                     Nenhum arquivo anexado
                   </p>
