@@ -83,6 +83,18 @@ export interface CRMDealContact {
   role?: string;
 }
 
+export interface DealAttachment {
+  id: string;
+  deal_id: string;
+  name: string;
+  url: string;
+  mimetype?: string;
+  size: number;
+  uploaded_by?: string;
+  uploaded_by_name?: string;
+  created_at: string;
+}
+
 export interface CRMDeal {
   id: string;
   funnel_id: string;
@@ -111,6 +123,7 @@ export interface CRMDeal {
   scheduled_messages?: number;
   project_count?: number;
   contacts?: CRMDealContact[];
+  attachments?: DealAttachment[];
   last_activity_at: string;
   last_opened_at: string;
   custom_fields?: Record<string, any>;
@@ -118,6 +131,7 @@ export interface CRMDeal {
   created_at: string;
   automation_active?: boolean;
 }
+
 
 export interface CRMTask {
   id: string;
