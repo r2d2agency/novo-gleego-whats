@@ -1022,12 +1022,24 @@ router.get('/deals/:id', async (req, res) => {
       [req.params.id]
     );
 
+    // Get attachments
+    const attachments = await query(
+      `SELECT a.*, u.name as uploaded_by_name
+       FROM crm_deal_attachments a
+       LEFT JOIN users u ON u.id = a.uploaded_by
+       WHERE a.deal_id = $1
+       ORDER BY a.created_at DESC`,
+      [req.params.id]
+    ).catch(() => ({ rows: [] })); // Fallback if table doesn't exist yet
+
     res.json({
       ...deal.rows[0],
       contacts: contacts.rows,
       history: history.rows,
-      tasks: tasks.rows
+      tasks: tasks.rows,
+      attachments: attachments.rows
     });
+
   } catch (error) {
     console.error('Error fetching deal:', error);
     res.status(500).json({ error: error.message });
