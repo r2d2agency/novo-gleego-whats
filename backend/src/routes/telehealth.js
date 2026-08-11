@@ -57,7 +57,7 @@ const chunkStorage = multer.diskStorage({
     cb(null, dir);
   },
   filename: (req, file, cb) => {
-    const idx = String(req.headers['x-chunk-index'] || '0').padStart(6, '0');
+    const idx = String(req.headers['x-chunk-index'] || req.headers['X-Chunk-Index'] || '0').padStart(6, '0');
     cb(null, `chunk_${idx}.part`);
   },
 });
@@ -313,7 +313,7 @@ router.post('/:id/audio/chunk', authenticate, chunkUpload.single('chunk'), async
       [req.params.id, org.organization_id]
     );
     if (!r.rows.length) return res.status(404).json({ error: 'Sessão não encontrada' });
-    const idx = parseInt(req.headers['x-chunk-index'] || '0');
+    const idx = parseInt(req.headers['x-chunk-index'] || req.headers['X-Chunk-Index'] || '0');
     res.json({ ok: true, index: idx, size: req.file.size });
   } catch (e) {
     logError('Chunk upload error', e);

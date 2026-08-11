@@ -353,6 +353,9 @@ export function RecordingModal({ open, onClose, onFinish, onFinished, sessionId,
   return (
     <Dialog open={open} onOpenChange={() => {}}>
       <DialogContent className="max-w-3xl h-[90vh] flex flex-col p-0 gap-0" onInteractOutside={e => e.preventDefault()}>
+        <div className="sr-only">
+          <h2>Gravação de Teleatendimento</h2>
+        </div>
         <div className="flex items-center justify-between p-4 border-b">
           <div>
             <h2 className="text-lg font-semibold">Gravação - {sessionTitle || 'Nova Sessão'}</h2>
