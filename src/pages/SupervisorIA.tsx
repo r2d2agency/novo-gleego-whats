@@ -552,12 +552,12 @@ export default function SupervisorIA() {
                           <div key={f.id} className="flex items-center space-x-2">
                             <Checkbox 
                               id={`funnel-${f.id}`}
-                              checked={!localSettings?.monitored_funnels || localSettings.monitored_funnels.includes(f.id)}
+                              checked={localSettings?.monitored_funnels ? localSettings.monitored_funnels.includes(f.id) : true}
                               onCheckedChange={(checked) => {
-                                const current = localSettings?.monitored_funnels || funnels.map((fun: any) => fun.id);
+                                const current = localSettings?.monitored_funnels || (funnels || []).map((fun: any) => fun.id);
                                 let next;
                                 if (checked) {
-                                  next = [...current, f.id];
+                                  next = Array.from(new Set([...current, f.id]));
                                 } else {
                                   next = current.filter((id: string) => id !== f.id);
                                 }
@@ -1215,26 +1215,31 @@ export default function SupervisorIA() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {semaphore?.leads?.filter((l: any) => l.semaphore_color === 'RED').slice(0, 5).map((lead: any) => (
-                    <div key={lead.id} className="flex items-center justify-between p-3 border rounded-lg bg-red-50/50 dark:bg-red-950/10 border-red-100 dark:border-red-900/30">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                          <AlertTriangle className="h-5 w-5 text-red-600" />
+                  {(() => {
+                    const redLeads = (semaphore?.leads || []).filter((l: any) => l.semaphore_color === 'RED');
+                    if (redLeads.length === 0) return null;
+                    
+                    return redLeads.slice(0, 5).map((lead: any) => (
+                      <div key={lead.id} className="flex items-center justify-between p-3 border rounded-lg bg-red-50/50 dark:bg-red-950/10 border-red-100 dark:border-red-900/30">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                            <AlertTriangle className="h-5 w-5 text-red-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{lead.title}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Última interação: {lead.last_activity_at ? new Date(lead.last_activity_at).toLocaleString() : 'Nunca'}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium">{lead.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Última interação: {lead.last_activity_at ? new Date(lead.last_activity_at).toLocaleString() : 'Nunca'}
-                          </p>
+                        <div className="flex items-center gap-4">
+                          <Badge variant="destructive" className="animate-pulse">Crítico</Badge>
+                          <Button size="sm" onClick={() => navigate(`/crm?dealId=${lead.id}`)}>Resolver</Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <Badge variant="destructive" className="animate-pulse">Crítico</Badge>
-                        <Button size="sm">Resolver</Button>
-                      </div>
-                    </div>
-                  ))}
-                  {semaphore?.leads?.filter((l: any) => l.semaphore_color === 'RED').length === 0 && (
+                    ));
+                  })()}
+                  {(semaphore?.leads || []).filter((l: any) => l.semaphore_color === 'RED').length === 0 && (
                     <div className="text-center py-6 text-muted-foreground">
                       Nenhum lead em estado crítico no momento. Parabéns!
                     </div>
@@ -1312,28 +1317,41 @@ export default function SupervisorIA() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {semaphore?.leads?.map((lead: any) => (
-                      <tr key={lead.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3 font-medium">{lead.title}</td>
-                        <td className="px-4 py-3">
-                          {sellers?.find((s: any) => s.id === lead.owner_id)?.name || 'Não atribuído'}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {lead.last_activity_at ? new Date(lead.last_activity_at).toLocaleString() : 'Nunca'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge variant={
-                            lead.semaphore_color === 'RED' ? 'destructive' : 
-                            lead.semaphore_color === 'YELLOW' ? 'secondary' : 'default'
-                          }>
-                            {lead.semaphore_color === 'RED' ? 'Alta' : lead.semaphore_color === 'YELLOW' ? 'Média' : 'Normal'}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <Button variant="ghost" size="sm">Audit</Button>
-                        </td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      const leads = (semaphore?.leads || []);
+                      if (leads.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={5} className="text-center py-10 text-muted-foreground">
+                              Nenhum alerta encontrado no momento.
+                            </td>
+                          </tr>
+                        );
+                      }
+                      
+                      return leads.map((lead: any) => (
+                        <tr key={lead.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3 font-medium">{lead.title}</td>
+                          <td className="px-4 py-3">
+                            {sellers?.find((s: any) => s.user_id === lead.owner_id || s.id === lead.owner_id)?.name || 'Não atribuído'}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {lead.last_activity_at ? new Date(lead.last_activity_at).toLocaleString() : 'Nunca'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant={
+                              lead.semaphore_color === 'RED' ? 'destructive' : 
+                              lead.semaphore_color === 'YELLOW' ? 'secondary' : 'default'
+                            }>
+                              {lead.semaphore_color === 'RED' ? 'Alta' : lead.semaphore_color === 'YELLOW' ? 'Média' : 'Normal'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button variant="ghost" size="sm" onClick={() => navigate(`/crm?dealId=${lead.id}`)}>Ver Lead</Button>
+                          </td>
+                        </tr>
+                      ));
+                    })()}
                   </tbody>
                 </table>
               </CardContent>
