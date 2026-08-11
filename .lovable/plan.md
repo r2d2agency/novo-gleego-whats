@@ -1,88 +1,29 @@
-# Workspace do Dev — módulo separado para gerenciar seus SaaS
+# Plan - Fix AI Supervisor Filters and Alerts
 
-Um módulo novo, isolado do módulo `Projects` atual (que é entrega interna). Vai viver em `/workspace` e ser controlado por permissão de owner/superadmin. Cliente vê só o **portal público** do projeto dele via link com token (sem login).
+The user is experiencing issues with the AI Supervisor system:
+1. **SLA Rules / Funnel Filters:** Only one funnel is appearing in the SLA rules dialog and the main funnel filter, even when multiple funnels exist.
+2. **Alerts Tab:** The "Alertas" tab is not loading all expected data.
 
-## Hierarquia
+## Proposed Changes
 
-```text
-Projeto (SaaS "Igreja X")
- └── Módulo (Chat, CRM, Financeiro…)      ← você descreve o que é
-      └── Fase (Descoberta, MVP, Beta, Prod…)  ← tem deadline
-           └── Task (demandas: suporte / implantação / correção / feature)
-```
+### 1. Frontend: Fix Funnel Selection in SLA Rules
+In `src/pages/SupervisorIA.tsx`, the `monitored_funnels` logic in the SLA rules dialog needs to be more resilient. Currently, it initializes `next` with `localSettings.monitored_funnels` or falls back to mapping all funnels, but the state management might be causing issues when `localSettings.monitored_funnels` is null or empty.
 
-## Backend — nova schema (`backend/schema-dev-workspace.sql`)
+### 2. Frontend: Improve Alerts Tab Loading
+The "Alertas" tab relies on `semaphore?.leads`. I will verify if the filtering logic for specific funnels is causing leads to be omitted unexpectedly.
 
-Tabelas isoladas, prefixo `dev_`:
+### 3. Backend: Fix Semaphore and Stats Funnel Filtering
+In `backend/src/routes/supervisor.js`:
+- The `/semaphore` endpoint uses a strict `AND funnel_id = ANY($2)` check. If `monitored_funnels` is empty in settings, it might be defaulting to an empty array instead of "all".
+- I will update the logic to treat an empty `monitored_funnels` array as "monitor all funnels" in the backend queries.
 
-- `dev_projects` — id, org_id, client_id (contact_id opcional), name, description, status, portal_token, portal_enabled, cover_url, created_by
-- `dev_modules` — id, project_id, name, description, position, color, icon
-- `dev_phases` — id, module_id, name, position, start_date, due_date, status (`planned|in_progress|done|blocked`), completed_at
-- `dev_tasks` — id, project_id, module_id, phase_id, title, description, type (`support|implementation|fix|feature|chore`), priority, status (`backlog|todo|doing|review|done`), source (`manual|ai|client`), client_note, ai_reasoning, assigned_to, due_date, completed_at, position
-- `dev_knowledge` — id, project_id, kind (`markdown|note|url|file`), title, content (text, para RAG), source_url, tokens, created_at
-- `dev_knowledge_chunks` — id, knowledge_id, project_id, chunk, embedding vector(1536) — reaproveita infra RAG existente do sistema
-- `dev_activity` — id, project_id, actor (user|ai|client), action, payload jsonb, created_at (timeline)
+### 4. Backend: Fix Stats Funnel Filtering
+Similarly, in the `/stats` endpoint, I will ensure that if `funnelId` is not provided and `monitored_funnels` is empty, it correctly defaults to searching all funnels for the organization.
 
-Deadlines por fase disparam alerta se `due_date < now()` e `status != 'done'`.
+## Technical Details
+- **File:** `src/pages/SupervisorIA.tsx` - Fix the Checkbox logic for monitored funnels in the SLA Dialog.
+- **File:** `backend/src/routes/supervisor.js` - Update `/semaphore` and `/stats` queries to handle empty `monitored_funnels` as "all".
+- **Verification:** I will check if the user has multiple funnels in their CRM and ensure the filters display them all.
 
-## Backend — rotas (`backend/src/routes/dev-workspace.js`)
-
-Autenticadas (owner/superadmin):
-- CRUD `dev_projects` / `dev_modules` / `dev_phases` / `dev_tasks`
-- `POST /api/dev/projects/:id/ai/breakdown` — recebe descrição + .md opcional, IA propõe módulos+fases+tasks iniciais (retorna JSON estruturado para o usuário revisar antes de salvar)
-- `POST /api/dev/projects/:id/ai/classify-demand` — entrada `{ client_id, text }`, IA responde `{ type, module_id, phase_id, title, description, priority }` e cria a task
-- `POST /api/dev/projects/:id/knowledge` — upload .md/.txt/.pdf, chunking + embedding (reusa `knowledge-processor.js` com fallback Lovable AI Gateway)
-- `POST /api/dev/projects/:id/ai/ask` — RAG Q&A sobre o cérebro do projeto
-- `POST /api/dev/projects/:id/ai/roadmap` — gera roadmap markdown do que foi feito / falta / próximos passos
-- `GET /api/dev/projects/:id/gantt` — series prontas p/ gráfico (fases + dependências por ordem)
-- `GET /api/dev/projects/:id/deadlines` — resumo verde/amarelo/vermelho por fase
-
-Rotas públicas (portal cliente, sem auth, validam `portal_token`):
-- `GET /api/dev/portal/:token` — projeto + módulos + fases + progresso (sem detalhes internos)
-- `POST /api/dev/portal/:token/requests` — cliente envia pedido → cai como task `source=client, status=backlog` e a IA classifica em background
-
-## Frontend
-
-Nova área em `src/pages/workspace/`:
-
-- `WorkspaceHome.tsx` — lista dos seus projetos (cards com % de conclusão, próxima entrega, status do prazo)
-- `WorkspaceProject.tsx` — abas: **Visão geral / Módulos / Gantt / Tasks / Cérebro (RAG) / Portal**
-- `WorkspaceProjectSetup.tsx` — assistente IA: cola briefing → sugere módulos/fases/tasks → você edita → salva tudo
-- `WorkspaceDemandInbox.tsx` — campo único "colar demanda do cliente X" → IA classifica → mostra preview → confirma
-- `WorkspaceBrain.tsx` — upload .md, lista de docs indexados, chat de perguntas sobre o projeto
-- `WorkspaceGantt.tsx` — timeline das fases com barras vermelhas p/ atrasadas
-- `ClientPortal.tsx` — rota pública `/p/:token`, visão limpa (sem preços, sem internos, apenas fases + progresso + form de novos pedidos)
-
-Hooks: `src/hooks/use-dev-workspace.ts` com queries/mutations por recurso.
-
-Sidebar: item novo "Workspace" visível apenas para owner/superadmin (ou membros com flag `dev_workspace_access` — flag ligada por padrão só p/ owner).
-
-## IA
-
-- Modelo padrão: `google/gemini-3-flash-preview` via Lovable AI Gateway (usando `ai-config` da organização com fallback para `LOVABLE_API_KEY`)
-- Structured output com Zod para `breakdown` e `classify-demand` (schemas mínimos, sem bounds — sigo a regra do knowledge)
-- Embeddings: `google/gemini-embedding-001` (reaproveita pipeline RAG do projeto)
-- Roadmap: prompt com timeline + tasks concluídas → markdown baixável
-
-## Prazos
-
-- Cada fase tem `due_date`. Job em `dev-workspace-scheduler.js` roda a cada hora, marca cores e cria notificações internas quando entra em zona amarela (<48h) ou vermelha (atrasado).
-- Gantt calcula `start_date` da próxima fase a partir do `due_date` da anterior quando vazio.
-- América/São_Paulo aplicado (regra já existente no projeto).
-
-## O que fica de fora nesta primeira entrega
-
-- Faturamento por fase / cobrança automática (você tem Asaas, integra depois)
-- Comentários em thread nas tasks (v2, se pedir)
-- Notificações push para o cliente (só e-mail/portal no v1)
-
-## Ordem de execução
-
-1. Migration + `schema-dev-workspace.sql` e self-heal no `routes/dev-workspace.js`
-2. Rotas CRUD + IA (breakdown, classify, ask, roadmap) + portal público
-3. Scheduler de deadlines
-4. Hooks + páginas frontend + Sidebar
-5. Portal público `/p/:token`
-6. Ajuste de permissões (owner/superadmin) e testes de fluxo
-
-Ao final você tem: cria projeto → cola briefing → IA sugere estrutura → você define datas → sobe .md do que já existe → começa a jogar demandas soltas que caem classificadas → gera roadmap.md quando quiser → manda o link `/p/:token` pro cliente ver o progresso.
+---
+**Note:** I will also check the `crm_deals` table schema if needed, but primarily focusing on the logic that filters these records.
