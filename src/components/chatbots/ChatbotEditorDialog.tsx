@@ -246,8 +246,8 @@ export function ChatbotEditorDialog({ open, chatbot, onClose }: ChatbotEditorDia
             <Bot className="h-5 w-5 text-primary" />
             {chatbot ? 'Editar Chatbot' : 'Novo Chatbot'}
           </DialogTitle>
-          <DialogDescription>
-            Configure o chatbot, horários, IA e mensagens automáticas
+          <DialogDescription className="sr-only">
+            Configurações do chatbot
           </DialogDescription>
         </DialogHeader>
 

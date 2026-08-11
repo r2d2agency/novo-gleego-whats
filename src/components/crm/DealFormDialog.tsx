@@ -162,6 +162,7 @@ export function DealFormDialog({ funnel, open, onOpenChange }: DealFormDialogPro
       <DialogContent className="max-w-lg max-h-[calc(100dvh-2rem)] !flex !flex-col overflow-hidden" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Nova Negociação</DialogTitle>
+          <p className="sr-only">Formulário para criar uma nova negociação</p>
         </DialogHeader>
 
         <div className="-mr-3 max-h-[calc(100dvh-12rem)] overflow-y-auto pr-3 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">

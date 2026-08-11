@@ -338,8 +338,8 @@ export function AgentEditorDialog({ open, onOpenChange, agent, onSaved }: AgentE
             <Bot className="h-5 w-5 text-primary" />
             {agent?.id ? 'Editar Agente' : 'Novo Agente de IA'}
           </DialogTitle>
-          <DialogDescription>
-            Configure as capacidades e comportamento do seu assistente inteligente
+          <DialogDescription className="sr-only">
+            Configurações do agente de IA
           </DialogDescription>
         </DialogHeader>
 
