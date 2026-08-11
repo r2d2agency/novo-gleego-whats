@@ -1215,26 +1215,31 @@ export default function SupervisorIA() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {semaphore?.leads?.filter((l: any) => l.semaphore_color === 'RED').slice(0, 5).map((lead: any) => (
-                    <div key={lead.id} className="flex items-center justify-between p-3 border rounded-lg bg-red-50/50 dark:bg-red-950/10 border-red-100 dark:border-red-900/30">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                          <AlertTriangle className="h-5 w-5 text-red-600" />
+                  {(() => {
+                    const redLeads = (semaphore?.leads || []).filter((l: any) => l.semaphore_color === 'RED');
+                    if (redLeads.length === 0) return null;
+                    
+                    return redLeads.slice(0, 5).map((lead: any) => (
+                      <div key={lead.id} className="flex items-center justify-between p-3 border rounded-lg bg-red-50/50 dark:bg-red-950/10 border-red-100 dark:border-red-900/30">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                            <AlertTriangle className="h-5 w-5 text-red-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{lead.title}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Última interação: {lead.last_activity_at ? new Date(lead.last_activity_at).toLocaleString() : 'Nunca'}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium">{lead.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Última interação: {lead.last_activity_at ? new Date(lead.last_activity_at).toLocaleString() : 'Nunca'}
-                          </p>
+                        <div className="flex items-center gap-4">
+                          <Badge variant="destructive" className="animate-pulse">Crítico</Badge>
+                          <Button size="sm" onClick={() => navigate(`/crm?dealId=${lead.id}`)}>Resolver</Button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <Badge variant="destructive" className="animate-pulse">Crítico</Badge>
-                        <Button size="sm">Resolver</Button>
-                      </div>
-                    </div>
-                  ))}
-                  {semaphore?.leads?.filter((l: any) => l.semaphore_color === 'RED').length === 0 && (
+                    ));
+                  })()}
+                  {(semaphore?.leads || []).filter((l: any) => l.semaphore_color === 'RED').length === 0 && (
                     <div className="text-center py-6 text-muted-foreground">
                       Nenhum lead em estado crítico no momento. Parabéns!
                     </div>
