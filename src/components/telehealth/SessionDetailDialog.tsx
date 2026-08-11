@@ -258,6 +258,9 @@ export function SessionDetailDialog({ session, open, onClose, onRetry, onAnalyze
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl h-[90vh] !flex flex-col p-0 gap-0 overflow-hidden">
+        <div className="sr-only">
+          <h2>Detalhes da Sessão de Teleatendimento</h2>
+        </div>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 px-6 pt-6 pb-2">
             <span className="truncate">{session.title || 'Sessão sem título'}</span>
