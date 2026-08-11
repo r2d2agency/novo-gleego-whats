@@ -140,7 +140,7 @@ export function useTelehealth() {
           method: 'POST',
           headers: {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            'X-Chunk-Index': String(index),
+            'x-chunk-index': String(index),
           },
           body: formData,
         });
