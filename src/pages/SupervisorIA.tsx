@@ -552,12 +552,12 @@ export default function SupervisorIA() {
                           <div key={f.id} className="flex items-center space-x-2">
                             <Checkbox 
                               id={`funnel-${f.id}`}
-                              checked={!localSettings?.monitored_funnels || localSettings.monitored_funnels.includes(f.id)}
+                              checked={localSettings?.monitored_funnels ? localSettings.monitored_funnels.includes(f.id) : true}
                               onCheckedChange={(checked) => {
-                                const current = localSettings?.monitored_funnels || funnels.map((fun: any) => fun.id);
+                                const current = localSettings?.monitored_funnels || (funnels || []).map((fun: any) => fun.id);
                                 let next;
                                 if (checked) {
-                                  next = [...current, f.id];
+                                  next = Array.from(new Set([...current, f.id]));
                                 } else {
                                   next = current.filter((id: string) => id !== f.id);
                                 }
