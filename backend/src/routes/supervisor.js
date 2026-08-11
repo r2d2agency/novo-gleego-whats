@@ -105,7 +105,7 @@ router.get('/semaphore', async (req, res) => {
     };
 
     let monitoredFunnelsClause = '';
-    if (settings.monitored_funnels && settings.monitored_funnels.length > 0) {
+    if (settings.monitored_funnels && Array.isArray(settings.monitored_funnels) && settings.monitored_funnels.length > 0) {
       monitoredFunnelsClause = ` AND funnel_id = ANY($2)`;
     }
 
@@ -131,7 +131,7 @@ router.get('/semaphore', async (req, res) => {
       WHERE organization_id = $1 AND status = 'open'${monitoredFunnelsClause}
     `;
 
-    const result = await query(semaphoreQuery, settings.monitored_funnels && settings.monitored_funnels.length > 0 ? [org.organization_id, settings.monitored_funnels] : [org.organization_id]);
+    const result = await query(semaphoreQuery, (settings.monitored_funnels && Array.isArray(settings.monitored_funnels) && settings.monitored_funnels.length > 0) ? [org.organization_id, settings.monitored_funnels] : [org.organization_id]);
     
     const summary = {
       GREEN: result.rows.filter(r => r.semaphore_color === 'GREEN').length,
