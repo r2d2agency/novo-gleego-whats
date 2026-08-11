@@ -555,6 +555,7 @@ export default function SupervisorIA() {
                                 id={`funnel-${f.id}`}
                                 checked={localSettings?.monitored_funnels ? localSettings.monitored_funnels.includes(f.id) : true}
                                 onCheckedChange={(checked) => {
+                                  // Se monitored_funnels for null/undefined, significa que todos estão selecionados inicialmente
                                   const current = localSettings?.monitored_funnels || (funnels || []).map((fun: any) => fun.id);
                                   let next;
                                   if (checked) {
@@ -562,6 +563,10 @@ export default function SupervisorIA() {
                                   } else {
                                     next = current.filter((id: string) => id !== f.id);
                                   }
+                                  
+                                  // Se após filtrar, o array estiver vazio, talvez o usuário queira monitorar "nenhum" 
+                                  // mas a lógica do backend trata vazio como "todos". 
+                                  // Mantemos o array vazio para permitir a seleção granular.
                                   setLocalSettings({...localSettings, monitored_funnels: next});
                                 }}
                               />
@@ -574,7 +579,10 @@ export default function SupervisorIA() {
                             </div>
                           ))
                         ) : (
-                          <p className="text-xs text-muted-foreground text-center py-2">Carregando funis...</p>
+                          <div className="flex flex-col items-center justify-center py-4 gap-2">
+                            <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                            <p className="text-xs text-muted-foreground">Carregando funis da organização...</p>
+                          </div>
                         )}
                       </div>
                       <p className="text-[10px] text-muted-foreground">
