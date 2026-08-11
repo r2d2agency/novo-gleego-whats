@@ -552,6 +552,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl h-[95vh] max-h-[95vh] flex flex-col" aria-describedby={undefined}>
         <DialogHeader>
+          <DialogTitle className="sr-only">Detalhes da Negociação</DialogTitle>
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">
               {isEditingTitle ? (
