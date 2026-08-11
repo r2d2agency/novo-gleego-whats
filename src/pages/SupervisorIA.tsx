@@ -1312,28 +1312,41 @@ export default function SupervisorIA() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {semaphore?.leads?.map((lead: any) => (
-                      <tr key={lead.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3 font-medium">{lead.title}</td>
-                        <td className="px-4 py-3">
-                          {sellers?.find((s: any) => s.id === lead.owner_id)?.name || 'Não atribuído'}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {lead.last_activity_at ? new Date(lead.last_activity_at).toLocaleString() : 'Nunca'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge variant={
-                            lead.semaphore_color === 'RED' ? 'destructive' : 
-                            lead.semaphore_color === 'YELLOW' ? 'secondary' : 'default'
-                          }>
-                            {lead.semaphore_color === 'RED' ? 'Alta' : lead.semaphore_color === 'YELLOW' ? 'Média' : 'Normal'}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <Button variant="ghost" size="sm">Audit</Button>
-                        </td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      const leads = (semaphore?.leads || []);
+                      if (leads.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={5} className="text-center py-10 text-muted-foreground">
+                              Nenhum alerta encontrado no momento.
+                            </td>
+                          </tr>
+                        );
+                      }
+                      
+                      return leads.map((lead: any) => (
+                        <tr key={lead.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-4 py-3 font-medium">{lead.title}</td>
+                          <td className="px-4 py-3">
+                            {sellers?.find((s: any) => s.user_id === lead.owner_id || s.id === lead.owner_id)?.name || 'Não atribuído'}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {lead.last_activity_at ? new Date(lead.last_activity_at).toLocaleString() : 'Nunca'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant={
+                              lead.semaphore_color === 'RED' ? 'destructive' : 
+                              lead.semaphore_color === 'YELLOW' ? 'secondary' : 'default'
+                            }>
+                              {lead.semaphore_color === 'RED' ? 'Alta' : lead.semaphore_color === 'YELLOW' ? 'Média' : 'Normal'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button variant="ghost" size="sm" onClick={() => navigate(`/crm?dealId=${lead.id}`)}>Ver Lead</Button>
+                          </td>
+                        </tr>
+                      ));
+                    })()}
                   </tbody>
                 </table>
               </CardContent>
