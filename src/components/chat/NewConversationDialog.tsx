@@ -259,8 +259,8 @@ export function NewConversationDialog({
             <MessageSquarePlus className="h-5 w-5 text-primary" />
             Nova Conversa
           </DialogTitle>
-          <DialogDescription>
-            Selecione um contato da agenda ou adicione um novo número
+          <DialogDescription className="sr-only">
+            Selecione um contato ou adicione um novo número para iniciar uma conversa
           </DialogDescription>
         </DialogHeader>
 
