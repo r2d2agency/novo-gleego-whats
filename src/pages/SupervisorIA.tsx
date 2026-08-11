@@ -548,30 +548,34 @@ export default function SupervisorIA() {
                     <div className="grid gap-2">
                       <Label>Funis Monitorados</Label>
                       <div className="border rounded-md p-3 space-y-2 max-h-[150px] overflow-y-auto">
-                        {(funnels || []).map((f: any) => (
-                          <div key={f.id} className="flex items-center space-x-2">
-                            <Checkbox 
-                              id={`funnel-${f.id}`}
-                              checked={localSettings?.monitored_funnels ? localSettings.monitored_funnels.includes(f.id) : true}
-                              onCheckedChange={(checked) => {
-                                const current = localSettings?.monitored_funnels || (funnels || []).map((fun: any) => fun.id);
-                                let next;
-                                if (checked) {
-                                  next = Array.from(new Set([...current, f.id]));
-                                } else {
-                                  next = current.filter((id: string) => id !== f.id);
-                                }
-                                setLocalSettings({...localSettings, monitored_funnels: next});
-                              }}
-                            />
-                            <label 
-                              htmlFor={`funnel-${f.id}`}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                            >
-                              {f.name}
-                            </label>
-                          </div>
-                        ))}
+                        {(funnels || []).length > 0 ? (
+                          (funnels || []).map((f: any) => (
+                            <div key={f.id} className="flex items-center space-x-2">
+                              <Checkbox 
+                                id={`funnel-${f.id}`}
+                                checked={localSettings?.monitored_funnels ? localSettings.monitored_funnels.includes(f.id) : true}
+                                onCheckedChange={(checked) => {
+                                  const current = localSettings?.monitored_funnels || (funnels || []).map((fun: any) => fun.id);
+                                  let next;
+                                  if (checked) {
+                                    next = Array.from(new Set([...current, f.id]));
+                                  } else {
+                                    next = current.filter((id: string) => id !== f.id);
+                                  }
+                                  setLocalSettings({...localSettings, monitored_funnels: next});
+                                }}
+                              />
+                              <label 
+                                htmlFor={`funnel-${f.id}`}
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                              >
+                                {f.name}
+                              </label>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs text-muted-foreground text-center py-2">Carregando funis...</p>
+                        )}
                       </div>
                       <p className="text-[10px] text-muted-foreground">
                         Se nenhum funil for selecionado, todos serão monitorados.
