@@ -50,7 +50,7 @@ router.get('/stats', async (req, res) => {
     if (funnelId && funnelId !== 'all') {
       params.push(funnelId);
       whereClause += ` AND d.funnel_id = $${params.length}`;
-    } else if (monitoredFunnels && monitoredFunnels.length > 0) {
+    } else if (monitoredFunnels && Array.isArray(monitoredFunnels) && monitoredFunnels.length > 0) {
       params.push(monitoredFunnels);
       whereClause += ` AND d.funnel_id = ANY($${params.length})`;
     }
