@@ -433,23 +433,55 @@ router.get('/charges', async (req, res) => {
     const org = await getUserOrg(req.userId);
     if (!org) return res.status(403).json({ error: 'No organization' });
 
-    const result = await query(
-      `SELECT 
-        c.*, 
-        u.name as target_user_name,
-        g.name as target_team_name,
-        cb.name as charged_by_name
-       FROM supervisor_charges c
-       LEFT JOIN users u ON u.id = c.target_user_id
-       LEFT JOIN crm_user_groups g ON g.id = c.target_team_id
-       LEFT JOIN users cb ON cb.id = c.charged_by
-       WHERE c.organization_id = $1
-       ORDER BY c.created_at DESC
-       LIMIT 100`,
-      [org.organization_id]
-    );
+    // Verificamos se a coluna organization_id existe na tabela supervisor_charges
+    const checkCol = await query(`
+      SELECT COUNT(*) 
+      FROM information_schema.columns 
+      WHERE table_name = 'supervisor_charges' AND column_name = 'organization_id'
+    `);
+    
+    const hasOrgCol = parseInt(checkCol.rows[0].count) > 0;
+    
+    let result;
+    if (hasOrgCol) {
+      result = await query(
+        `SELECT 
+          c.*, 
+          u.name as target_user_name,
+          g.name as target_team_name,
+          cb.name as charged_by_name
+         FROM supervisor_charges c
+         LEFT JOIN users u ON u.id = c.target_user_id
+         LEFT JOIN crm_user_groups g ON g.id = c.target_team_id
+         LEFT JOIN users cb ON cb.id = c.charged_by
+         WHERE c.organization_id = $1
+         ORDER BY c.created_at DESC
+         LIMIT 100`,
+        [org.organization_id]
+      );
+    } else {
+      // Fallback para quando a migração ainda não refletiu (usando target_user_id linkado a org_members)
+      result = await query(
+        `SELECT 
+          c.*, 
+          u.name as target_user_name,
+          g.name as target_team_name,
+          cb.name as charged_by_name
+         FROM supervisor_charges c
+         LEFT JOIN users u ON u.id = c.target_user_id
+         LEFT JOIN crm_user_groups g ON g.id = c.target_team_id
+         LEFT JOIN users cb ON cb.id = c.charged_by
+         JOIN organization_members om ON om.user_id = c.target_user_id
+         WHERE om.organization_id = $1
+         ORDER BY c.created_at DESC
+         LIMIT 100`,
+        [org.organization_id]
+      );
+    }
+    
     res.json(Array.isArray(result.rows) ? result.rows : []);
   } catch (error) {
+    logError('Error fetching charges:', error);
     res.status(500).json({ error: error.message });
   }
 });
