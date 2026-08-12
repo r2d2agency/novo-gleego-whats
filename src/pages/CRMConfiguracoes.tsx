@@ -1504,6 +1504,131 @@ export default function CRMConfiguracoes() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Funnel Assignment Dialog */}
+      <Dialog open={funnelAssignDialogOpen} onOpenChange={setFunnelAssignDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Atribuir Funis ao Grupo</DialogTitle>
+            <DialogDescription>
+              Selecione os funis que os membros do grupo "{editingGroup?.name}" podem acessar.
+              Administradores sempre visualizam todos os funis.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[300px] mt-4">
+            <div className="space-y-3 pr-4">
+              {funnels?.map((funnel) => {
+                const isSelected = groupFunnels?.some(gf => gf.funnel_id === funnel.id);
+                return (
+                  <div key={funnel.id} className="flex items-center justify-between p-2 rounded-lg border hover:bg-accent/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: funnel.color }} />
+                      <span className="font-medium">{funnel.name}</span>
+                    </div>
+                    <Switch
+                      checked={isSelected}
+                      onCheckedChange={(checked) => {
+                        const currentIds = groupFunnels?.map(gf => gf.funnel_id) || [];
+                        let newIds = [];
+                        if (checked) {
+                          newIds = [...currentIds, funnel.id];
+                        } else {
+                          newIds = currentIds.filter(id => id !== funnel.id);
+                        }
+                        if (funnelAssignGroupId) {
+                          setGroupFunnels.mutate({ groupId: funnelAssignGroupId, funnelIds: newIds });
+                        }
+                      }}
+                    />
+                  </div>
+                );
+              })}
+              {(!funnels || funnels.length === 0) && (
+                <div className="text-center py-4 text-muted-foreground">
+                  Nenhum funil encontrado. Crie um funil primeiro.
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+          <DialogFooter>
+            <Button onClick={() => setFunnelAssignDialogOpen(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Members Dialog */}
+      <Dialog open={membersDialogOpen} onOpenChange={setMembersDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Membros do Grupo: {editingGroup?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Adicionar Membro</Label>
+              <Select onValueChange={(val) => handleAddMember(val)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um usuário" />
+                </SelectTrigger>
+                <SelectContent>
+                  {orgMembers
+                    .filter(m => !groupMembers?.some(gm => gm.user_id === m.user_id))
+                    .map((member) => (
+                      <SelectItem key={member.user_id} value={member.user_id}>
+                        {member.name} ({member.email})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Supervisor</TableHead>
+                    <TableHead className="w-[50px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {groupMembers?.map((member) => (
+                    <TableRow key={member.user_id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium text-sm">{member.name}</p>
+                          <p className="text-xs text-muted-foreground">{member.email}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={member.is_supervisor}
+                          onCheckedChange={(checked) => handleAddMember(member.user_id, checked)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveMember(member.user_id)}
+                          className="text-destructive h-8 w-8"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {(!groupMembers || groupMembers.length === 0) && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center py-4 text-muted-foreground">
+                        Nenhum membro neste grupo
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }
