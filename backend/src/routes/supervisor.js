@@ -102,12 +102,13 @@ router.get('/semaphore', async (req, res) => {
       `SELECT * FROM supervisor_settings WHERE organization_id = $1`,
       [org.organization_id]
     );
-    const settings = settingsResult.rows[0] || {
+    const settings = (settingsResult.rows && settingsResult.rows[0]) || {
       new_lead_sla_minutes: 30,
       no_followup_sla_hours: 24,
       no_response_sla_days: 2,
       monitored_funnels: null
     };
+
 
     let monitoredFunnelsClause = '';
     const semaphoreParams = [org.organization_id];
