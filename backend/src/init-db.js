@@ -408,9 +408,10 @@ DO $$ BEGIN
     ALTER TABLE crm_deals ADD COLUMN IF NOT EXISTS next_followup_at TIMESTAMP WITH TIME ZONE;
 EXCEPTION WHEN duplicate_column THEN null; END $$;
 
--- Add monitored_funnels column to supervisor_settings (legacy fix)
+-- Add monitored_funnels column to supervisor_settings ( legacy fix)
 DO $$ BEGIN
     ALTER TABLE supervisor_settings ADD COLUMN IF NOT EXISTS monitored_funnels UUID[] DEFAULT '{}';
+    ALTER TABLE supervisor_settings ADD COLUMN IF NOT EXISTS monitored_tags TEXT[] DEFAULT '{}';
 EXCEPTION WHEN duplicate_column THEN null; END $$;
 
 `;
