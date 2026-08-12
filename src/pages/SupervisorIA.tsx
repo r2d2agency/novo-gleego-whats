@@ -132,10 +132,8 @@ export default function SupervisorIA() {
   const { data: semaphore, isLoading: semaphoreLoading } = useQuery({
     queryKey: ['supervisor-semaphore'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/supervisor/semaphore`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      const data = await api<any>(`/api/supervisor/semaphore`);
+      return data;
     }
   });
 
@@ -143,11 +141,7 @@ export default function SupervisorIA() {
   const { data: sellers, isLoading: sellersLoading } = useQuery({
     queryKey: ['supervisor-sellers', user?.organization_id],
     queryFn: async () => {
-      // Read from the dedicated supervisor mapping table
-      const res = await fetch(`${API_URL}/api/supervisor/monitored-sellers`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      const data = await res.json();
+      const data = await api<any[]>(`/api/supervisor/monitored-sellers`);
       return Array.isArray(data) ? data : [];
     },
     enabled: !!user?.organization_id
@@ -157,10 +151,7 @@ export default function SupervisorIA() {
   const { data: settings } = useQuery({
     queryKey: ['supervisor-settings'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/supervisor/settings`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      return await api<any>(`/api/supervisor/settings`);
     }
   });
 
@@ -168,32 +159,27 @@ export default function SupervisorIA() {
   const { data: audits, isLoading: auditsLoading } = useQuery({
     queryKey: ['supervisor-audits'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/supervisor/audits`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      const data = await api<any[]>(`/api/supervisor/audits`);
+      return Array.isArray(data) ? data : [];
     }
   });
+
 
   // Fetch Teams
   const { data: teams } = useQuery({
     queryKey: ['supervisor-teams'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/supervisor/teams`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      const data = await api<any[]>(`/api/supervisor/teams`);
+      return Array.isArray(data) ? data : [];
     }
   });
+
 
   // Fetch Connections for Sellers
   const { data: orgConnections } = useQuery({
     queryKey: ['supervisor-org-connections', user?.organization_id],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/organizations/${user?.organization_id}/connections`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      return await api<any[]>(`/api/organizations/${user?.organization_id}/connections`);
     },
     enabled: !!user?.organization_id
   });
@@ -202,10 +188,8 @@ export default function SupervisorIA() {
   const { data: chargesHistory, isLoading: chargesLoading } = useQuery({
     queryKey: ['supervisor-charges'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/supervisor/charges`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      const data = await api<any[]>(`/api/supervisor/charges`);
+      return Array.isArray(data) ? data : [];
     }
   });
 
@@ -213,13 +197,11 @@ export default function SupervisorIA() {
   const { data: allOrgMembers } = useQuery({
     queryKey: ['supervisor-all-org-members', user?.organization_id],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/organizations/${user?.organization_id}/members`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      return await api<any[]>(`/api/organizations/${user?.organization_id}/members`);
     },
     enabled: !!user?.organization_id
   });
+
 
   const [localSettings, setLocalSettings] = useState<any>(null);
   const [chargeNote, setChargeNote] = useState("");
@@ -236,29 +218,19 @@ export default function SupervisorIA() {
   // Preview Mutation
   const previewMutation = useMutation({
     mutationFn: async (tempSettings: any) => {
-      const res = await fetch(`${API_URL}/api/supervisor/preview-settings`, {
+      return await api<any>(`/api/supervisor/preview-settings`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}` 
-        },
-        body: JSON.stringify(tempSettings)
+        body: tempSettings
       });
-      return res.json();
     }
   });
 
   const updateSettingsMutation = useMutation({
     mutationFn: async (newSettings: any) => {
-      const res = await fetch(`${API_URL}/api/supervisor/settings`, {
+      return await api<any>(`/api/supervisor/settings`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}` 
-        },
-        body: JSON.stringify(newSettings)
+        body: newSettings
       });
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['supervisor-settings'] });
@@ -266,6 +238,7 @@ export default function SupervisorIA() {
       toast.success("Configurações de SLA atualizadas com sucesso");
     }
   });
+
 
   // Manual audit trigger
   const runAuditMutation = useMutation({
@@ -281,14 +254,11 @@ export default function SupervisorIA() {
       }, 800);
 
       try {
-        const res = await fetch(`${API_URL}/api/supervisor/run-audit`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        const data = await api<any>(`/api/supervisor/run-audit`, {
+          method: 'POST'
         });
-        const data = await res.json();
         clearInterval(interval);
         setAuditProgress(100);
-        if (!res.ok) throw new Error(data.error || 'Erro ao executar análise');
         return data;
       } catch (err) {
         clearInterval(interval);
@@ -312,18 +282,14 @@ export default function SupervisorIA() {
     }
   });
 
+
   // Charge Mutation
   const chargeMutation = useMutation({
     mutationFn: async ({ type, targetId, notes }: any) => {
-      const res = await fetch(`${API_URL}/api/supervisor/charge`, {
+      return await api<any>(`/api/supervisor/charge`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}` 
-        },
-        body: JSON.stringify({ type, targetId, notes })
+        body: { type, targetId, notes }
       });
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['supervisor-charges'] });
@@ -333,6 +299,7 @@ export default function SupervisorIA() {
       setSelectedTarget(null);
     }
   });
+
 
   const [auditProgress, setAuditProgress] = useState(0);
   const [isAuditing, setIsAuditing] = useState(false);

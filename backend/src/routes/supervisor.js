@@ -26,10 +26,11 @@ router.get('/stats', async (req, res) => {
 
     // Check module permission
     const orgData = await query('SELECT modules_enabled FROM organizations WHERE id = $1', [org.organization_id]);
-    const modules = orgData.rows[0]?.modules_enabled || {};
+    const modules = (orgData.rows && orgData.rows[0]?.modules_enabled) || {};
     if (!modules.supervisor) {
       return res.status(403).json({ error: 'Supervisor module not enabled for this organization' });
     }
+
 
     const { period, sellerId, teamId, tag, channel, funnelId, status } = req.query;
 
@@ -37,7 +38,8 @@ router.get('/stats', async (req, res) => {
       `SELECT monitored_funnels FROM supervisor_settings WHERE organization_id = $1`,
       [org.organization_id]
     );
-    let monitoredFunnels = settingsResult.rows[0]?.monitored_funnels;
+    let monitoredFunnels = (settingsResult.rows && settingsResult.rows[0]?.monitored_funnels);
+
 
     // Ensure it's treated as null/empty if not a valid array
     if (monitoredFunnels && !Array.isArray(monitoredFunnels)) {
@@ -84,7 +86,8 @@ router.get('/stats', async (req, res) => {
     `;
 
     const result = await query(statsQuery, params);
-    res.json(result.rows[0]);
+    res.json((result.rows && result.rows[0]) || {});
+
   } catch (error) {
     logError('Error fetching supervisor stats:', error);
     res.status(500).json({ error: error.message });
@@ -102,12 +105,13 @@ router.get('/semaphore', async (req, res) => {
       `SELECT * FROM supervisor_settings WHERE organization_id = $1`,
       [org.organization_id]
     );
-    const settings = settingsResult.rows[0] || {
+    const settings = (settingsResult.rows && settingsResult.rows[0]) || {
       new_lead_sla_minutes: 30,
       no_followup_sla_hours: 24,
       no_response_sla_days: 2,
       monitored_funnels: null
     };
+
 
     let monitoredFunnelsClause = '';
     const semaphoreParams = [org.organization_id];
@@ -154,8 +158,9 @@ router.get('/semaphore', async (req, res) => {
           AND NOT EXISTS (
             SELECT 1 FROM crm_deals d 
             WHERE d.organization_id = $1 
-              AND (d.contact_phone = conversations.contact_phone OR d.jid = conversations.remote_jid)
+              AND (d.contact_phone = conversations.contact_phone OR d.remote_jid = conversations.remote_jid)
           )
+
       )
       SELECT * FROM monitored_deals
       UNION ALL
@@ -181,11 +186,12 @@ router.get('/semaphore', async (req, res) => {
     const result = await query(finalQuery, queryParams);
     
     const summary = {
-      GREEN: result.rows.filter(r => r.semaphore_color === 'GREEN').length,
-      YELLOW: result.rows.filter(r => r.semaphore_color === 'YELLOW').length,
-      RED: result.rows.filter(r => r.semaphore_color === 'RED').length,
-      leads: result.rows
+      GREEN: Array.isArray(result.rows) ? result.rows.filter(r => r.semaphore_color === 'GREEN').length : 0,
+      YELLOW: Array.isArray(result.rows) ? result.rows.filter(r => r.semaphore_color === 'YELLOW').length : 0,
+      RED: Array.isArray(result.rows) ? result.rows.filter(r => r.semaphore_color === 'RED').length : 0,
+      leads: Array.isArray(result.rows) ? result.rows : []
     };
+
 
 
     res.json(summary);
@@ -231,10 +237,11 @@ router.post('/preview-settings', async (req, res) => {
     const result = await query(semaphoreQuery, [org.organization_id]);
     
     const summary = {
-      GREEN: result.rows.filter(r => r.semaphore_color === 'GREEN').length,
-      YELLOW: result.rows.filter(r => r.semaphore_color === 'YELLOW').length,
-      RED: result.rows.filter(r => r.semaphore_color === 'RED').length
+      GREEN: Array.isArray(result.rows) ? result.rows.filter(r => r.semaphore_color === 'GREEN').length : 0,
+      YELLOW: Array.isArray(result.rows) ? result.rows.filter(r => r.semaphore_color === 'YELLOW').length : 0,
+      RED: Array.isArray(result.rows) ? result.rows.filter(r => r.semaphore_color === 'RED').length : 0
     };
+
 
     res.json(summary);
   } catch (error) {
@@ -273,17 +280,20 @@ router.get('/sellers', async (req, res) => {
     `;
 
     const result = await query(sellerQuery, [org.organization_id]);
-    res.json(result.rows);
+    res.json(Array.isArray(result.rows) ? result.rows : []);
   } catch (error) {
     logError('Error fetching seller performance:', error);
     res.status(500).json({ error: error.message });
   }
+
 });
 
 // Get Audits
 router.get('/audits', async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+
     const result = await query(
       `SELECT a.*, 
               COALESCE(d.title, conv.contact_name, 'Contato sem nome') as lead_name, 
@@ -297,10 +307,12 @@ router.get('/audits', async (req, res) => {
        LIMIT 100`,
       [org.organization_id]
     );
-    res.json(result.rows);
+    res.json(Array.isArray(result.rows) ? result.rows : []);
   } catch (error) {
+    logError('Error fetching audits:', error);
     res.status(500).json({ error: error.message });
   }
+
 });
 
 
@@ -310,7 +322,8 @@ router.get('/settings', async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
     const result = await query(`SELECT * FROM supervisor_settings WHERE organization_id = $1`, [org.organization_id]);
-    res.json(result.rows[0] || {});
+    res.json((result.rows && result.rows[0]) || {});
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -342,7 +355,8 @@ router.post('/settings', async (req, res) => {
       RETURNING *`,
       [org.organization_id, new_lead_sla_minutes, no_followup_sla_hours, no_response_sla_days, reactivation_days, proposal_sla_hours, payment_sla_days, monitored_funnels, monitored_tags]
     );
-    res.json(result.rows[0]);
+    res.json((result.rows && result.rows[0]) || {});
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -359,10 +373,11 @@ router.get('/teams', async (req, res) => {
       `SELECT id, name FROM crm_user_groups WHERE organization_id = $1 ORDER BY name`,
       [org.organization_id]
     );
-    res.json(result.rows);
+    res.json(Array.isArray(result.rows) ? result.rows : []);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+
 });
 
 // Create Charge
@@ -433,11 +448,12 @@ router.get('/charges', async (req, res) => {
        LIMIT 100`,
       [org.organization_id]
     );
-    res.json(result.rows);
+    res.json(Array.isArray(result.rows) ? result.rows : []);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // ============================================================
 // Monitored Sellers — dedicated supervisor mapping (decoupled from organization_members)
