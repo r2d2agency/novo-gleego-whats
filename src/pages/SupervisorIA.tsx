@@ -76,6 +76,12 @@ export default function SupervisorIA() {
   const [period, setPeriod] = useState("30d");
   const [selectedFunnel, setSelectedFunnel] = useState<string>("all");
   const queryClient = useQueryClient();
+  const { getTags } = useChat();
+
+  const { data: conversationTags } = useQuery({
+    queryKey: ['chat-tags'],
+    queryFn: getTags
+  });
 
   // Dialog states for member management
   const [editMemberDialogOpen, setEditMemberDialogOpen] = useState(false);
