@@ -218,29 +218,19 @@ export default function SupervisorIA() {
   // Preview Mutation
   const previewMutation = useMutation({
     mutationFn: async (tempSettings: any) => {
-      const res = await fetch(`${API_URL}/api/supervisor/preview-settings`, {
+      return await api<any>(`/api/supervisor/preview-settings`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}` 
-        },
-        body: JSON.stringify(tempSettings)
+        body: tempSettings
       });
-      return res.json();
     }
   });
 
   const updateSettingsMutation = useMutation({
     mutationFn: async (newSettings: any) => {
-      const res = await fetch(`${API_URL}/api/supervisor/settings`, {
+      return await api<any>(`/api/supervisor/settings`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}` 
-        },
-        body: JSON.stringify(newSettings)
+        body: newSettings
       });
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['supervisor-settings'] });
@@ -248,6 +238,7 @@ export default function SupervisorIA() {
       toast.success("Configurações de SLA atualizadas com sucesso");
     }
   });
+
 
   // Manual audit trigger
   const runAuditMutation = useMutation({
