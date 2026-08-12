@@ -112,6 +112,7 @@ router.get('/semaphore', async (req, res) => {
     let monitoredFunnelsClause = '';
     const semaphoreParams = [org.organization_id];
     
+    // Check if settings.monitored_funnels is a non-empty array
     if (settings.monitored_funnels && Array.isArray(settings.monitored_funnels) && settings.monitored_funnels.length > 0) {
       monitoredFunnelsClause = ` AND funnel_id = ANY($2)`;
       semaphoreParams.push(settings.monitored_funnels);
