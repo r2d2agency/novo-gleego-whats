@@ -248,9 +248,12 @@ router.get('/audits', async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
     const result = await query(
-      `SELECT a.*, d.title as lead_name, u.name as seller_name
+      `SELECT a.*, 
+              COALESCE(d.title, conv.contact_name, 'Contato sem nome') as lead_name, 
+              u.name as seller_name
        FROM supervisor_audits a
-       JOIN crm_deals d ON d.id = a.deal_id
+       LEFT JOIN crm_deals d ON d.id = a.deal_id
+       LEFT JOIN conversations conv ON conv.id = a.conversation_id
        LEFT JOIN users u ON u.id = a.owner_id
        WHERE a.organization_id = $1
        ORDER BY a.created_at DESC
@@ -262,6 +265,7 @@ router.get('/audits', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // Settings CRUD
 
