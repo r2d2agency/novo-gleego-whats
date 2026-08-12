@@ -179,10 +179,7 @@ export default function SupervisorIA() {
   const { data: orgConnections } = useQuery({
     queryKey: ['supervisor-org-connections', user?.organization_id],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/organizations/${user?.organization_id}/connections`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      return await api<any[]>(`/api/organizations/${user?.organization_id}/connections`);
     },
     enabled: !!user?.organization_id
   });
@@ -191,10 +188,8 @@ export default function SupervisorIA() {
   const { data: chargesHistory, isLoading: chargesLoading } = useQuery({
     queryKey: ['supervisor-charges'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/supervisor/charges`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      const data = await api<any[]>(`/api/supervisor/charges`);
+      return Array.isArray(data) ? data : [];
     }
   });
 
@@ -202,13 +197,11 @@ export default function SupervisorIA() {
   const { data: allOrgMembers } = useQuery({
     queryKey: ['supervisor-all-org-members', user?.organization_id],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/organizations/${user?.organization_id}/members`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      return await api<any[]>(`/api/organizations/${user?.organization_id}/members`);
     },
     enabled: !!user?.organization_id
   });
+
 
   const [localSettings, setLocalSettings] = useState<any>(null);
   const [chargeNote, setChargeNote] = useState("");
