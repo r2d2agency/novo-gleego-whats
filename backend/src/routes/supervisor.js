@@ -119,28 +119,66 @@ router.get('/semaphore', async (req, res) => {
     }
 
     const semaphoreQuery = `
-      SELECT 
-      id, title, owner_id, status, created_at, last_seller_message_at, last_customer_message_at, first_seller_message_at, next_followup_at, proposal_sent_at, payment_pending_at,
-        CASE 
-          WHEN status != 'open' THEN 'GREEN'
-          -- RED CRITERIA
-          WHEN first_seller_message_at IS NULL AND last_activity_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes} minutes' THEN 'RED'
-          WHEN next_followup_at < NOW() - INTERVAL '1 hour' THEN 'RED'
-          WHEN last_customer_message_at > last_seller_message_at AND last_customer_message_at < NOW() - INTERVAL '${settings.no_response_sla_days} days' THEN 'RED'
-          WHEN payment_pending_at IS NOT NULL AND payment_pending_at < NOW() - INTERVAL '${settings.payment_sla_days} days' THEN 'RED'
-          -- YELLOW CRITERIA
-          WHEN first_seller_message_at IS NULL AND last_activity_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes / 2} minutes' THEN 'YELLOW'
-          WHEN next_followup_at BETWEEN NOW() AND NOW() + INTERVAL '2 hours' THEN 'YELLOW'
-          WHEN COALESCE(last_activity_at, created_at) < NOW() - INTERVAL '12 hours' THEN 'YELLOW'
-          WHEN proposal_sent_at IS NULL AND created_at < NOW() - INTERVAL '${settings.proposal_sla_hours} hours' AND status = 'open' THEN 'YELLOW'
-          -- GREEN
-          ELSE 'GREEN'
-        END as semaphore_color
-      FROM crm_deals
-      WHERE organization_id = $1 AND status = 'open'${monitoredFunnelsClause}
+      WITH monitored_deals AS (
+        SELECT 
+          id, title, owner_id, status, created_at, last_seller_message_at, last_customer_message_at, first_seller_message_at, next_followup_at, proposal_sent_at, payment_pending_at,
+          CASE 
+            WHEN status != 'open' THEN 'GREEN'
+            WHEN first_seller_message_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes} minutes' THEN 'RED'
+            WHEN next_followup_at < NOW() - INTERVAL '1 hour' THEN 'RED'
+            WHEN last_customer_message_at > last_seller_message_at AND last_customer_message_at < NOW() - INTERVAL '${settings.no_response_sla_days} days' THEN 'RED'
+            WHEN payment_pending_at IS NOT NULL AND payment_pending_at < NOW() - INTERVAL '${settings.payment_sla_days} days' THEN 'RED'
+            WHEN first_seller_message_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes / 2} minutes' THEN 'YELLOW'
+            WHEN next_followup_at BETWEEN NOW() AND NOW() + INTERVAL '2 hours' THEN 'YELLOW'
+            WHEN COALESCE(last_seller_message_at, created_at) < NOW() - INTERVAL '12 hours' THEN 'YELLOW'
+            WHEN proposal_sent_at IS NULL AND created_at < NOW() - INTERVAL '${settings.proposal_sla_hours} hours' AND status = 'open' THEN 'YELLOW'
+            ELSE 'GREEN'
+          END as semaphore_color
+        FROM crm_deals
+        WHERE organization_id = $1 AND status = 'open'${monitoredFunnelsClause}
+      ),
+      monitored_convs AS (
+        SELECT 
+          id, contact_name as title, assigned_to as owner_id, 'open' as status, created_at, last_seller_message_at, last_customer_message_at, last_seller_message_at as first_seller_message_at, NULL::timestamp as next_followup_at, NULL::timestamp as proposal_sent_at, NULL::timestamp as payment_pending_at,
+          CASE 
+            WHEN last_seller_message_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes} minutes' THEN 'RED'
+            WHEN last_customer_message_at > last_seller_message_at AND last_customer_message_at < NOW() - INTERVAL '${settings.no_response_sla_days} days' THEN 'RED'
+            WHEN last_seller_message_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes / 2} minutes' THEN 'YELLOW'
+            WHEN COALESCE(last_seller_message_at, created_at) < NOW() - INTERVAL '24 hours' THEN 'YELLOW'
+            ELSE 'GREEN'
+          END as semaphore_color
+        FROM conversations
+        WHERE organization_id = $1 
+          AND is_archived = false 
+          AND tags && $2
+          AND NOT EXISTS (
+            SELECT 1 FROM crm_deals d 
+            WHERE d.organization_id = $1 
+              AND (d.contact_phone = conversations.contact_phone OR d.jid = conversations.remote_jid)
+          )
+      )
+      SELECT * FROM monitored_deals
+      UNION ALL
+      SELECT * FROM monitored_convs
     `;
 
-    const result = await query(semaphoreQuery, semaphoreParams);
+    // Adjust params for tags if needed
+    const finalParams = [...semaphoreParams];
+    if (!finalParams[1] && settings.monitored_tags) {
+       // if monitoredFunnels wasn't added as $2, but we need tags
+       // but the query above uses $2 for tags. 
+       // Let's normalize params.
+    }
+    
+    // Simpler: just ensure tags are always there if monitored_tags exists
+    const monitoredTags = settings.monitored_tags || [];
+    const queryParams = [org.organization_id, monitoredTags];
+    if (monitoredFunnelsClause) queryParams.push(settings.monitored_funnels);
+
+    // Update query to use correct param indexes
+    const finalQuery = semaphoreQuery.replace(/\$2/g, monitoredFunnelsClause ? '$3' : '$2').replace(/tags && \$2/g, 'tags && $2');
+
+    const result = await query(finalQuery, queryParams);
     
     const summary = {
       GREEN: result.rows.filter(r => r.semaphore_color === 'GREEN').length,
@@ -148,6 +186,7 @@ router.get('/semaphore', async (req, res) => {
       RED: result.rows.filter(r => r.semaphore_color === 'RED').length,
       leads: result.rows
     };
+
 
     res.json(summary);
   } catch (error) {
@@ -174,22 +213,20 @@ router.post('/preview-settings', async (req, res) => {
       SELECT 
         CASE 
           WHEN status != 'open' THEN 'GREEN'
-          -- RED CRITERIA
-          WHEN first_seller_message_at IS NULL AND last_activity_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes} minutes' THEN 'RED'
+          WHEN first_seller_message_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes} minutes' THEN 'RED'
           WHEN next_followup_at < NOW() - INTERVAL '1 hour' THEN 'RED'
           WHEN last_customer_message_at > last_seller_message_at AND last_customer_message_at < NOW() - INTERVAL '${settings.no_response_sla_days} days' THEN 'RED'
           WHEN payment_pending_at IS NOT NULL AND payment_pending_at < NOW() - INTERVAL '${settings.payment_sla_days} days' THEN 'RED'
-          -- YELLOW CRITERIA
-          WHEN first_seller_message_at IS NULL AND last_activity_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes / 2} minutes' THEN 'YELLOW'
+          WHEN first_seller_message_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes / 2} minutes' THEN 'YELLOW'
           WHEN next_followup_at BETWEEN NOW() AND NOW() + INTERVAL '2 hours' THEN 'YELLOW'
-          WHEN COALESCE(last_activity_at, created_at) < NOW() - INTERVAL '12 hours' THEN 'YELLOW'
+          WHEN COALESCE(last_seller_message_at, created_at) < NOW() - INTERVAL '12 hours' THEN 'YELLOW'
           WHEN proposal_sent_at IS NULL AND created_at < NOW() - INTERVAL '${settings.proposal_sla_hours} hours' AND status = 'open' THEN 'YELLOW'
-          -- GREEN
           ELSE 'GREEN'
         END as semaphore_color
       FROM crm_deals
       WHERE organization_id = $1 AND status = 'open'
     `;
+
 
     const result = await query(semaphoreQuery, [org.organization_id]);
     
@@ -248,9 +285,12 @@ router.get('/audits', async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
     const result = await query(
-      `SELECT a.*, d.title as lead_name, u.name as seller_name
+      `SELECT a.*, 
+              COALESCE(d.title, conv.contact_name, 'Contato sem nome') as lead_name, 
+              u.name as seller_name
        FROM supervisor_audits a
-       JOIN crm_deals d ON d.id = a.deal_id
+       LEFT JOIN crm_deals d ON d.id = a.deal_id
+       LEFT JOIN conversations conv ON conv.id = a.conversation_id
        LEFT JOIN users u ON u.id = a.owner_id
        WHERE a.organization_id = $1
        ORDER BY a.created_at DESC
@@ -262,6 +302,7 @@ router.get('/audits', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // Settings CRUD
 

@@ -35,8 +35,10 @@ import {
   Plus,
   Monitor,
   Play,
-  Tag
+  Tag,
+  Target
 } from "lucide-react";
+
 import { 
   Table, 
   TableBody, 
@@ -1340,15 +1342,37 @@ export default function SupervisorIA() {
                             <AlertTriangle className="h-5 w-5 text-red-600" />
                           </div>
                           <div>
-                            <p className="font-medium">{lead.title}</p>
+                            <div className="flex items-center gap-2">
+                              {lead.id.length > 36 ? (
+                                <MessageSquare className="h-4 w-4 text-purple-600" />
+                              ) : (
+                                <Target className="h-4 w-4 text-red-600" />
+                              )}
+                              <p className="font-medium">{lead.title}</p>
+                              {lead.id.length > 36 && (
+                                <Badge variant="outline" className="text-[10px] py-0 h-4">Chat</Badge>
+                              )}
+                            </div>
                             <p className="text-xs text-muted-foreground">
-                              Última interação: {lead.last_activity_at ? new Date(lead.last_activity_at).toLocaleString() : 'Nunca'}
+                              Última interação: {lead.last_customer_message_at ? new Date(lead.last_customer_message_at).toLocaleString() : 'Nunca'}
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">
                           <Badge variant="destructive" className="animate-pulse">Crítico</Badge>
-                          <Button size="sm" onClick={() => navigate(`/crm?dealId=${lead.id}`)}>Resolver</Button>
+                          <Button 
+                            size="sm" 
+                            onClick={() => {
+                              if (lead.id.length > 36) {
+                                navigate(`/chat?conversationId=${lead.id}`);
+                              } else {
+                                navigate(`/crm?dealId=${lead.id}`);
+                              }
+                            }}
+                          >
+                            Resolver
+                          </Button>
+
                         </div>
                       </div>
                     ));
@@ -1445,7 +1469,19 @@ export default function SupervisorIA() {
                       
                       return leads.map((lead: any) => (
                         <tr key={lead.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="px-4 py-3 font-medium">{lead.title}</td>
+                          <td className="px-4 py-3 font-medium">
+                            <div className="flex items-center gap-2">
+                              {lead.id.length > 36 ? (
+                                <MessageSquare className="h-4 w-4 text-purple-500" />
+                              ) : (
+                                <Target className="h-4 w-4 text-blue-500" />
+                              )}
+                              <span>{lead.title}</span>
+                              {lead.id.length > 36 && (
+                                <Badge variant="outline" className="text-[10px] py-0 h-4">Chat</Badge>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-4 py-3">
                             {sellers?.find((s: any) => s.user_id === lead.owner_id || s.id === lead.owner_id)?.name || 'Não atribuído'}
                           </td>
@@ -1461,9 +1497,22 @@ export default function SupervisorIA() {
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <Button variant="ghost" size="sm" onClick={() => navigate(`/crm?dealId=${lead.id}`)}>Ver Lead</Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => {
+                                if (lead.id.length > 36) {
+                                  navigate(`/chat?conversationId=${lead.id}`);
+                                } else {
+                                  navigate(`/crm?dealId=${lead.id}`);
+                                }
+                              }}
+                            >
+                              Ver {lead.id.length > 36 ? 'Chat' : 'Lead'}
+                            </Button>
                           </td>
                         </tr>
+
                       ));
                     })()}
                   </tbody>
@@ -1516,14 +1565,27 @@ export default function SupervisorIA() {
                   </thead>
                   <tbody className="divide-y">
                     {audits?.map((audit: any) => (
-                      <tr key={audit.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3 font-medium">{audit.lead_name}</td>
-                        <td className="px-4 py-3">{audit.seller_name}</td>
-                        <td className="px-4 py-3">{new Date(audit.analysis_date).toLocaleString()}</td>
-                        <td className="px-4 py-3">
-                          <Badge variant="outline">{audit.status_found}</Badge>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">{audit.reason}</td>
+                    <tr key={audit.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3 font-medium">
+                        <div className="flex items-center gap-2">
+                          {audit.deal_id ? (
+                            <Target className="h-4 w-4 text-blue-500" />
+                          ) : (
+                            <MessageSquare className="h-4 w-4 text-purple-500" />
+                          )}
+                          <span>{audit.lead_name}</span>
+                          {!audit.deal_id && (
+                            <Badge variant="outline" className="text-[10px] py-0 h-4">Chat</Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">{audit.seller_name}</td>
+                      <td className="px-4 py-3">{new Date(audit.created_at || audit.analysis_date).toLocaleString()}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline">{audit.status_found}</Badge>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{audit.reason}</td>
+
                         <td className="px-4 py-3">
                           <Badge variant={audit.urgency === 'high' ? 'destructive' : 'secondary'}>
                             {audit.urgency}
