@@ -1445,7 +1445,19 @@ export default function SupervisorIA() {
                       
                       return leads.map((lead: any) => (
                         <tr key={lead.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="px-4 py-3 font-medium">{lead.title}</td>
+                          <td className="px-4 py-3 font-medium">
+                            <div className="flex items-center gap-2">
+                              {lead.id.length > 36 ? (
+                                <MessageSquare className="h-4 w-4 text-purple-500" />
+                              ) : (
+                                <Target className="h-4 w-4 text-blue-500" />
+                              )}
+                              <span>{lead.title}</span>
+                              {lead.id.length > 36 && (
+                                <Badge variant="outline" className="text-[10px] py-0 h-4">Chat</Badge>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-4 py-3">
                             {sellers?.find((s: any) => s.user_id === lead.owner_id || s.id === lead.owner_id)?.name || 'Não atribuído'}
                           </td>
@@ -1461,9 +1473,22 @@ export default function SupervisorIA() {
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <Button variant="ghost" size="sm" onClick={() => navigate(`/crm?dealId=${lead.id}`)}>Ver Lead</Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => {
+                                if (lead.id.length > 36) {
+                                  navigate(`/chat?conversationId=${lead.id}`);
+                                } else {
+                                  navigate(`/crm?dealId=${lead.id}`);
+                                }
+                              }}
+                            >
+                              Ver {lead.id.length > 36 ? 'Chat' : 'Lead'}
+                            </Button>
                           </td>
                         </tr>
+
                       ));
                     })()}
                   </tbody>
