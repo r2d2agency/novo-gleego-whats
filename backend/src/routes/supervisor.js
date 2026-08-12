@@ -213,22 +213,20 @@ router.post('/preview-settings', async (req, res) => {
       SELECT 
         CASE 
           WHEN status != 'open' THEN 'GREEN'
-          -- RED CRITERIA
-          WHEN first_seller_message_at IS NULL AND last_activity_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes} minutes' THEN 'RED'
+          WHEN first_seller_message_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes} minutes' THEN 'RED'
           WHEN next_followup_at < NOW() - INTERVAL '1 hour' THEN 'RED'
           WHEN last_customer_message_at > last_seller_message_at AND last_customer_message_at < NOW() - INTERVAL '${settings.no_response_sla_days} days' THEN 'RED'
           WHEN payment_pending_at IS NOT NULL AND payment_pending_at < NOW() - INTERVAL '${settings.payment_sla_days} days' THEN 'RED'
-          -- YELLOW CRITERIA
-          WHEN first_seller_message_at IS NULL AND last_activity_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes / 2} minutes' THEN 'YELLOW'
+          WHEN first_seller_message_at IS NULL AND created_at < NOW() - INTERVAL '${settings.new_lead_sla_minutes / 2} minutes' THEN 'YELLOW'
           WHEN next_followup_at BETWEEN NOW() AND NOW() + INTERVAL '2 hours' THEN 'YELLOW'
-          WHEN COALESCE(last_activity_at, created_at) < NOW() - INTERVAL '12 hours' THEN 'YELLOW'
+          WHEN COALESCE(last_seller_message_at, created_at) < NOW() - INTERVAL '12 hours' THEN 'YELLOW'
           WHEN proposal_sent_at IS NULL AND created_at < NOW() - INTERVAL '${settings.proposal_sla_hours} hours' AND status = 'open' THEN 'YELLOW'
-          -- GREEN
           ELSE 'GREEN'
         END as semaphore_color
       FROM crm_deals
       WHERE organization_id = $1 AND status = 'open'
     `;
+
 
     const result = await query(semaphoreQuery, [org.organization_id]);
     
