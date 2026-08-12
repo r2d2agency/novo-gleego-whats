@@ -355,7 +355,8 @@ router.post('/settings', async (req, res) => {
       RETURNING *`,
       [org.organization_id, new_lead_sla_minutes, no_followup_sla_hours, no_response_sla_days, reactivation_days, proposal_sla_hours, payment_sla_days, monitored_funnels, monitored_tags]
     );
-    res.json(result.rows[0]);
+    res.json((result.rows && result.rows[0]) || {});
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
