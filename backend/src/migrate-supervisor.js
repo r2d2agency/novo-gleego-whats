@@ -76,10 +76,10 @@ async function fixSchema() {
     `);
 
     // supervisor_charges
+    console.log("Ensuring supervisor_charges table and organization_id column...");
     await query(`
       CREATE TABLE IF NOT EXISTS supervisor_charges (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE NOT NULL,
           target_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
           target_team_id UUID REFERENCES crm_user_groups(id) ON DELETE CASCADE,
           charged_by UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -87,6 +87,19 @@ async function fixSchema() {
           notes TEXT,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       );
+    `);
+    await query(`
+      DO $$ BEGIN
+          ALTER TABLE supervisor_charges ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
+      EXCEPTION WHEN others THEN RAISE NOTICE 'Error updating supervisor_charges: %', SQLERRM; END $$;
+    `);
+    
+    // Backfill organization_id if it's null (using organization_members association)
+    await query(`
+      UPDATE supervisor_charges c
+      SET organization_id = om.organization_id
+      FROM organization_members om
+      WHERE c.organization_id IS NULL AND c.target_user_id = om.user_id;
     `);
 
     console.log("✅ Schema migration complete.");
