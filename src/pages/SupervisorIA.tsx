@@ -500,17 +500,45 @@ export default function SupervisorIA() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
                   <div className="space-y-4">
                     <div className="grid gap-2">
-                      <Label htmlFor="monitored_tags">Tags Monitoradas (Ex: Rota 5, Rota 4)</Label>
-                      <Input 
-                        id="monitored_tags"
-                        placeholder="Tags separadas por vírgula" 
-                        value={localSettings?.monitored_tags?.join(', ') || ""} 
-                        onChange={(e) => {
-                          const tags = e.target.value.split(',').map(t => t.trim()).filter(t => t !== '');
-                          setLocalSettings({...localSettings, monitored_tags: tags});
-                        }}
-                      />
-                      <p className="text-[10px] text-muted-foreground">O supervisor contará leads nestas tags e analisará o engajamento individualmente.</p>
+                      <Label className="flex items-center gap-2">
+                        <Tag className="h-4 w-4" />
+                        Tags Monitoradas (Ex: Rota 5, Rota 4)
+                      </Label>
+                      <div className="border rounded-md p-3 space-y-2 max-h-[150px] overflow-y-auto bg-muted/20">
+                        {(conversationTags || []).length > 0 ? (
+                          (conversationTags || []).map((tag: any) => (
+                            <div key={tag.id} className="flex items-center space-x-2">
+                              <Checkbox 
+                                id={`tag-${tag.id}`}
+                                checked={localSettings?.monitored_tags?.includes(tag.name)}
+                                onCheckedChange={(checked) => {
+                                  const current = localSettings?.monitored_tags || [];
+                                  let next;
+                                  if (checked) {
+                                    next = [...current, tag.name];
+                                  } else {
+                                    next = current.filter((t: string) => t !== tag.name);
+                                  }
+                                  setLocalSettings({...localSettings, monitored_tags: next});
+                                }}
+                              />
+                              <label 
+                                htmlFor={`tag-${tag.id}`}
+                                className="text-sm font-medium leading-none cursor-pointer flex items-center gap-2"
+                              >
+                                <div 
+                                  className="w-2 h-2 rounded-full" 
+                                  style={{ backgroundColor: tag.color || '#6366f1' }}
+                                />
+                                {tag.name}
+                              </label>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs text-muted-foreground text-center py-2">Nenhuma tag cadastrada no sistema.</p>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">Selecione as tags que o Supervisor deve monitorar para análise de engajamento.</p>
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="new_lead">Lead novo sem abordagem (minutos)</Label>
