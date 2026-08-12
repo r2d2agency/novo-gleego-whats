@@ -77,7 +77,8 @@ export default function CRMNegociacoes() {
   const [bulkTargetStage, setBulkTargetStage] = useState<string>("");
   const [bulkTargetOwner, setBulkTargetOwner] = useState<string>("");
   
-  const { data: funnels, isLoading: loadingFunnels } = useCRMFunnels();
+  const isAdmin = user?.role && ['owner', 'admin'].includes(user.role);
+  const { data: funnels, isLoading: loadingFunnels } = useCRMFunnels(isAdmin ? true : undefined);
   const { data: groups } = useCRMGroups();
   const { updateDeal, bulkAction } = useCRMDealMutations();
   
