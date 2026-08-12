@@ -233,10 +233,11 @@ router.post('/preview-settings', async (req, res) => {
     const result = await query(semaphoreQuery, [org.organization_id]);
     
     const summary = {
-      GREEN: result.rows.filter(r => r.semaphore_color === 'GREEN').length,
-      YELLOW: result.rows.filter(r => r.semaphore_color === 'YELLOW').length,
-      RED: result.rows.filter(r => r.semaphore_color === 'RED').length
+      GREEN: Array.isArray(result.rows) ? result.rows.filter(r => r.semaphore_color === 'GREEN').length : 0,
+      YELLOW: Array.isArray(result.rows) ? result.rows.filter(r => r.semaphore_color === 'YELLOW').length : 0,
+      RED: Array.isArray(result.rows) ? result.rows.filter(r => r.semaphore_color === 'RED').length : 0
     };
+
 
     res.json(summary);
   } catch (error) {
