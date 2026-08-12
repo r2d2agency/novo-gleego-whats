@@ -169,12 +169,11 @@ export default function SupervisorIA() {
   const { data: teams } = useQuery({
     queryKey: ['supervisor-teams'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/supervisor/teams`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      const data = await api<any[]>(`/api/supervisor/teams`);
+      return Array.isArray(data) ? data : [];
     }
   });
+
 
   // Fetch Connections for Sellers
   const { data: orgConnections } = useQuery({
