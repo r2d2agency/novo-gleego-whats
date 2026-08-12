@@ -33,7 +33,8 @@ import {
   Briefcase,
   Plus,
   Monitor,
-  Play
+  Play,
+  Tag
 } from "lucide-react";
 import { 
   Table, 
@@ -66,6 +67,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { useChat } from "@/hooks/use-chat";
 
 export default function SupervisorIA() {
   const { user, isLoading: isLoadingUser, refreshUser } = useAuth();
