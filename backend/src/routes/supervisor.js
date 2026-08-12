@@ -322,7 +322,8 @@ router.get('/settings', async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
     const result = await query(`SELECT * FROM supervisor_settings WHERE organization_id = $1`, [org.organization_id]);
-    res.json(result.rows[0] || {});
+    res.json((result.rows && result.rows[0]) || {});
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
