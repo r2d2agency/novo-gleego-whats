@@ -154,8 +154,9 @@ router.get('/semaphore', async (req, res) => {
           AND NOT EXISTS (
             SELECT 1 FROM crm_deals d 
             WHERE d.organization_id = $1 
-              AND (d.contact_phone = conversations.contact_phone OR d.jid = conversations.remote_jid)
+              AND (d.contact_phone = conversations.contact_phone OR d.remote_jid = conversations.remote_jid)
           )
+
       )
       SELECT * FROM monitored_deals
       UNION ALL
