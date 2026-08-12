@@ -86,7 +86,8 @@ router.get('/stats', async (req, res) => {
     `;
 
     const result = await query(statsQuery, params);
-    res.json(result.rows[0]);
+    res.json((result.rows && result.rows[0]) || {});
+
   } catch (error) {
     logError('Error fetching supervisor stats:', error);
     res.status(500).json({ error: error.message });
