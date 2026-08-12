@@ -492,6 +492,19 @@ export default function SupervisorIA() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
                   <div className="space-y-4">
                     <div className="grid gap-2">
+                      <Label htmlFor="monitored_tags">Tags Monitoradas (Ex: Rota 5, Rota 4)</Label>
+                      <Input 
+                        id="monitored_tags"
+                        placeholder="Tags separadas por vírgula" 
+                        value={localSettings?.monitored_tags?.join(', ') || ""} 
+                        onChange={(e) => {
+                          const tags = e.target.value.split(',').map(t => t.trim()).filter(t => t !== '');
+                          setLocalSettings({...localSettings, monitored_tags: tags});
+                        }}
+                      />
+                      <p className="text-[10px] text-muted-foreground">O supervisor contará leads nestas tags e analisará o engajamento individualmente.</p>
+                    </div>
+                    <div className="grid gap-2">
                       <Label htmlFor="new_lead">Lead novo sem abordagem (minutos)</Label>
                       <Input 
                         id="new_lead"

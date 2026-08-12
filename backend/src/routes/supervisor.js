@@ -280,14 +280,14 @@ router.post('/settings', async (req, res) => {
     const org = await getUserOrg(req.userId);
     const { 
       new_lead_sla_minutes, no_followup_sla_hours, no_response_sla_days,
-      reactivation_days, proposal_sla_hours, payment_sla_days, monitored_funnels 
+      reactivation_days, proposal_sla_hours, payment_sla_days, monitored_funnels, monitored_tags 
     } = req.body;
 
     const result = await query(
       `INSERT INTO supervisor_settings (
         organization_id, new_lead_sla_minutes, no_followup_sla_hours, no_response_sla_days,
-        reactivation_days, proposal_sla_hours, payment_sla_days, monitored_funnels
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        reactivation_days, proposal_sla_hours, payment_sla_days, monitored_funnels, monitored_tags
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       ON CONFLICT (organization_id) DO UPDATE SET
         new_lead_sla_minutes = EXCLUDED.new_lead_sla_minutes,
         no_followup_sla_hours = EXCLUDED.no_followup_sla_hours,
@@ -296,9 +296,10 @@ router.post('/settings', async (req, res) => {
         proposal_sla_hours = EXCLUDED.proposal_sla_hours,
         payment_sla_days = EXCLUDED.payment_sla_days,
         monitored_funnels = EXCLUDED.monitored_funnels,
+        monitored_tags = EXCLUDED.monitored_tags,
         updated_at = NOW()
       RETURNING *`,
-      [org.organization_id, new_lead_sla_minutes, no_followup_sla_hours, no_response_sla_days, reactivation_days, proposal_sla_hours, payment_sla_days, monitored_funnels]
+      [org.organization_id, new_lead_sla_minutes, no_followup_sla_hours, no_response_sla_days, reactivation_days, proposal_sla_hours, payment_sla_days, monitored_funnels, monitored_tags]
     );
     res.json(result.rows[0]);
   } catch (error) {
