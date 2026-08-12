@@ -286,15 +286,10 @@ export default function SupervisorIA() {
   // Charge Mutation
   const chargeMutation = useMutation({
     mutationFn: async ({ type, targetId, notes }: any) => {
-      const res = await fetch(`${API_URL}/api/supervisor/charge`, {
+      return await api<any>(`/api/supervisor/charge`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}` 
-        },
-        body: JSON.stringify({ type, targetId, notes })
+        body: { type, targetId, notes }
       });
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['supervisor-charges'] });
@@ -304,6 +299,7 @@ export default function SupervisorIA() {
       setSelectedTarget(null);
     }
   });
+
 
   const [auditProgress, setAuditProgress] = useState(0);
   const [isAuditing, setIsAuditing] = useState(false);
