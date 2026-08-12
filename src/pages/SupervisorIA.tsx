@@ -1543,13 +1543,26 @@ export default function SupervisorIA() {
                   </thead>
                   <tbody className="divide-y">
                     {audits?.map((audit: any) => (
-                      <tr key={audit.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3 font-medium">{audit.lead_name}</td>
-                        <td className="px-4 py-3">{audit.seller_name}</td>
-                        <td className="px-4 py-3">{new Date(audit.analysis_date).toLocaleString()}</td>
-                        <td className="px-4 py-3">
-                          <Badge variant="outline">{audit.status_found}</Badge>
-                        </td>
+                    <tr key={audit.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3 font-medium">
+                        <div className="flex items-center gap-2">
+                          {audit.deal_id ? (
+                            <Target className="h-4 w-4 text-blue-500" />
+                          ) : (
+                            <MessageSquare className="h-4 w-4 text-purple-500" />
+                          )}
+                          <span>{audit.lead_name}</span>
+                          {!audit.deal_id && (
+                            <Badge variant="outline" className="text-[10px] py-0 h-4">Chat</Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">{audit.seller_name}</td>
+                      <td className="px-4 py-3">{new Date(audit.created_at).toLocaleString()}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline">{audit.status_found}</Badge>
+                      </td>
+
                         <td className="px-4 py-3 text-muted-foreground">{audit.reason}</td>
                         <td className="px-4 py-3">
                           <Badge variant={audit.urgency === 'high' ? 'destructive' : 'secondary'}>
