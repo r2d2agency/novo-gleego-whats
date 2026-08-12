@@ -38,7 +38,8 @@ router.get('/stats', async (req, res) => {
       `SELECT monitored_funnels FROM supervisor_settings WHERE organization_id = $1`,
       [org.organization_id]
     );
-    let monitoredFunnels = settingsResult.rows[0]?.monitored_funnels;
+    let monitoredFunnels = (settingsResult.rows && settingsResult.rows[0]?.monitored_funnels);
+
 
     // Ensure it's treated as null/empty if not a valid array
     if (monitoredFunnels && !Array.isArray(monitoredFunnels)) {
