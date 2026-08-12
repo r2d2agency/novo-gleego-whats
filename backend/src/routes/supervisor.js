@@ -442,11 +442,12 @@ router.get('/charges', async (req, res) => {
        LIMIT 100`,
       [org.organization_id]
     );
-    res.json(result.rows);
+    res.json(Array.isArray(result.rows) ? result.rows : []);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // ============================================================
 // Monitored Sellers — dedicated supervisor mapping (decoupled from organization_members)
