@@ -747,10 +747,14 @@ export default function SupervisorIA() {
             <Button
               variant="default"
               onClick={() => runAuditMutation.mutate()}
-              disabled={runAuditMutation.isPending}
+              disabled={runAuditMutation.isPending || isAuditing}
             >
-              <Play className="h-4 w-4 mr-2" />
-              {runAuditMutation.isPending ? 'Analisando...' : 'Rodar Análise Agora'}
+              {isAuditing ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              {isAuditing ? 'Analisando...' : 'Rodar Análise Agora'}
             </Button>
 
             <Button variant="outline" onClick={() => queryClient.invalidateQueries()}>
@@ -759,6 +763,28 @@ export default function SupervisorIA() {
             </Button>
           </div>
         </div>
+
+        {isAuditing && (
+          <div className="mb-6">
+            <Card className="border-primary/50 bg-primary/5">
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2 font-medium text-primary">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      IA analisando dados e verificando SLAs...
+                    </div>
+                    <span className="font-bold">{auditProgress}%</span>
+                  </div>
+                  <Progress value={auditProgress} className="h-2" />
+                  <p className="text-xs text-muted-foreground text-center">
+                    Aguarde enquanto nossa IA processa os negócios, verifica tags de rota e identifica gargalos de atendimento.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 lg:w-[900px]">
