@@ -12,7 +12,7 @@ export async function executeDailyAudit(organizationId = null) {
       where += ` AND d.organization_id = $${params.length}`;
     }
     const deals = await query(`
-      SELECT d.*, s.new_lead_sla_minutes, s.no_followup_sla_hours, s.no_response_sla_days
+      SELECT d.*, s.new_lead_sla_minutes, s.no_followup_sla_hours, s.no_response_sla_days, s.monitored_tags
       FROM crm_deals d
       JOIN supervisor_settings s ON s.organization_id = d.organization_id
       ${where}
@@ -53,6 +53,27 @@ export async function executeDailyAudit(organizationId = null) {
           action: 'Responder ao cliente.',
           urgency: 'high'
         });
+      }
+
+      // 4. Tag-based Engagement Analysis (New Feature)
+      if (deal.monitored_tags && Array.isArray(deal.monitored_tags) && deal.monitored_tags.length > 0) {
+        const dealTags = Array.isArray(deal.tags) ? deal.tags : [];
+        const matchesMonitoredTag = dealTags.some(t => deal.monitored_tags.includes(t));
+        
+        if (matchesMonitoredTag) {
+          // Check engagement: if last customer message was > 3 days ago and seller asked something
+          const threeDaysAgo = new Date();
+          threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+          
+          if (deal.last_customer_message_at && new Date(deal.last_customer_message_at) < threeDaysAgo) {
+            findings.push({
+              status: 'baixa_engajamento',
+              reason: `Cliente da tag monitorada não responde há mais de 3 dias (Última: ${new Date(deal.last_customer_message_at).toLocaleString()}).`,
+              action: 'Tentar reengajamento com nova abordagem.',
+              urgency: 'medium'
+            });
+          }
+        }
       }
 
       // Record findings
