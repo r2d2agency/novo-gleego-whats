@@ -35,8 +35,10 @@ import {
   Plus,
   Monitor,
   Play,
-  Tag
+  Tag,
+  Target
 } from "lucide-react";
+
 import { 
   Table, 
   TableBody, 
