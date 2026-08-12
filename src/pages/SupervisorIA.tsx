@@ -1558,12 +1558,12 @@ export default function SupervisorIA() {
                         </div>
                       </td>
                       <td className="px-4 py-3">{audit.seller_name}</td>
-                      <td className="px-4 py-3">{new Date(audit.created_at).toLocaleString()}</td>
+                      <td className="px-4 py-3">{new Date(audit.created_at || audit.analysis_date).toLocaleString()}</td>
                       <td className="px-4 py-3">
                         <Badge variant="outline">{audit.status_found}</Badge>
                       </td>
+                      <td className="px-4 py-3 text-muted-foreground">{audit.reason}</td>
 
-                        <td className="px-4 py-3 text-muted-foreground">{audit.reason}</td>
                         <td className="px-4 py-3">
                           <Badge variant={audit.urgency === 'high' ? 'destructive' : 'secondary'}>
                             {audit.urgency}
