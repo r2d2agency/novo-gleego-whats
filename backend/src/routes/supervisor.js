@@ -276,11 +276,12 @@ router.get('/sellers', async (req, res) => {
     `;
 
     const result = await query(sellerQuery, [org.organization_id]);
-    res.json(result.rows);
+    res.json(Array.isArray(result.rows) ? result.rows : []);
   } catch (error) {
     logError('Error fetching seller performance:', error);
     res.status(500).json({ error: error.message });
   }
+
 });
 
 // Get Audits
