@@ -1473,6 +1473,35 @@ export default function SupervisorIA() {
           </TabsContent>
           <TabsContent value="audits" className="mt-6">
             <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Histórico de Auditoria IA</CardTitle>
+                  <CardDescription>Registro das últimas varreduras e diagnósticos realizados</CardDescription>
+                </div>
+                <Button 
+                  onClick={() => runAuditMutation.mutate()} 
+                  disabled={runAuditMutation.isPending || isAuditing}
+                  className="gap-2"
+                >
+                  {isAuditing ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                  {isAuditing ? 'Analisando...' : 'Processar Agora'}
+                </Button>
+              </CardHeader>
+              {isAuditing && (
+                <div className="px-6 pb-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-bold uppercase text-primary">
+                      <span>IA trabalhando nos dados...</span>
+                      <span>{auditProgress}%</span>
+                    </div>
+                    <Progress value={auditProgress} className="h-1.5" />
+                  </div>
+                </div>
+              )}
               <CardContent className="p-0">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 border-b">
