@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 import { 
   Shield, 
   Users, 
@@ -267,13 +268,36 @@ export default function SupervisorIA() {
   // Manual audit trigger
   const runAuditMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`${API_URL}/api/supervisor/run-audit`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao executar análise');
-      return data;
+      setIsAuditing(true);
+      setAuditProgress(10);
+      
+      const interval = setInterval(() => {
+        setAuditProgress(prev => {
+          if (prev >= 90) return prev;
+          return prev + 10;
+        });
+      }, 800);
+
+      try {
+        const res = await fetch(`${API_URL}/api/supervisor/run-audit`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        });
+        const data = await res.json();
+        clearInterval(interval);
+        setAuditProgress(100);
+        if (!res.ok) throw new Error(data.error || 'Erro ao executar análise');
+        return data;
+      } catch (err) {
+        clearInterval(interval);
+        setAuditProgress(0);
+        throw err;
+      } finally {
+        setTimeout(() => {
+          setIsAuditing(false);
+          setAuditProgress(0);
+        }, 1000);
+      }
     },
     onSuccess: (data) => {
       toast.success(`Análise concluída: ${data.dealsProcessed || 0} negócios processados, ${data.findings || 0} alertas gerados.`);
@@ -307,6 +331,9 @@ export default function SupervisorIA() {
       setSelectedTarget(null);
     }
   });
+
+  const [auditProgress, setAuditProgress] = useState(0);
+  const [isAuditing, setIsAuditing] = useState(false);
 
   // Member Management Mutations
   const updateMemberMutation = useMutation({
@@ -720,10 +747,14 @@ export default function SupervisorIA() {
             <Button
               variant="default"
               onClick={() => runAuditMutation.mutate()}
-              disabled={runAuditMutation.isPending}
+              disabled={runAuditMutation.isPending || isAuditing}
             >
-              <Play className="h-4 w-4 mr-2" />
-              {runAuditMutation.isPending ? 'Analisando...' : 'Rodar Análise Agora'}
+              {isAuditing ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              {isAuditing ? 'Analisando...' : 'Rodar Análise Agora'}
             </Button>
 
             <Button variant="outline" onClick={() => queryClient.invalidateQueries()}>
@@ -732,6 +763,28 @@ export default function SupervisorIA() {
             </Button>
           </div>
         </div>
+
+        {isAuditing && (
+          <div className="mb-6">
+            <Card className="border-primary/50 bg-primary/5">
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2 font-medium text-primary">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      IA analisando dados e verificando SLAs...
+                    </div>
+                    <span className="font-bold">{auditProgress}%</span>
+                  </div>
+                  <Progress value={auditProgress} className="h-2" />
+                  <p className="text-xs text-muted-foreground text-center">
+                    Aguarde enquanto nossa IA processa os negócios, verifica tags de rota e identifica gargalos de atendimento.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 lg:w-[900px]">
@@ -1420,6 +1473,35 @@ export default function SupervisorIA() {
           </TabsContent>
           <TabsContent value="audits" className="mt-6">
             <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Histórico de Auditoria IA</CardTitle>
+                  <CardDescription>Registro das últimas varreduras e diagnósticos realizados</CardDescription>
+                </div>
+                <Button 
+                  onClick={() => runAuditMutation.mutate()} 
+                  disabled={runAuditMutation.isPending || isAuditing}
+                  className="gap-2"
+                >
+                  {isAuditing ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                  {isAuditing ? 'Analisando...' : 'Processar Agora'}
+                </Button>
+              </CardHeader>
+              {isAuditing && (
+                <div className="px-6 pb-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-bold uppercase text-primary">
+                      <span>IA trabalhando nos dados...</span>
+                      <span>{auditProgress}%</span>
+                    </div>
+                    <Progress value={auditProgress} className="h-1.5" />
+                  </div>
+                </div>
+              )}
               <CardContent className="p-0">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 border-b">

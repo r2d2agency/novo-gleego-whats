@@ -18,7 +18,19 @@ export async function executeDailyAudit(organizationId = null) {
       ${where}
     `, params);
 
-    for (const deal of deals.rows) {
+    // Filter by monitored funnels if set in settings
+    const settingsResult = await query(
+      `SELECT monitored_funnels FROM supervisor_settings WHERE organization_id = $1`,
+      [organizationId]
+    );
+    const monitoredFunnels = settingsResult.rows[0]?.monitored_funnels;
+    
+    let filteredDeals = deals.rows;
+    if (monitoredFunnels && Array.isArray(monitoredFunnels) && monitoredFunnels.length > 0) {
+      filteredDeals = filteredDeals.filter(d => monitoredFunnels.includes(d.funnel_id));
+    }
+
+    for (const deal of filteredDeals) {
       const findings = [];
       
       // 1. Check No Approach
