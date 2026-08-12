@@ -44,6 +44,7 @@ async function fixSchema() {
     `);
 
     if (checkChargeTable.rows[0].exists) {
+      console.log("Checking supervisor_charges columns...");
       const checkChargeCols = await query(`
         SELECT column_name FROM information_schema.columns 
         WHERE table_name = 'supervisor_charges' AND column_name = 'organization_id';
@@ -51,16 +52,20 @@ async function fixSchema() {
       
       if (checkChargeCols.rows.length === 0) {
         console.log("Adding organization_id to supervisor_charges...");
-        // First add it as nullable
+        // First add it as nullable to avoid errors with existing data
         await query(`ALTER TABLE supervisor_charges ADD COLUMN organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;`);
         
-        // Try to backfill if possible (optional but good)
+        // Try to backfill if possible from target_user_id
         await query(`
           UPDATE supervisor_charges c
           SET organization_id = u.organization_id
           FROM (SELECT user_id, organization_id FROM organization_members) u
-          WHERE c.target_user_id = u.user_id AND c.organization_id IS NULL
+          WHERE c.target_user_id = u.user_id AND c.organization_id IS NULL;
         `);
+        
+        console.log("Column organization_id added and backfilled.");
+      } else {
+        console.log("Column organization_id already exists in supervisor_charges.");
       }
     }
 
