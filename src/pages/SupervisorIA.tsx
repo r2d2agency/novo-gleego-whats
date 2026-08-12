@@ -132,10 +132,8 @@ export default function SupervisorIA() {
   const { data: semaphore, isLoading: semaphoreLoading } = useQuery({
     queryKey: ['supervisor-semaphore'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/supervisor/semaphore`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      const data = await api<any>(`/api/supervisor/semaphore`);
+      return data;
     }
   });
 
@@ -143,11 +141,7 @@ export default function SupervisorIA() {
   const { data: sellers, isLoading: sellersLoading } = useQuery({
     queryKey: ['supervisor-sellers', user?.organization_id],
     queryFn: async () => {
-      // Read from the dedicated supervisor mapping table
-      const res = await fetch(`${API_URL}/api/supervisor/monitored-sellers`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      const data = await res.json();
+      const data = await api<any[]>(`/api/supervisor/monitored-sellers`);
       return Array.isArray(data) ? data : [];
     },
     enabled: !!user?.organization_id
@@ -157,10 +151,7 @@ export default function SupervisorIA() {
   const { data: settings } = useQuery({
     queryKey: ['supervisor-settings'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/supervisor/settings`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      return await api<any>(`/api/supervisor/settings`);
     }
   });
 
@@ -168,12 +159,11 @@ export default function SupervisorIA() {
   const { data: audits, isLoading: auditsLoading } = useQuery({
     queryKey: ['supervisor-audits'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/supervisor/audits`, {
-        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
-      });
-      return res.json();
+      const data = await api<any[]>(`/api/supervisor/audits`);
+      return Array.isArray(data) ? data : [];
     }
   });
+
 
   // Fetch Teams
   const { data: teams } = useQuery({
