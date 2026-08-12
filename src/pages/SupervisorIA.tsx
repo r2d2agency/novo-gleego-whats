@@ -254,14 +254,11 @@ export default function SupervisorIA() {
       }, 800);
 
       try {
-        const res = await fetch(`${API_URL}/api/supervisor/run-audit`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+        const data = await api<any>(`/api/supervisor/run-audit`, {
+          method: 'POST'
         });
-        const data = await res.json();
         clearInterval(interval);
         setAuditProgress(100);
-        if (!res.ok) throw new Error(data.error || 'Erro ao executar análise');
         return data;
       } catch (err) {
         clearInterval(interval);
@@ -284,6 +281,7 @@ export default function SupervisorIA() {
       toast.error(err.message || 'Falha ao executar análise');
     }
   });
+
 
   // Charge Mutation
   const chargeMutation = useMutation({
