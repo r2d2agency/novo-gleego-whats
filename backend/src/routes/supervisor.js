@@ -287,6 +287,8 @@ router.get('/sellers', async (req, res) => {
 router.get('/audits', async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+
     const result = await query(
       `SELECT a.*, 
               COALESCE(d.title, conv.contact_name, 'Contato sem nome') as lead_name, 
@@ -300,10 +302,12 @@ router.get('/audits', async (req, res) => {
        LIMIT 100`,
       [org.organization_id]
     );
-    res.json(result.rows);
+    res.json(Array.isArray(result.rows) ? result.rows : []);
   } catch (error) {
+    logError('Error fetching audits:', error);
     res.status(500).json({ error: error.message });
   }
+
 });
 
 
