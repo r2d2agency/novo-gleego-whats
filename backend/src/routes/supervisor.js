@@ -26,10 +26,11 @@ router.get('/stats', async (req, res) => {
 
     // Check module permission
     const orgData = await query('SELECT modules_enabled FROM organizations WHERE id = $1', [org.organization_id]);
-    const modules = orgData.rows[0]?.modules_enabled || {};
+    const modules = (orgData.rows && orgData.rows[0]?.modules_enabled) || {};
     if (!modules.supervisor) {
       return res.status(403).json({ error: 'Supervisor module not enabled for this organization' });
     }
+
 
     const { period, sellerId, teamId, tag, channel, funnelId, status } = req.query;
 
