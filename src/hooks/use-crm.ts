@@ -287,11 +287,11 @@ export function useCRMGroupFunnelMutations() {
 }
 
 // Funnels
-export function useCRMFunnels() {
+export function useCRMFunnels(all: boolean = false) {
   return useQuery({
-    queryKey: ["crm-funnels"],
+    queryKey: ["crm-funnels", all],
     queryFn: async () => {
-      return api<CRMFunnel[]>("/api/crm/funnels");
+      return api<CRMFunnel[]>(`/api/crm/funnels${all ? '?all=true' : ''}`);
     },
   });
 }
