@@ -401,7 +401,8 @@ router.get('/funnels', async (req, res) => {
     } catch (_) {}
 
     // Admins/owners/managers/designers see all funnels
-    if (canManage(org.role) || isDesignerUser) {
+    // If 'all=true' is passed, we show everything (used by Supervisor IA configuration)
+    if (canManage(org.role) || isDesignerUser || req.query.all === 'true') {
       const result = await query(
         `SELECT f.*, 
           (SELECT COUNT(*) FROM crm_deals WHERE funnel_id = f.id AND status = 'open') as open_deals,

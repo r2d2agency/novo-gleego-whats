@@ -95,7 +95,7 @@ export default function SupervisorIA() {
   const { data: funnels } = useQuery({
     queryKey: ['supervisor-funnels'],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/crm/funnels`, {
+      const res = await fetch(`${API_URL}/api/crm/funnels?all=true`, {
         headers: { 'Authorization': `Bearer ${getAuthToken()}` }
       });
       return res.json();
