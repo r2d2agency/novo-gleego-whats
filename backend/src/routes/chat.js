@@ -3969,10 +3969,13 @@ router.patch('/contacts/:id', authenticate, async (req, res) => {
        SET contact_name = $1, updated_at = NOW()
        WHERE connection_id = $2
          AND (
-           regexp_replace(COALESCE(contact_phone, ''), '\D', '', 'g') = regexp_replace(COALESCE($3, ''), '\D', '', 'g')
-           OR regexp_replace(split_part(COALESCE(remote_jid, ''), '@', 1), '\D', '', 'g') = regexp_replace(COALESCE($3, ''), '\D', '', 'g')
+           contact_phone = $3
+           OR remote_jid = $4
+           OR remote_jid = $5
+           OR regexp_replace(COALESCE(contact_phone, ''), '\\D', '', 'g') = regexp_replace(COALESCE($3, ''), '\\D', '', 'g')
+           OR regexp_replace(split_part(COALESCE(remote_jid, ''), '@', 1), '\\D', '', 'g') = regexp_replace(COALESCE($3, ''), '\\D', '', 'g')
          )`,
-      [name.trim(), updatedContact.connection_id, updatedContact.phone]
+      [name.trim(), updatedContact.connection_id, updatedContact.phone, `${updatedContact.phone}@s.whatsapp.net`, `${updatedContact.phone}@c.us`]
     );
 
     res.json(updatedContact);
@@ -4012,8 +4015,14 @@ router.post('/contacts/by-phone', authenticate, async (req, res) => {
       `UPDATE conversations
        SET contact_name = $1, updated_at = NOW()
        WHERE connection_id = $2
-         AND (contact_phone = $3 OR remote_jid LIKE $4 OR remote_jid LIKE $5)`,
-      [name.trim(), connection_id, phone, `${phone}@s.whatsapp.net`, `${phone}@%`]
+         AND (
+           contact_phone = $3 
+           OR remote_jid = $4 
+           OR remote_jid = $5
+           OR regexp_replace(COALESCE(contact_phone, ''), '\\D', '', 'g') = regexp_replace(COALESCE($3, ''), '\\D', '', 'g')
+           OR regexp_replace(split_part(COALESCE(remote_jid, ''), '@', 1), '\\D', '', 'g') = regexp_replace(COALESCE($3, ''), '\\D', '', 'g')
+         )`,
+      [name.trim(), connection_id, phone, `${phone}@s.whatsapp.net`, `${phone}@c.us`]
     );
 
     res.json(contactResult.rows[0]);
