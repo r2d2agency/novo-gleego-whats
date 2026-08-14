@@ -42,6 +42,22 @@ export interface SecretaryMember {
   is_active: boolean;
 }
 
+export interface SecretaryFollowup {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  created_at: string;
+  assigned_to: string | null;
+  assigned_to_name: string | null;
+  followup_sent_at: string | null;
+  followup_count: number;
+  followup_disabled: boolean;
+}
+
+
 export interface SecretaryLog {
   id: string;
   conversation_id: string;
