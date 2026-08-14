@@ -24,6 +24,7 @@ import { useConnections } from "@/hooks/use-connections";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import SecretaryDiagnosticPanel from "@/components/secretaria/SecretaryDiagnosticPanel";
+import SecretaryFollowupsPanel from "@/components/secretaria/SecretaryFollowupsPanel";
 
 export default function SecretariaGrupos() {
   const {
@@ -224,11 +225,20 @@ export default function SecretariaGrupos() {
               <FileText className="h-3.5 w-3.5" />
               Atas
             </TabsTrigger>
+            <TabsTrigger value="followups" className="gap-1">
+              <Timer className="h-3.5 w-3.5" />
+              Follow-ups
+            </TabsTrigger>
             <TabsTrigger value="diagnostic" className="gap-1">
               <Shield className="h-3.5 w-3.5" />
               Auditoria
             </TabsTrigger>
           </TabsList>
+
+          {/* FOLLOW-UPS TAB */}
+          <TabsContent value="followups" className="space-y-4">
+            <SecretaryFollowupsPanel />
+          </TabsContent>
 
           {/* MEMBERS TAB */}
           <TabsContent value="members" className="space-y-4">

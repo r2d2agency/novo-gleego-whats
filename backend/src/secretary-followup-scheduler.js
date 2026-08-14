@@ -1,13 +1,31 @@
 import { query } from './db.js';
 import * as whatsappProvider from './lib/whatsapp-provider.js';
 
+const MAX_FOLLOWUPS = 3;
+const MAX_TASK_AGE_DAYS = 7;
+
+let schemaReady = false;
+async function ensureSchema() {
+  if (schemaReady) return;
+  try {
+    await query(`ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS followup_sent_at TIMESTAMP WITH TIME ZONE`);
+    await query(`ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS followup_count INTEGER DEFAULT 0`);
+    await query(`ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS followup_disabled BOOLEAN DEFAULT false`);
+    schemaReady = true;
+  } catch (e) {
+    console.error('📌 [FOLLOWUP] schema check failed:', e.message);
+  }
+}
+
 /**
  * Secretary Follow-up Scheduler
  * Checks for uncompleted CRM tasks created by the group secretary
- * and sends follow-up WhatsApp reminders after configured hours
+ * and sends follow-up WhatsApp reminders after configured hours.
+ * Stops automatically after MAX_FOLLOWUPS or when the task is too old.
  */
 export async function executeSecretaryFollowups() {
   try {
+    await ensureSchema();
     // Get all orgs with active secretary and follow-up enabled
     const configResult = await query(`
       SELECT * FROM group_secretary_config 
@@ -30,13 +48,17 @@ export async function executeSecretaryFollowups() {
           WHERE t.organization_id = $1
             AND t.source = 'group_secretary'
             AND t.status = 'pending'
+            AND COALESCE(t.followup_disabled, false) = false
+            AND COALESCE(t.followup_count, 0) < $3
+            AND t.created_at > NOW() - INTERVAL '1 day' * $4
             AND t.created_at < NOW() - INTERVAL '1 hour' * $2
             AND (t.followup_sent_at IS NULL OR t.followup_sent_at < NOW() - INTERVAL '1 hour' * $2)
-        `, [config.organization_id, hoursAgo]);
+        `, [config.organization_id, hoursAgo, MAX_FOLLOWUPS, MAX_TASK_AGE_DAYS]);
 
         if (tasksResult.rows.length === 0) continue;
 
         console.log(`📌 [FOLLOWUP] Processing ${tasksResult.rows.length} overdue secretary tasks for org ${config.organization_id}`);
+
 
         for (const task of tasksResult.rows) {
           try {
@@ -67,9 +89,12 @@ export async function executeSecretaryFollowups() {
               }
             }
 
-            // Mark follow-up as sent
+            // Mark follow-up as sent and count it (auto-stops after MAX_FOLLOWUPS)
             await query(
-              `UPDATE crm_tasks SET followup_sent_at = NOW() WHERE id = $1`,
+              `UPDATE crm_tasks 
+                 SET followup_sent_at = NOW(), 
+                     followup_count = COALESCE(followup_count, 0) + 1 
+               WHERE id = $1`,
               [task.id]
             );
 
