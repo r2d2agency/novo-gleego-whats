@@ -573,4 +573,94 @@ router.delete('/diagnostic', async (req, res) => {
   }
 });
 
+// ==========================================
+// FOLLOW-UPS (tarefas criadas pela Secretária IA)
+// ==========================================
+
+async function ensureFollowupColumns() {
+  try {
+    await query(`ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS followup_sent_at TIMESTAMP WITH TIME ZONE`);
+    await query(`ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS followup_count INTEGER DEFAULT 0`);
+    await query(`ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS followup_disabled BOOLEAN DEFAULT false`);
+  } catch (e) {
+    console.error('ensureFollowupColumns error:', e.message);
+  }
+}
+
+// List active follow-ups
+router.get('/followups', async (req, res) => {
+  try {
+    const org = await getUserOrgWithFlags(req.userId);
+    if (!org) return res.status(403).json({ error: 'Sem organização' });
+    await ensureFollowupColumns();
+
+    const isManager = canManageSecretary(org.role, org.is_superadmin);
+    const params = [org.organization_id];
+    let sql = `SELECT t.id, t.title, t.description, t.status, t.priority, t.due_date, t.created_at,
+                 t.assigned_to, t.followup_sent_at, COALESCE(t.followup_count, 0) AS followup_count,
+                 COALESCE(t.followup_disabled, false) AS followup_disabled,
+                 u.name AS assigned_to_name
+               FROM crm_tasks t
+               LEFT JOIN users u ON u.id = t.assigned_to
+               WHERE t.organization_id = $1
+                 AND t.source = 'group_secretary'
+                 AND t.status = 'pending'`;
+    if (!isManager) {
+      sql += ` AND t.assigned_to = $2`;
+      params.push(req.userId);
+    }
+    sql += ` ORDER BY t.created_at DESC LIMIT 200`;
+
+    const result = await query(sql, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('List secretary followups error:', error);
+    res.status(500).json({ error: 'Erro ao listar follow-ups' });
+  }
+});
+
+// Disable / re-enable follow-up for one task
+router.post('/followups/:id/toggle', async (req, res) => {
+  try {
+    const org = await getUserOrgWithFlags(req.userId);
+    if (!org) return res.status(403).json({ error: 'Sem organização' });
+    await ensureFollowupColumns();
+    const disabled = req.body?.disabled !== false;
+
+    const result = await query(
+      `UPDATE crm_tasks SET followup_disabled = $1, updated_at = NOW()
+       WHERE id = $2 AND organization_id = $3 AND source = 'group_secretary'
+       RETURNING id, COALESCE(followup_disabled, false) AS followup_disabled`,
+      [disabled, req.params.id, org.organization_id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Tarefa não encontrada' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Toggle secretary followup error:', error);
+    res.status(500).json({ error: 'Erro ao atualizar follow-up' });
+  }
+});
+
+// Stop all pending follow-ups
+router.post('/followups/stop-all', async (req, res) => {
+  try {
+    const org = await getUserOrgWithFlags(req.userId);
+    if (!org) return res.status(403).json({ error: 'Sem organização' });
+    if (!canManageSecretary(org.role, org.is_superadmin)) {
+      return res.status(403).json({ error: 'Sem permissão' });
+    }
+    await ensureFollowupColumns();
+    const result = await query(
+      `UPDATE crm_tasks SET followup_disabled = true, updated_at = NOW()
+       WHERE organization_id = $1 AND source = 'group_secretary' AND status = 'pending'
+         AND COALESCE(followup_disabled, false) = false`,
+      [org.organization_id]
+    );
+    res.json({ stopped: result.rowCount || 0 });
+  } catch (error) {
+    console.error('Stop all secretary followups error:', error);
+    res.status(500).json({ error: 'Erro ao parar follow-ups' });
+  }
+});
+
 export default router;
