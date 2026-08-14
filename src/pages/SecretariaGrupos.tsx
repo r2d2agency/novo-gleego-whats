@@ -24,6 +24,7 @@ import { useConnections } from "@/hooks/use-connections";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import SecretaryDiagnosticPanel from "@/components/secretaria/SecretaryDiagnosticPanel";
+import SecretaryFollowupsPanel from "@/components/secretaria/SecretaryFollowupsPanel";
 
 export default function SecretariaGrupos() {
   const {
