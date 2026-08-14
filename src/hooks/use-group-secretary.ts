@@ -262,6 +262,26 @@ export const useGroupSecretary = () => {
     await api('/api/group-secretary/diagnostic', { method: 'DELETE' });
   }, []);
 
+  const getFollowups = useCallback(async (): Promise<SecretaryFollowup[]> => {
+    const data = await api<SecretaryFollowup[]>('/api/group-secretary/followups');
+    return Array.isArray(data) ? data : [];
+  }, []);
+
+  const toggleFollowup = useCallback(async (id: string, disabled: boolean): Promise<void> => {
+    await api(`/api/group-secretary/followups/${id}/toggle`, {
+      method: 'POST',
+      body: { disabled },
+    });
+  }, []);
+
+  const stopAllFollowups = useCallback(async (): Promise<number> => {
+    const data = await api<{ stopped: number }>('/api/group-secretary/followups/stop-all', {
+      method: 'POST',
+      body: {},
+    });
+    return data?.stopped || 0;
+  }, []);
+
   return {
     loading,
     setLoading,
@@ -281,5 +301,8 @@ export const useGroupSecretary = () => {
     sendDigestNow,
     getDiagnosticEvents,
     clearDiagnosticEvents,
+    getFollowups,
+    toggleFollowup,
+    stopAllFollowups,
   };
 };
