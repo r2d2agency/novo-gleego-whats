@@ -346,6 +346,18 @@ const Chat = () => {
      }
    }, [getConnections]);
 
+  // Listener for local conversation updates
+  useEffect(() => {
+    const handleLocalUpdate = (event: any) => {
+      const { id, contact_name } = event.detail;
+      setConversations(prev => prev.map(c => c.id === id ? { ...c, contact_name } : c));
+      setSelectedConversation(prev => (prev?.id === id ? { ...prev, contact_name } : prev));
+    };
+
+    window.addEventListener('update-conversation-local', handleLocalUpdate);
+    return () => window.removeEventListener('update-conversation-local', handleLocalUpdate);
+  }, []);
+
   const loadConversations = useCallback(async (isLoadMore = false) => {
     // Prevent overlapping loads unless it's a load more
     if (!isLoadMore && isLoadingConversationsRef.current) return;
