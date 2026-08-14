@@ -560,7 +560,8 @@ async function callAI(config, systemPrompt, userPrompt) {
  */
 async function createCRMTask({ organizationId, assignedTo, title, description, priority, dueDate, source }) {
   try {
-    const actualDueDate = normalizeBrazilDateTime(dueDate) || new Date(Date.now() + 24 * 60 * 60 * 1000);
+    // Default: same day (+2h) so the task shows up in the "Hoje" view instead of tomorrow
+    const actualDueDate = normalizeBrazilDateTime(dueDate) || new Date(Date.now() + 2 * 60 * 60 * 1000);
     const result = await query(
       `INSERT INTO crm_tasks (organization_id, assigned_to, title, description, type, priority, status, due_date, source)
        VALUES ($1, $2, $3, $4, 'task', $5, 'pending', $6, $7)
