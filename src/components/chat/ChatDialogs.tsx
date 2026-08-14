@@ -486,6 +486,15 @@ export function EditContactDialog({ open, onOpenChange, conversation }: EditCont
       toast.success('Contato salvo com sucesso');
       onOpenChange(false);
       window.dispatchEvent(new CustomEvent('refresh-conversations'));
+      // Forçar atualização local para evitar que o nome antigo permaneça no estado do componente pai
+      if (conversation) {
+        window.dispatchEvent(new CustomEvent('update-conversation-local', { 
+          detail: { 
+            id: conversation.id, 
+            contact_name: name.trim() 
+          } 
+        }));
+      }
     } catch (error: any) {
       toast.error(error.message || 'Erro ao salvar contato');
     } finally {
