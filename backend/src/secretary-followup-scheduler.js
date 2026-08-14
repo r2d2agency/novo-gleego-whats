@@ -89,9 +89,12 @@ export async function executeSecretaryFollowups() {
               }
             }
 
-            // Mark follow-up as sent
+            // Mark follow-up as sent and count it (auto-stops after MAX_FOLLOWUPS)
             await query(
-              `UPDATE crm_tasks SET followup_sent_at = NOW() WHERE id = $1`,
+              `UPDATE crm_tasks 
+                 SET followup_sent_at = NOW(), 
+                     followup_count = COALESCE(followup_count, 0) + 1 
+               WHERE id = $1`,
               [task.id]
             );
 
