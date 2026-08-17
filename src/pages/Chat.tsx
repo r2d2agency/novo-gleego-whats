@@ -190,7 +190,9 @@ const Chat = () => {
       favorite: false,
       startDate: undefined as string | undefined,
       endDate: undefined as string | undefined,
+      selectedConnections: [] as string[],
     };
+
   });
   const [activeTab, setActiveTab] = useState<'chats' | 'groups'>('chats');
   const [hasMoreConversations, setHasMoreConversations] = useState(true);
@@ -379,9 +381,17 @@ const Chat = () => {
       if (filters.search) filterParams.search = filters.search;
       if (filters.tag !== 'all') filterParams.tag = filters.tag;
       if (filters.assigned !== 'all') filterParams.assigned = filters.assigned;
-      if (filters.connection !== 'all') filterParams.connection = filters.connection;
+      
+      // Use multiple connections if available, otherwise fallback to single connection
+      if (filters.selectedConnections && filters.selectedConnections.length > 0) {
+        filterParams.connections = filters.selectedConnections;
+      } else if (filters.connection !== 'all') {
+        filterParams.connection = filters.connection;
+      }
+
       if (filters.department !== 'all') filterParams.department = filters.department;
       filterParams.archived = filters.archived;
+
       filterParams.is_group = activeTab === 'groups' ? 'true' : 'false';
       filterParams.attendance_status = filters.attendance_status;
       if (filters.favorite) filterParams.favorite = 'true';

@@ -90,6 +90,7 @@ interface ConversationListProps {
     assigned: string;
     archived: boolean;
     connection: string;
+    selectedConnections?: string[];
     is_group: boolean;
     attendance_status: 'waiting' | 'attending' | 'finished';
     department: string;
@@ -103,6 +104,7 @@ interface ConversationListProps {
     assigned: string;
     archived: boolean;
     connection: string;
+    selectedConnections?: string[];
     is_group: boolean;
     attendance_status: 'waiting' | 'attending' | 'finished';
     department: string;
@@ -110,6 +112,7 @@ interface ConversationListProps {
     startDate?: string;
     endDate?: string;
   }) => void;
+
   isAdmin?: boolean;
   connections?: Connection[];
   onPinConversation?: (id: string, pinned: boolean) => Promise<void>;
@@ -676,32 +679,97 @@ export function ConversationList({
 
           {/* Connection filter */}
           <div className="flex-shrink-0">
-           <Select
-             value={filters.connection}
-            onValueChange={(v) => onFiltersChange({ ...filters, connection: v })}
-          >
-            <SelectTrigger className="flex-1 h-8 text-xs min-w-[100px] max-w-[120px]">
-               <Smartphone className="h-3 w-3 mr-1" />
-               <SelectValue placeholder="Conexão" />
-             </SelectTrigger>
-             <SelectContent>
-               <SelectItem value="all">Todas conexões</SelectItem>
-                <div className="max-h-[300px] overflow-y-auto">
-                {connections && connections.map(conn => (
-                 <SelectItem key={conn.id} value={conn.id}>
-                   <div className="flex items-center gap-2">
-                     <div className={cn(
-                       "w-2 h-2 rounded-full",
-                       String(conn.status || '').toLowerCase() === 'connected' ? "bg-green-500" : "bg-red-400"
-                     )} />
-                     {conn.name}
-                   </div>
-                 </SelectItem>
-                ))}
+            <Select
+              value={filters.selectedConnections && filters.selectedConnections.length > 0 
+                ? (filters.selectedConnections.length === (connections?.length || 0) ? "all" : "multiple") 
+                : filters.connection}
+              onValueChange={(v) => {
+                if (v === 'all') {
+                  onFiltersChange({ ...filters, connection: 'all', selectedConnections: [] });
+                } else if (v !== 'multiple') {
+                  onFiltersChange({ ...filters, connection: v, selectedConnections: [v] });
+                }
+              }}
+            >
+              <SelectTrigger className="flex-1 h-8 text-xs min-w-[100px] max-w-[140px]">
+                <Smartphone className="h-3 w-3 mr-1" />
+                <SelectValue>
+                  {filters.selectedConnections && filters.selectedConnections.length > 1
+                    ? `${filters.selectedConnections.length} Conexões`
+                    : (filters.connection === 'all' ? "Todas conexões" : "Conexão")}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <div 
+                  className={cn(
+                    "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                    (filters.connection === 'all' || (filters.selectedConnections?.length === connections?.length && connections?.length > 0)) && "bg-accent"
+                  )}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onFiltersChange({ ...filters, connection: 'all', selectedConnections: [] });
+                  }}
+                >
+                  <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                    {(filters.connection === 'all' || (filters.selectedConnections?.length === connections?.length && connections?.length > 0)) && (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
+                  </span>
+                  Todas conexões
                 </div>
-             </SelectContent>
-           </Select>
+                
+                <div className="max-h-[300px] overflow-y-auto border-t mt-1 pt-1">
+                  {connections && connections.map(conn => {
+                    const isSelected = filters.selectedConnections?.includes(conn.id) || filters.connection === conn.id;
+                    return (
+                      <div 
+                        key={conn.id} 
+                        className={cn(
+                          "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                          isSelected && "bg-accent"
+                        )}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          
+                          let newSelected = [...(filters.selectedConnections || [])];
+                          if (filters.connection !== 'all' && filters.connection !== 'multiple' && !newSelected.includes(filters.connection)) {
+                            newSelected.push(filters.connection);
+                          }
+                          
+                          if (newSelected.includes(conn.id)) {
+                            newSelected = newSelected.filter(id => id !== conn.id);
+                          } else {
+                            newSelected.push(conn.id);
+                          }
+                          
+                          const allSelected = newSelected.length === connections.length;
+                          onFiltersChange({ 
+                            ...filters, 
+                            connection: allSelected ? 'all' : (newSelected.length === 0 ? 'all' : 'multiple'),
+                            selectedConnections: allSelected ? [] : newSelected 
+                          });
+                        }}
+                      >
+                        <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
+                          {isSelected && <CheckCircle className="h-4 w-4" />}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <div className={cn(
+                            "w-2 h-2 rounded-full",
+                            String(conn.status || '').toLowerCase() === 'connected' ? "bg-green-500" : "bg-red-400"
+                          )} />
+                          {conn.name}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </SelectContent>
+            </Select>
           </div>
+
 
           {/* Department filter - show if there are any departments */}
           {Array.isArray(allDepartments) && allDepartments.length > 0 && (
