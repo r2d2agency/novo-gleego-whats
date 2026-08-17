@@ -1168,7 +1168,7 @@ const Chat = () => {
       <NewConversationDialog
         open={newConversationOpen}
         onOpenChange={setNewConversationOpen}
-        connections={connections}
+        connections={activeConnections}
         onConversationCreated={handleNewConversationCreated}
       />
     </MainLayout>
