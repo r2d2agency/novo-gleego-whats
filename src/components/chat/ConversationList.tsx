@@ -686,7 +686,8 @@ export function ConversationList({
              </SelectTrigger>
              <SelectContent>
                <SelectItem value="all">Todas conexões</SelectItem>
-               {connections && connections.map(conn => (
+                <div className="max-h-[300px] overflow-y-auto">
+                {connections && connections.map(conn => (
                  <SelectItem key={conn.id} value={conn.id}>
                    <div className="flex items-center gap-2">
                      <div className={cn(
@@ -696,7 +697,8 @@ export function ConversationList({
                      {conn.name}
                    </div>
                  </SelectItem>
-               ))}
+                ))}
+                </div>
              </SelectContent>
            </Select>
           </div>
