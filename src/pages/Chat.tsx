@@ -341,7 +341,8 @@ const Chat = () => {
        console.log('[Chat] Loading connections...');
        const data = await getConnections();
        console.log('[Chat] Connections loaded:', data);
-       setConnections(data);
+        setConnections(data);
+        setActiveConnections(data.filter(c => ['connected', 'open', 'online'].includes(String(c.status || '').toLowerCase())));
      } catch (error) {
        console.error('[Chat] Error loading connections:', error);
      }
