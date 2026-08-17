@@ -250,7 +250,7 @@ async function getDigestRecipients(config) {
 
   if (config.notify_members_whatsapp) {
     const membersResult = await query(
-      `SELECT DISTINCT u.id AS user_id, u.name, u.whatsapp_phone, u.phone
+      `SELECT DISTINCT u.id AS user_id, u.name, u.whatsapp_phone, u.phone_number as phone
        FROM group_secretary_members gsm
        JOIN users u ON u.id = gsm.user_id
        WHERE gsm.organization_id = $1

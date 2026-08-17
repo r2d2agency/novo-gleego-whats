@@ -1,7 +1,7 @@
 import { query } from './db.js';
 
 async function fixSchema() {
-  console.log("Checking and fixing database schema for Supervisor IA...");
+  console.log("Checking and fixing database schema for Supervisor IA and Secretary...");
   try {
     // 1. Ensure crm_deals has monitoring columns
     console.log("Ensuring crm_deals has monitoring columns...");
@@ -27,16 +27,26 @@ async function fixSchema() {
     `);
     await query(`CREATE INDEX IF NOT EXISTS idx_conversations_tags ON conversations USING GIN(tags);`);
 
-    // 3. Ensure users table has phone/whatsapp_phone
+    // 3. Ensure users table has phone_number and whatsapp_phone
     console.log("Ensuring users table has phone columns...");
     await query(`
       DO $$ BEGIN
           ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_phone VARCHAR(50);
-          ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50);
       EXCEPTION WHEN others THEN RAISE NOTICE 'Error updating users: %', SQLERRM; END $$;
     `);
 
-    // 4. Ensure supervisor tables exist
+    // 4. Ensure crm_tasks has followup columns for AI Secretary
+    console.log("Ensuring crm_tasks has followup columns...");
+    await query(`
+      DO $$ BEGIN
+          ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS followup_sent_at TIMESTAMP WITH TIME ZONE;
+          ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS followup_count INTEGER DEFAULT 0;
+          ALTER TABLE crm_tasks ADD COLUMN IF NOT EXISTS followup_disabled BOOLEAN DEFAULT false;
+      EXCEPTION WHEN others THEN RAISE NOTICE 'Error updating crm_tasks: %', SQLERRM; END $$;
+    `);
+
+    // 5. Ensure supervisor tables exist
     console.log("Checking supervisor tables...");
     
     // supervisor_settings
@@ -111,4 +121,3 @@ async function fixSchema() {
 }
 
 fixSchema();
-

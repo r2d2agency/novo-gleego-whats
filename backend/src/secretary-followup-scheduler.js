@@ -42,7 +42,7 @@ export async function executeSecretaryFollowups() {
 
         // Find pending tasks created by group_secretary older than X hours
         const tasksResult = await query(`
-          SELECT t.*, u.name as assigned_name, u.whatsapp_phone, u.phone
+          SELECT t.*, u.name as assigned_name, u.whatsapp_phone, u.phone_number as phone
           FROM crm_tasks t
           LEFT JOIN users u ON u.id = t.assigned_to
           WHERE t.organization_id = $1
