@@ -192,8 +192,8 @@ const Chat = () => {
       endDate: undefined as string | undefined,
       selectedConnections: [] as string[],
     };
-
   });
+
   const [activeTab, setActiveTab] = useState<'chats' | 'groups'>('chats');
   const [hasMoreConversations, setHasMoreConversations] = useState(true);
   const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
