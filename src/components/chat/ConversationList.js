@@ -511,6 +511,7 @@ export function ConversationList({ conversations = [], selectedId, onSelect, tag
           </div>
 
 
+
           {/* Department filter - show if there are any departments */}
           {Array.isArray(allDepartments) && allDepartments.length > 0 && (<Select value={filters.department} onValueChange={(v) => onFiltersChange({ ...filters, department: v })}>
               <SelectTrigger className="flex-1 h-8 text-xs min-w-[70px] max-w-[90px]">
