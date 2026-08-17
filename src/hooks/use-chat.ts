@@ -229,6 +229,8 @@ export const useChat = () => {
     assigned?: string;
     archived?: boolean;
     connection?: string;
+    connections?: string[];
+
     is_group?: boolean | string;
     attendance_status?: 'waiting' | 'attending' | 'finished';
     department?: string;
@@ -246,10 +248,13 @@ export const useChat = () => {
       if (filters?.tag && filters.tag !== 'all') params.append('tag', filters.tag);
       if (filters?.assigned && filters.assigned !== 'all') params.append('assigned', filters.assigned);
       if (filters?.archived !== undefined) params.append('archived', String(filters.archived));
-      if (filters?.connection && filters.connection !== 'all') {
+      if (filters?.connections && Array.isArray(filters.connections) && filters.connections.length > 0) {
+        filters.connections.forEach(c => params.append('connection_ids[]', c));
+      } else if (filters?.connection && filters.connection !== 'all') {
         params.append('connection', filters.connection);
         params.append('connection_id', filters.connection);
       }
+
       if (filters?.is_group !== undefined) params.append('is_group', String(filters.is_group));
       if (filters?.attendance_status) params.append('attendance_status', filters.attendance_status);
       if (filters?.department && filters.department !== 'all') params.append('department', filters.department);
@@ -267,9 +272,12 @@ export const useChat = () => {
       let data = await api<Conversation[]>(url);
 
       // Client-side filter fallback for connection and tag if backend doesn't support it
-      if (filters?.connection && filters.connection !== 'all') {
+      if (filters?.connections && filters.connections.length > 0) {
+        data = data.filter(conv => filters.connections!.includes(conv.connection_id));
+      } else if (filters?.connection && filters.connection !== 'all') {
         data = data.filter(conv => conv.connection_id === filters.connection);
       }
+
       
       if (filters?.tag && filters.tag !== 'all') {
         data = data.filter(conv => conv.tags?.some(t => t.id === filters.tag));
