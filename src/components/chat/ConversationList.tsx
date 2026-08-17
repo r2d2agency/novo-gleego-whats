@@ -771,6 +771,7 @@ export function ConversationList({
           </div>
 
 
+
           {/* Department filter - show if there are any departments */}
           {Array.isArray(allDepartments) && allDepartments.length > 0 && (
             <Select
