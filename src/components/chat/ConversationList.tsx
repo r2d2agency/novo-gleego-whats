@@ -654,7 +654,7 @@ export function ConversationList({
             value={filters.tag}
             onValueChange={(v) => onFiltersChange({ ...filters, tag: v })}
           >
-            <SelectTrigger className="flex-1 h-8 text-xs min-w-[70px] max-w-[110px]">
+            <SelectTrigger className="flex-1 h-8 text-xs min-w-[100px] max-w-[130px]">
               <Tag className="h-3 w-3 mr-1" />
               <SelectValue placeholder="Tag" />
             </SelectTrigger>
@@ -674,18 +674,20 @@ export function ConversationList({
             </SelectContent>
           </Select>
 
-           {/* Connection filter */}
+          {/* Connection filter */}
+          <div className="flex-shrink-0">
            <Select
              value={filters.connection}
-             onValueChange={(v) => onFiltersChange({ ...filters, connection: v })}
-           >
-             <SelectTrigger className="flex-1 h-8 text-xs min-w-[80px] max-w-[100px]">
+            onValueChange={(v) => onFiltersChange({ ...filters, connection: v })}
+          >
+            <SelectTrigger className="flex-1 h-8 text-xs min-w-[100px] max-w-[120px]">
                <Smartphone className="h-3 w-3 mr-1" />
                <SelectValue placeholder="Conexão" />
              </SelectTrigger>
              <SelectContent>
                <SelectItem value="all">Todas conexões</SelectItem>
-               {connections && connections.map(conn => (
+                <div className="max-h-[300px] overflow-y-auto">
+                {connections && connections.map(conn => (
                  <SelectItem key={conn.id} value={conn.id}>
                    <div className="flex items-center gap-2">
                      <div className={cn(
@@ -695,9 +697,11 @@ export function ConversationList({
                      {conn.name}
                    </div>
                  </SelectItem>
-               ))}
+                ))}
+                </div>
              </SelectContent>
            </Select>
+          </div>
 
           {/* Department filter - show if there are any departments */}
           {Array.isArray(allDepartments) && allDepartments.length > 0 && (

@@ -147,7 +147,8 @@ const Chat = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [tags, setTags] = useState<ConversationTag[]>([]);
   const [team, setTeam] = useState<TeamMember[]>([]);
-   const [connections, setConnections] = useState<Connection[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [activeConnections, setActiveConnections] = useState<Connection[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userRole, setUserRole] = useState<string>('');
   
@@ -340,7 +341,8 @@ const Chat = () => {
        console.log('[Chat] Loading connections...');
        const data = await getConnections();
        console.log('[Chat] Connections loaded:', data);
-       setConnections(data);
+        setConnections(data);
+        setActiveConnections(data.filter(c => ['connected', 'open', 'online'].includes(String(c.status || '').toLowerCase())));
      } catch (error) {
        console.error('[Chat] Error loading connections:', error);
      }
@@ -1166,7 +1168,7 @@ const Chat = () => {
       <NewConversationDialog
         open={newConversationOpen}
         onOpenChange={setNewConversationOpen}
-        connections={connections}
+        connections={activeConnections}
         onConversationCreated={handleNewConversationCreated}
       />
     </MainLayout>

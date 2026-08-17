@@ -271,7 +271,7 @@ export function NewConversationDialog({
             <SelectTrigger id="connection-global">
               <SelectValue placeholder="Escolha a conexão para continuar" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-[300px] overflow-y-auto">
               {activeConnections.length === 0 ? (
                 <SelectItem value="none" disabled>
                   Nenhuma conexão ativa
