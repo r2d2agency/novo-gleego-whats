@@ -32,7 +32,7 @@ async function fixSchema() {
     await query(`
       DO $$ BEGIN
           ALTER TABLE users ADD COLUMN IF NOT EXISTS whatsapp_phone VARCHAR(50);
-          ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+          ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50);
       EXCEPTION WHEN others THEN RAISE NOTICE 'Error updating users: %', SQLERRM; END $$;
     `);
 
