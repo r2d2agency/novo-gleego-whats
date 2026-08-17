@@ -96,7 +96,7 @@ async function sendWhatsAppReminder(task, message) {
   try {
     // Get user's phone from conversations or user profile
     const userResult = await query(
-      `SELECT u.phone, u.whatsapp_phone 
+      `SELECT u.phone_number as phone, u.whatsapp_phone 
        FROM users u WHERE u.id = $1`,
       [task.assigned_to]
     );
