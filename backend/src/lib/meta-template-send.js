@@ -5,8 +5,8 @@ function applyContactVars(text, contact = {}) {
   if (!text) return '';
   return String(text).replace(/\{(name|nome|phone|telefone|email|company|empresa)\}/gi, (_, key) => {
     const k = key.toLowerCase();
-    if (k === 'nome' || k === 'name') return contact.name || '';
-    if (k === 'telefone' || k === 'phone') return contact.phone || '';
+    if (k === 'nome' || k === 'name') return contact.name || contact.contact_name || '';
+    if (k === 'telefone' || k === 'phone') return contact.phone || contact.contact_phone || '';
     if (k === 'email') return contact.email || '';
     if (k === 'empresa' || k === 'company') return contact.company || '';
     return '';
