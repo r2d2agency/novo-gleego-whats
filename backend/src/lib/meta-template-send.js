@@ -33,7 +33,7 @@ export function buildTemplateComponents(components, paramValues = {}, contact = 
         out.push({ type: 'header', parameters: [{ type: mediaType, [mediaType]: { link: mediaUrl } }] });
       }
     } else if (headerComp.text) {
-      const headerParams = headerComp.text.match(/\{\{(\d+)\}\}/g) || [];
+      const headerParams = headerComp.text.match(/\{\{(\d+)\}\}/g) || ['{{1}}'];
       if (headerParams.length > 0) {
         out.push({
           type: 'header',
