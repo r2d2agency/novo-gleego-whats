@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { authenticate } from '../middleware/auth.js';
 import * as whatsappProvider from '../lib/whatsapp-provider.js';
+import { buildTemplateComponents, resolveParamValue } from '../lib/meta-template-send.js';
 import { startAgentSession, stopAgentSession, getActiveAgentSession, pauseSessionForHumanReply, setHumanTakeover, triggerAgentFirstMessage } from '../lib/ai-agent-processor.js';
 import path from 'path';
 import fs from 'fs';
@@ -2288,7 +2289,7 @@ router.post('/conversations/:id/send-template', authenticate, async (req, res) =
     }
 
     // Build template components with parameter values using unified helper
-    import { buildTemplateComponents } from '../lib/meta-template-send.js';
+    
     const templateComponents = buildTemplateComponents(components || [], param_values || {}, {
       name: conversation.contact_name || '',
       phone: cleanPhone,
@@ -2338,7 +2339,7 @@ router.post('/conversations/:id/send-template', authenticate, async (req, res) =
     const metaMessageId = result?.messages?.[0]?.id || `template_${Date.now()}`;
 
     // Build readable content from template using unified helper
-    import { resolveParamValue } from '../lib/meta-template-send.js';
+    
     const bodyComp = (components || []).find(c => (c.type || '').toUpperCase() === 'BODY');
     let readableContent = bodyComp?.text || template_name;
     const contactObj = { name: conversation.contact_name || '', phone: cleanPhone };
