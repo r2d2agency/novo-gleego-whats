@@ -2287,70 +2287,12 @@ router.post('/conversations/:id/send-template', authenticate, async (req, res) =
       return res.status(400).json({ error: 'Telefone do contato não encontrado' });
     }
 
-    // Build template components with parameter values
-    const templateComponents = [];
-    const bodyComp = (components || []).find(c => (c.type || '').toUpperCase() === 'BODY');
-    const headerComp = (components || []).find(c => (c.type || '').toUpperCase() === 'HEADER');
-    const buttonsComps = (components || []).filter(c => (c.type || '').toUpperCase() === 'BUTTONS');
-
-    // Handle header component
-    if (headerComp) {
-      const headerFormat = (headerComp.format || '').toUpperCase();
-      if (headerFormat === 'IMAGE' || headerFormat === 'VIDEO' || headerFormat === 'DOCUMENT') {
-        // Media header — check if param_values has a media URL
-        const mediaUrl = (param_values || {})['{{header_media}}'] || (param_values || {})['header_media'];
-        if (mediaUrl) {
-          const mediaType = headerFormat.toLowerCase();
-          templateComponents.push({
-            type: 'header',
-            parameters: [{ type: mediaType, [mediaType]: { link: mediaUrl } }],
-          });
-        }
-      } else if (headerComp.text) {
-        const headerParams = (headerComp.text.match(/\{\{(\d+)\}\}/g) || []);
-        if (headerParams.length > 0) {
-          templateComponents.push({
-            type: 'header',
-            parameters: headerParams.map(p => ({
-              type: 'text',
-              text: String((param_values || {})[p] || '').trim() || ' ',
-            })),
-          });
-        }
-      }
-    }
-
-    // Handle body component
-    if (bodyComp?.text) {
-      const bodyParams = (bodyComp.text.match(/\{\{(\d+)\}\}/g) || []);
-      if (bodyParams.length > 0) {
-        templateComponents.push({
-          type: 'body',
-          parameters: bodyParams.map(p => ({
-            type: 'text',
-            text: String((param_values || {})[p] || '').trim() || ' ',
-          })),
-        });
-      }
-    }
-
-    // Handle button URL parameters (e.g. {{1}} in button URLs)
-    for (const btnComp of buttonsComps) {
-      const buttons = btnComp.buttons || [];
-      buttons.forEach((btn, idx) => {
-        if (btn.type === 'URL' && btn.url && btn.url.includes('{{')) {
-          const btnParamValue = (param_values || {})[`{{button_${idx}}}`] || (param_values || {})[`button_${idx}`];
-          if (btnParamValue) {
-            templateComponents.push({
-              type: 'button',
-              sub_type: 'url',
-              index: String(idx),
-              parameters: [{ type: 'text', text: String(btnParamValue).trim() }],
-            });
-          }
-        }
-      });
-    }
+    // Build template components with parameter values using unified helper
+    import { buildTemplateComponents } from '../lib/meta-template-send.js';
+    const templateComponents = buildTemplateComponents(components || [], param_values || {}, {
+      name: conversation.contact_name || '',
+      phone: cleanPhone,
+    });
 
     // Send template via Meta API
     const metaBody = {
@@ -2384,16 +2326,26 @@ router.post('/conversations/:id/send-template', authenticate, async (req, res) =
       const metaErr = result?.error || {};
       const errorMsg = metaErr.error_user_msg || metaErr.message || `HTTP ${response.status}`;
       console.error('Meta template send error:', { status: response.status, metaBody, metaError: metaErr });
-      return res.status(response.status).json({ error: errorMsg, meta_error_code: metaErr.code, meta_error_subcode: metaErr.error_subcode });
+      const isParamError = /param/i.test(errorMsg) || /variable/i.test(errorMsg) || response.status === 400;
+      return res.status(response.status).json({ 
+        error: errorMsg, 
+        meta_error_code: metaErr.code, 
+        meta_error_subcode: metaErr.error_subcode,
+        details: isParamError ? 'Verifique se todos os parâmetros {{1}}, {{2}}... foram preenchidos corretamente.' : undefined
+      });
     }
 
     const metaMessageId = result?.messages?.[0]?.id || `template_${Date.now()}`;
 
-    // Build readable content from template
+    // Build readable content from template using unified helper
+    import { resolveParamValue } from '../lib/meta-template-send.js';
+    const bodyComp = (components || []).find(c => (c.type || '').toUpperCase() === 'BODY');
     let readableContent = bodyComp?.text || template_name;
+    const contactObj = { name: conversation.contact_name || '', phone: cleanPhone };
+    
     if (param_values) {
       Object.entries(param_values).forEach(([key, value]) => {
-        readableContent = readableContent.replace(key, value);
+        readableContent = readableContent.replace(key, resolveParamValue(value, contactObj));
       });
     }
 
