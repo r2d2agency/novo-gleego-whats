@@ -496,6 +496,20 @@ router.get('/monitored-sellers', async (req, res) => {
     const ctx = await getUserOrgWithFlags(req.userId);
     if (!ctx) return res.status(403).json({ error: 'No organization' });
 
+    // Self-healing: Ensure the table supervisor_monitored_sellers exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS supervisor_monitored_sellers (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE NOT NULL,
+          user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+          connection_ids UUID[] DEFAULT '{}',
+          funnel_ids UUID[] DEFAULT '{}',
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          UNIQUE(organization_id, user_id)
+      );
+    `);
+
     const result = await query(
       `SELECT ms.id, ms.user_id, ms.connection_ids, ms.funnel_ids,
               u.name, u.email, om.role
