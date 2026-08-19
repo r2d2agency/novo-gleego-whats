@@ -731,8 +731,10 @@ router.post('/lists/from-tag', async (req, res) => {
 
     const org = await getUserOrganization(req.userId);
     if (!org) {
-      return res.status(400).json({ error: 'Usuário não pertence a uma organização' });
+      console.warn('[Contacts] User', req.userId, 'is not in an organization');
+      return res.status(403).json({ error: 'Você não tem permissão para realizar esta ação (organização não encontrada).' });
     }
+
 
     // Verify tags belong to user's organization
     const tagCheck = await query(

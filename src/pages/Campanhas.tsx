@@ -515,9 +515,11 @@ const Campanhas = () => {
           const newLists = await getLists();
           setLists(newLists);
         } catch (tagErr: any) {
-          toast.error(tagErr.message || "Erro ao criar lista a partir da tag");
+          const errorMsg = tagErr?.error || tagErr?.message || "Erro ao criar lista a partir da tag";
+          toast.error(errorMsg);
           setCreatingListFromTag(false);
           return;
+
         }
         setCreatingListFromTag(false);
       }
