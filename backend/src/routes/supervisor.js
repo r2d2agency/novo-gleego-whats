@@ -29,7 +29,13 @@ router.get('/stats', async (req, res) => {
 
     // Check module permission
     const orgData = await query('SELECT modules_enabled FROM organizations WHERE id = $1', [org.organization_id]);
-    const modules = (orgData.rows && orgData.rows[0]?.modules_enabled) || {};
+    let modules = (orgData.rows && orgData.rows[0]?.modules_enabled) || {};
+    
+    // Auto-enable for privileged users if not set
+    if (!modules.supervisor && isPrivileged) {
+      modules = { ...modules, supervisor: true };
+      await query('UPDATE organizations SET modules_enabled = $1 WHERE id = $2', [JSON.stringify(modules), org.organization_id]);
+    }
     
     if (!modules.supervisor && !isPrivileged) {
       return res.status(403).json({ error: 'Supervisor module not enabled for this organization' });
