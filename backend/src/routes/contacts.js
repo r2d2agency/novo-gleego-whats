@@ -768,7 +768,8 @@ router.post('/lists/from-tag', async (req, res) => {
     );
 
     if (conversationsResult.rows.length === 0) {
-      return res.status(400).json({ error: 'Nenhuma conversa ativa encontrada com essas tags' });
+      console.warn('[Contacts] No conversations found for tags:', validTagIds);
+      return res.status(400).json({ error: 'Nenhuma conversa com telefone e mensagens encontradas para as tags selecionadas.' });
     }
 
     // Create the list

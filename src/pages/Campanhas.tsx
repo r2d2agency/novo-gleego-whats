@@ -545,8 +545,10 @@ const Campanhas = () => {
       resetForm();
       setActiveTab("list");
       loadData();
-    } catch (err) {
-      toast.error("Erro ao criar campanha");
+    } catch (err: any) {
+      console.error('Erro detalhado ao criar campanha:', err);
+      const errorMsg = err?.response?.error || err?.message || "Erro ao criar campanha";
+      toast.error(errorMsg);
     }
   };
 

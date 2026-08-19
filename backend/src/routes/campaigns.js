@@ -100,8 +100,9 @@ router.post('/', async (req, res) => {
 
     // Either messages, flow OR meta template is required
     if (!name || !connection_id || !list_id || (!finalMessageId && !isFlowCampaign && !isTemplateCampaign)) {
+      console.warn('[Campaigns] Missing required fields:', { name, connection_id, list_id, finalMessageId, isFlowCampaign, isTemplateCampaign });
       return res.status(400).json({ 
-        error: 'Nome, conexão, lista e (mensagem, fluxo ou template) são obrigatórios' 
+        error: 'Campos obrigatórios ausentes: Nome, conexão, lista e conteúdo (mensagem/fluxo/template) são necessários.' 
       });
     }
 
