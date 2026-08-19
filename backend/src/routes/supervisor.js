@@ -24,10 +24,14 @@ router.get('/stats', async (req, res) => {
     const org = await getUserOrg(req.userId);
     if (!org) return res.status(403).json({ error: 'No organization' });
 
+    // Admins and Owners always have access to Supervisor IA
+    const isPrivileged = ['owner', 'admin'].includes(org.role);
+
     // Check module permission
     const orgData = await query('SELECT modules_enabled FROM organizations WHERE id = $1', [org.organization_id]);
     const modules = (orgData.rows && orgData.rows[0]?.modules_enabled) || {};
-    if (!modules.supervisor) {
+    
+    if (!modules.supervisor && !isPrivileged) {
       return res.status(403).json({ error: 'Supervisor module not enabled for this organization' });
     }
 
@@ -321,6 +325,14 @@ router.get('/audits', async (req, res) => {
 router.get('/settings', async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    
+    // Admins and Owners see settings
+    const isPrivileged = ['owner', 'admin'].includes(org.role);
+    if (!isPrivileged && org.role !== 'supervisor') {
+       return res.status(403).json({ error: 'Access denied' });
+    }
+
     const result = await query(`SELECT * FROM supervisor_settings WHERE organization_id = $1`, [org.organization_id]);
     res.json((result.rows && result.rows[0]) || {});
 
