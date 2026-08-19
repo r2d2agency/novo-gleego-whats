@@ -193,33 +193,39 @@ app.use('/uploads', (req, res, next) => {
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   
-  // Handle preflight for static files if needed
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 }, express.static(uploadsDir, {
   setHeaders: (res, filePath) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Disposition', 'inline');
-    // Set correct MIME types for audio/video
     const ext = path.extname(filePath).toLowerCase();
-    if (ext === '.ogg') {
-      res.setHeader('Content-Type', 'audio/ogg');
-    } else if (ext === '.mp3') {
-      res.setHeader('Content-Type', 'audio/mpeg');
-    } else if (ext === '.m4a') {
-      res.setHeader('Content-Type', 'audio/mp4');
-    } else if (ext === '.wav') {
-      res.setHeader('Content-Type', 'audio/wav');
-    } else if (ext === '.aac') {
-      res.setHeader('Content-Type', 'audio/aac');
-    } else if (ext === '.mp4') {
-      res.setHeader('Content-Type', 'video/mp4');
-    } else if (ext === '.webm') {
-      // Many voice notes are stored as .webm; prefer audio/webm for broad compatibility
-      res.setHeader('Content-Type', 'audio/webm');
-    }
+    if (ext === '.ogg') res.setHeader('Content-Type', 'audio/ogg');
+    else if (ext === '.mp3') res.setHeader('Content-Type', 'audio/mpeg');
+    else if (ext === '.m4a') res.setHeader('Content-Type', 'audio/mp4');
+    else if (ext === '.wav') res.setHeader('Content-Type', 'audio/wav');
+    else if (ext === '.aac') res.setHeader('Content-Type', 'audio/aac');
+    else if (ext === '.mp4') res.setHeader('Content-Type', 'video/mp4');
+    else if (ext === '.webm') res.setHeader('Content-Type', 'audio/webm');
+    else if (ext === '.pdf') res.setHeader('Content-Type', 'application/pdf');
   }
 }));
+
+// Fallback for direct /uploads access when static middle-ware is skipped or mis-configured
+app.get('/uploads/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(uploadsDir, filename);
+  
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Disposition', 'inline');
+    const ext = path.extname(filename).toLowerCase();
+    if (ext === '.pdf') res.setHeader('Content-Type', 'application/pdf');
+    return res.sendFile(filePath);
+  }
+  
+  res.status(404).json({ error: 'Arquivo não encontrado' });
+});
 
 
 // ===========================
