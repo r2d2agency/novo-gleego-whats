@@ -731,18 +731,22 @@ router.post('/lists/from-tag', async (req, res) => {
 
     const org = await getUserOrganization(req.userId);
     if (!org) {
-      return res.status(400).json({ error: 'Usuário não pertence a uma organização' });
+      console.warn('[Contacts] User', req.userId, 'is not in an organization');
+      return res.status(403).json({ error: 'Você não tem permissão para realizar esta ação (organização não encontrada).' });
     }
+
 
     // Verify tags belong to user's organization
     const tagCheck = await query(
-      'SELECT id, name FROM conversation_tags WHERE id = ANY($1::uuid[]) AND organization_id = $2',
+      'SELECT id, name, organization_id FROM conversation_tags WHERE id = ANY($1::uuid[]) AND organization_id = $2',
       [tagIds, org.organization_id]
     );
 
     if (tagCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Nenhuma tag encontrada' });
+      console.warn('[Contacts] No tags found for IDs:', tagIds, 'in org:', org.organization_id);
+      return res.status(404).json({ error: 'Nenhuma tag encontrada ou sem permissão na organização.' });
     }
+
 
     const tagNames = tagCheck.rows.map(r => r.name);
     const validTagIds = tagCheck.rows.map(r => r.id);

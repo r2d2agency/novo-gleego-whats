@@ -99,12 +99,19 @@ router.post('/', async (req, res) => {
     const isTemplateCampaign = !!meta_template_id;
 
     // Either messages, flow OR meta template is required
-    if (!name || !connection_id || !list_id || (!finalMessageId && !isFlowCampaign && !isTemplateCampaign)) {
-      console.warn('[Campaigns] Missing required fields:', { name, connection_id, list_id, finalMessageId, isFlowCampaign, isTemplateCampaign });
-      return res.status(400).json({ 
-        error: 'Campos obrigatórios ausentes: Nome, conexão, lista e conteúdo (mensagem/fluxo/template) são necessários.' 
-      });
+    if (!name) {
+      return res.status(400).json({ error: 'O nome da campanha é obrigatório.' });
     }
+    if (!connection_id) {
+      return res.status(400).json({ error: 'Selecione uma conexão.' });
+    }
+    if (!list_id) {
+      return res.status(400).json({ error: 'Selecione uma lista de contatos.' });
+    }
+    if (!finalMessageId && !isFlowCampaign && !isTemplateCampaign) {
+      return res.status(400).json({ error: 'Selecione o conteúdo (Mensagem, Fluxo ou Template) para envio.' });
+    }
+
 
     const org = await getUserOrganization(req.userId);
 
