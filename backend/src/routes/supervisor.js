@@ -24,10 +24,20 @@ router.get('/stats', async (req, res) => {
     const org = await getUserOrg(req.userId);
     if (!org) return res.status(403).json({ error: 'No organization' });
 
+    // Admins and Owners always have access to Supervisor IA
+    const isPrivileged = ['owner', 'admin'].includes(org.role);
+
     // Check module permission
     const orgData = await query('SELECT modules_enabled FROM organizations WHERE id = $1', [org.organization_id]);
-    const modules = (orgData.rows && orgData.rows[0]?.modules_enabled) || {};
-    if (!modules.supervisor) {
+    let modules = (orgData.rows && orgData.rows[0]?.modules_enabled) || {};
+    
+    // Auto-enable for privileged users if not set
+    if (!modules.supervisor && isPrivileged) {
+      modules = { ...modules, supervisor: true };
+      await query('UPDATE organizations SET modules_enabled = $1 WHERE id = $2', [JSON.stringify(modules), org.organization_id]);
+    }
+    
+    if (!modules.supervisor && !isPrivileged) {
       return res.status(403).json({ error: 'Supervisor module not enabled for this organization' });
     }
 
@@ -321,6 +331,14 @@ router.get('/audits', async (req, res) => {
 router.get('/settings', async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    
+    // Admins and Owners see settings
+    const isPrivileged = ['owner', 'admin'].includes(org.role);
+    if (!isPrivileged && org.role !== 'supervisor') {
+       return res.status(403).json({ error: 'Access denied' });
+    }
+
     const result = await query(`SELECT * FROM supervisor_settings WHERE organization_id = $1`, [org.organization_id]);
     res.json((result.rows && result.rows[0]) || {});
 
@@ -483,6 +501,20 @@ router.get('/monitored-sellers', async (req, res) => {
   try {
     const ctx = await getUserOrgWithFlags(req.userId);
     if (!ctx) return res.status(403).json({ error: 'No organization' });
+
+    // Self-healing: Ensure the table supervisor_monitored_sellers exists
+    await query(`
+      CREATE TABLE IF NOT EXISTS supervisor_monitored_sellers (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE NOT NULL,
+          user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+          connection_ids UUID[] DEFAULT '{}',
+          funnel_ids UUID[] DEFAULT '{}',
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          UNIQUE(organization_id, user_id)
+      );
+    `);
 
     const result = await query(
       `SELECT ms.id, ms.user_id, ms.connection_ids, ms.funnel_ids,
