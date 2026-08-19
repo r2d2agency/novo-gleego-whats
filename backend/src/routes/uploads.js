@@ -268,9 +268,12 @@ router.post('/', authenticate, (req, res) => {
 
       // Build the public URL - use backend domain, not frontend
       const baseUrl = String(process.env.API_BASE_URL || '').trim().replace(/\/+$/, '');
+      
+      // We always return an absolute URL if possible, falling back to /api/uploads
+      // to ensure consistency across different hosting environments.
       const fileUrl = baseUrl
-        ? `${baseUrl}/uploads/${filename}`
-        : `/uploads/${filename}`;
+        ? `${baseUrl}/api/uploads/${filename}`
+        : `/api/uploads/${filename}`;
 
       res.json({
         success: true,

@@ -188,13 +188,18 @@ app.get('/uploads/public/:stored/:downloadName', (req, res) => {
 app.use('/uploads', (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type');
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Disposition');
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  
+  // Handle preflight for static files if needed
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 }, express.static(uploadsDir, {
   setHeaders: (res, filePath) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Disposition', 'inline');
     // Set correct MIME types for audio/video
     const ext = path.extname(filePath).toLowerCase();
     if (ext === '.ogg') {
