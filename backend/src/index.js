@@ -344,6 +344,19 @@ app.get('/api/meta/webhook', async (req, res) => {
   }
 
   try {
+    // 1. First check if it matches the global environment variable (Centralized App)
+    const globalVerifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
+    if (globalVerifyToken && token === globalVerifyToken) {
+      logMetaEvent('verify_success_global', {
+        ...verifyContext,
+        connection_id: 'global',
+        status_code: 200,
+      });
+      console.log('[Meta Webhook] Verification successful using global token');
+      return res.status(200).send(challenge);
+    }
+
+    // 2. Fallback: check individual connections
     const result = await dbQuery(
       `SELECT id FROM connections WHERE provider = 'meta' AND meta_webhook_verify_token = $1 LIMIT 1`,
       [token]
@@ -355,7 +368,7 @@ app.get('/api/meta/webhook', async (req, res) => {
         reason: 'verify_token_not_found',
         status_code: 403,
       });
-      console.log('[Meta Webhook] Verify token not found:', token);
+      console.log('[Meta Webhook] Verify token not found in env or DB:', token);
       return res.sendStatus(403);
     }
 
