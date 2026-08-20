@@ -315,8 +315,9 @@ router.post('/', async (req, res) => {
     const endTimeHours = end_time ? parseInt(end_time.split(':')[0]) : 23;
     const endTimeMinutes = end_time ? parseInt(end_time.split(':')[1]) : 59;
 
-    // Get current time for comparison (UTC)
-    const now = new Date();
+    // Get current time from DB for comparison
+    const nowDbResult = await query('SELECT NOW()');
+    const now = new Date(nowDbResult.rows[0].now);
 
     // Only adjust if scheduled time is in the past
     if (currentScheduleTime < now) {
