@@ -1217,6 +1217,15 @@ const handleGetQRCode = async (connection: Connection) => {
           
           <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
             <MetaApiHelpDialog />
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="gap-2"
+              onClick={() => navigate("/conectar-meta")}
+            >
+              <Facebook className="h-4 w-4" />
+              Central Meta SaaS
+            </Button>
             <InstagramMessengerHelpDialog />
             {/* Plan limits badge */}
             {planLimits && (
