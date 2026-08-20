@@ -304,7 +304,9 @@ router.post('/', async (req, res) => {
     } else if (start_time) {
       currentScheduleTime = makeUtcFromSaoPauloLocal(null, start_time);
     } else {
-      currentScheduleTime = new Date();
+      // Use "NOW" from DB to ensure synchronicity with the scheduler
+      const nowDb = await query('SELECT NOW()');
+      currentScheduleTime = new Date(nowDb.rows[0].now);
     }
 
     // Parse time bounds (São Paulo clock)
@@ -327,7 +329,7 @@ router.post('/', async (req, res) => {
           currentScheduleTime = now;
         }
       } else {
-        currentScheduleTime = now;
+        currentScheduleTime = new Date(nowDb.rows[0].now);
       }
     }
 
