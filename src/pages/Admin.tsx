@@ -857,6 +857,13 @@ export default function Admin() {
           </TabsList>
 
           {/* Plans Tab */}
+          <TabsContent value="meta-saas" className="space-y-4">
+            <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>}>
+              <AdminMetaSaas />
+            </Suspense>
+          </TabsContent>
+
+          {/* Plans Tab */}
           <TabsContent value="plans" className="space-y-4">
             <div className="flex justify-between items-center gap-2">
               <h2 className="text-xl font-semibold">Planos</h2>
