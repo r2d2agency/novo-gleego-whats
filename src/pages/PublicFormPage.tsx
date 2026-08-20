@@ -139,14 +139,14 @@ export default function PublicFormPage() {
     if (field.field_type === "phone" && value.trim()) {
       const phoneDigits = value.replace(/\D/g, "");
       if (phoneDigits.length < 10 || phoneDigits.length > 15) {
-        addBotMessage("Por favor, informe um telefone válido com DDD.");
+        addBotMessage("Por favor, informe um telefone válido com DDD (ex: 11999998888).");
         return false;
       }
       
       // WhatsApp Validation Mock - In production, this would call an API to check if number exists on WhatsApp
       // For now, we just enforce a minimum length and numeric characters
       if (phoneDigits.length < 10) {
-        addBotMessage("Este não parece ser um WhatsApp real. Por favor, confira o número.");
+        addBotMessage("Este número não parece ter o formato correto de um WhatsApp. Por favor, verifique se incluiu o DDD.");
         return false;
       }
     }

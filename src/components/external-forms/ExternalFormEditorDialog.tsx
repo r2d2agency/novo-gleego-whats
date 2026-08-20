@@ -81,7 +81,7 @@ export function ExternalFormEditorDialog({
     redirect_url: "",
     trigger_flow_id: "",
     connection_id: "",
-    display_mode: "chat" as "chat" | "typeform" | "standard",
+    display_mode: ("chat" as "chat" | "typeform" | "standard"),
   });
   
   const [fields, setFields] = useState<FormField[]>(DEFAULT_FIELDS);
@@ -126,7 +126,7 @@ export function ExternalFormEditorDialog({
         redirect_url: fullForm.redirect_url || "",
         trigger_flow_id: fullForm.trigger_flow_id || "",
         connection_id: fullForm.connection_id || "",
-        display_mode: (fullForm.display_mode as any) || "chat",
+        display_mode: (fullForm.display_mode as "chat" | "typeform" | "standard") || "chat",
       });
       setFields(fullForm.fields || DEFAULT_FIELDS);
     }
@@ -418,7 +418,7 @@ export function ExternalFormEditorDialog({
                         <button
                           key={opt.value}
                           type="button"
-                          onClick={() => setFormData({ ...formData, display_mode: opt.value as any })}
+                          onClick={() => setFormData({ ...formData, display_mode: opt.value as "chat" | "typeform" | "standard" })}
                           className={`text-left border rounded-lg p-3 transition-all ${
                             active
                               ? "border-primary ring-2 ring-primary/30 bg-primary/5"
