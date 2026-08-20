@@ -175,11 +175,8 @@ async function checkListAccess(listId, userId) {
   let whereClause = 'id = $1 AND user_id = $2';
   let params = [listId, userId];
 
-  if (isOwnerOrAdmin) {
+  if (org) {
     whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3 OR user_id IN (SELECT user_id FROM organization_members WHERE organization_id = $3) OR connection_id IN (SELECT id FROM connections WHERE organization_id = $3))`;
-    params = [listId, userId, org.organization_id];
-  } else if (org) {
-    whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3)`;
     params = [listId, userId, org.organization_id];
   }
 
