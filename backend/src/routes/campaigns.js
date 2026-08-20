@@ -232,10 +232,13 @@ router.post('/', async (req, res) => {
 
     // Remove duplicates based on phone number
     const seenPhones = new Set();
+    const seenContactIds = new Set();
     contacts = contacts.filter(contact => {
       const phone = String(contact.phone || '').trim();
-      if (!phone || seenPhones.has(phone)) return false;
+      const contactId = contact.id;
+      if (!phone || seenPhones.has(phone) || seenContactIds.has(contactId)) return false;
       seenPhones.add(phone);
+      seenContactIds.add(contactId);
       return true;
     });
 
