@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { FileUploadInput } from '@/components/ui/file-upload-input';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,7 +20,7 @@ import { useAdminSettings } from '@/hooks/use-branding';
 import { useUpload } from '@/hooks/use-upload';
 import { BrandingTab } from '@/components/admin/BrandingTab';
 import { toast } from 'sonner';
-import { Shield, Building2, Users, Plus, Trash2, Loader2, Pencil, Crown, Image, Package, CalendarIcon, UserPlus, Eye, MessageSquare, Receipt, Wifi, Upload, Palette, Bot, Clock, Briefcase, Search, AlertTriangle, Mail, Sparkles, Key, Server, Lock } from 'lucide-react';
+import { Shield, Building2, Users, Plus, Trash2, Loader2, Pencil, Crown, Image, Package, CalendarIcon, UserPlus, Eye, MessageSquare, Receipt, Wifi, Upload, Palette, Bot, Clock, Briefcase, Search, AlertTriangle, Mail, Sparkles, Key, Server, Lock, Facebook } from 'lucide-react';
 import { WapiInstancesTab } from '@/components/admin/WapiInstancesTab';
 import { UazapiInstancesTab } from '@/components/admin/UazapiInstancesTab';
 import { GlobalAgentsTab } from '@/components/admin/GlobalAgentsTab';
@@ -29,6 +29,8 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+
+const AdminMetaSaas = lazy(() => import("./AdminMetaSaas"));
 
 interface UserOrganization {
   org_id: string;
@@ -819,7 +821,7 @@ export default function Admin() {
         </div>
 
         <Tabs defaultValue="plans" className="space-y-6">
-          <TabsList className="grid w-full max-w-5xl grid-cols-7">
+          <TabsList className="grid w-full max-w-[900px] grid-cols-4 md:grid-cols-8">
             <TabsTrigger value="plans" className="flex items-center gap-2">
               <Package className="h-4 w-4" />
               Planos
@@ -832,6 +834,10 @@ export default function Admin() {
               <Users className="h-4 w-4" />
               Usuários
             </TabsTrigger>
+            <TabsTrigger value="meta-saas" className="flex items-center gap-2">
+              <Facebook className="h-4 w-4" />
+              Meta SaaS
+            </TabsTrigger>
             <TabsTrigger value="global-agents" className="flex items-center gap-2">
               <Bot className="h-4 w-4" />
               IA Global
@@ -839,10 +845,6 @@ export default function Admin() {
             <TabsTrigger value="wapi-instances" className="flex items-center gap-2">
               <Server className="h-4 w-4" />
               Instâncias
-            </TabsTrigger>
-            <TabsTrigger value="uazapi-instances" className="flex items-center gap-2">
-              <Server className="h-4 w-4" />
-              UAZAPI
             </TabsTrigger>
             <TabsTrigger value="integrations" className="flex items-center gap-2">
               <Key className="h-4 w-4" />
@@ -853,6 +855,13 @@ export default function Admin() {
               Branding
             </TabsTrigger>
           </TabsList>
+
+          {/* Plans Tab */}
+          <TabsContent value="meta-saas" className="space-y-4">
+            <Suspense fallback={<div className="flex justify-center py-10"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>}>
+              <AdminMetaSaas />
+            </Suspense>
+          </TabsContent>
 
           {/* Plans Tab */}
           <TabsContent value="plans" className="space-y-4">
