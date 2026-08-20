@@ -124,6 +124,7 @@ export async function sendMetaTemplate({
     const err = new Error(errMsg);
     err.metaError = metaErr;
     err.status = response.status;
+    err.isTransient = response.status >= 500 || response.status === 429;
     throw err;
   }
 
