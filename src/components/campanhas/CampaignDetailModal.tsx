@@ -195,8 +195,49 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
       prevStatusRef.current = null;
       loadDetails();
       setCountdown(10);
+      setSearchTerm('');
+      setStatusFilter('all');
     }
   }, [open, campaignId, loadDetails]);
+
+  const exportFilteredMessages = () => {
+    if (!details?.messages) return;
+
+    const filtered = details.messages.filter(msg => {
+      const matchesStatus = statusFilter === 'all' || msg.status === statusFilter;
+      const search = searchTerm.toLowerCase().trim();
+      const matchesSearch = !search || 
+        (msg.contact_name?.toLowerCase().includes(search)) || 
+        (msg.phone.includes(search));
+      return matchesStatus && matchesSearch;
+    });
+
+    if (filtered.length === 0) {
+      toast.error("Nenhum dado para exportar com os filtros atuais");
+      return;
+    }
+
+    const headers = ["Nome", "Telefone", "Status", "Data de Envio", "Erro"];
+    const rows = filtered.map(msg => [
+      msg.contact_name || "",
+      msg.phone,
+      msg.status === 'sent' ? 'Enviado' : msg.status === 'failed' ? 'Falha' : 'Pendente',
+      msg.sent_at ? format(new Date(msg.sent_at), "dd/MM/yyyy HH:mm:ss") : "",
+      msg.error_message || ""
+    ]);
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `campanha_${details.campaign.name.replace(/\s+/g, '_')}_detalhes.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Exportação concluída com sucesso!");
+  };
 
   // Auto-refresh for running and pending campaigns
   useEffect(() => {
