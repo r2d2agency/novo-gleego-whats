@@ -19,13 +19,16 @@ import {
   AlertCircle,
   Volume2,
   VolumeX,
-  Pause as PauseIcon
+  Pause as PauseIcon,
+  Search,
+  Download
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
 
 interface CampaignMessage {
   id: string;
