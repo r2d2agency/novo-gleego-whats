@@ -107,6 +107,7 @@ router.post('/', authenticate, async (req, res) => {
       name,
       description,
       logo_url,
+      logo_size,
       primary_color,
       background_color,
       text_color,
@@ -129,14 +130,14 @@ router.post('/', authenticate, async (req, res) => {
     // Create form
     const formResult = await query(
       `INSERT INTO external_forms (
-        organization_id, name, slug, description, logo_url, 
+        organization_id, name, slug, description, logo_url, logo_size,
         primary_color, background_color, text_color, button_text,
         welcome_message, thank_you_message, redirect_url,
         trigger_flow_id, connection_id, created_by, display_mode
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *`,
       [
-        org.organization_id, name, slug, description, logo_url,
+        org.organization_id, name, slug, description, logo_url, logo_size || 48,
         primary_color || '#6366f1', background_color || '#ffffff',
         text_color || '#1f2937', button_text || 'Enviar',
         welcome_message || 'Olá! Vamos começar?',
@@ -198,6 +199,7 @@ router.put('/:id', authenticate, async (req, res) => {
       description,
       is_active,
       logo_url,
+      logo_size,
       primary_color,
       background_color,
       text_color,
@@ -218,6 +220,7 @@ router.put('/:id', authenticate, async (req, res) => {
         description = $2,
         is_active = COALESCE($3, is_active),
         logo_url = $4,
+        logo_size = COALESCE($17, logo_size),
         primary_color = COALESCE($5, primary_color),
         background_color = COALESCE($6, background_color),
         text_color = COALESCE($7, text_color),
@@ -235,7 +238,8 @@ router.put('/:id', authenticate, async (req, res) => {
         background_color, text_color, button_text, welcome_message,
         thank_you_message, redirect_url, trigger_flow_id || null,
         connection_id || null, req.params.id, org.organization_id,
-        ['chat', 'typeform', 'standard'].includes(display_mode) ? display_mode : null
+        ['chat', 'typeform', 'standard'].includes(display_mode) ? display_mode : null,
+        logo_size
       ]
     );
 
@@ -355,9 +359,9 @@ router.get('/:id/submissions', authenticate, async (req, res) => {
 router.get('/public/:slug', async (req, res) => {
   try {
     const formResult = await query(
-      `SELECT f.id, f.name, f.slug, f.description, f.logo_url,
+      `SELECT f.id, f.name, f.slug, f.description, f.logo_url, f.logo_size,
         f.primary_color, f.background_color, f.text_color,
-        f.button_text, f.welcome_message, f.is_active, f.display_mode,
+        f.button_text, f.welcome_message, f.is_active, f.display_mode, f.redirect_url, f.thank_you_message,
         o.name as organization_name
        FROM external_forms f
        JOIN organizations o ON o.id = f.organization_id

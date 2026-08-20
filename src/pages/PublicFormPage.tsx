@@ -142,6 +142,13 @@ export default function PublicFormPage() {
         addBotMessage("Por favor, informe um telefone válido com DDD.");
         return false;
       }
+      
+      // WhatsApp Validation Mock - In production, this would call an API to check if number exists on WhatsApp
+      // For now, we just enforce a minimum length and numeric characters
+      if (phoneDigits.length < 10) {
+        addBotMessage("Este não parece ser um WhatsApp real. Por favor, confira o número.");
+        return false;
+      }
     }
 
     return true;
@@ -355,7 +362,8 @@ export default function PublicFormPage() {
           <img
             src={form.logo_url}
             alt="Logo"
-            className="h-10 object-contain"
+            style={{ height: `${form.logo_size || 40}px` }}
+            className="object-contain"
             onError={(e) => (e.currentTarget.style.display = "none")}
           />
         )}
@@ -592,7 +600,7 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
       {/* Header with logo + title */}
       <header className="py-6 px-6 flex flex-col items-center gap-3 border-b" style={{ borderColor: `${primaryColor}15` }}>
         {form.logo_url && (
-          <img src={form.logo_url} alt="Logo" className="h-12 object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
+          <img src={form.logo_url} alt="Logo" style={{ height: `${form.logo_size || 48}px` }} className="object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
         )}
         <h1 className="text-xl font-semibold text-center" style={{ color: textColor }}>{form.name}</h1>
       </header>
@@ -712,7 +720,7 @@ function StandardView({ form, primaryColor, bgColor, textColor, submitted, submi
         {/* Header */}
         <div className="text-center mb-6">
           {form.logo_url && (
-            <img src={form.logo_url} alt="Logo" className="h-14 mx-auto mb-3 object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
+            <img src={form.logo_url} alt="Logo" style={{ height: `${form.logo_size || 56}px` }} className="mx-auto mb-3 object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
           )}
           <h1 className="text-2xl font-semibold" style={{ color: textColor }}>{form.name}</h1>
           {form.welcome_message && (
