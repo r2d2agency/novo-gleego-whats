@@ -441,8 +441,12 @@ export async function executeCampaignMessages() {
               [msg.campaign_id]
             );
 
-            // If it's a connection error, pause the campaign
-            if (errorMsg.includes('Conexão fechada') || errorMsg.includes('Desconectado')) {
+            // If it's a connection error or authentication error, pause the campaign
+            const isAuthError = tplErr.status === 401 || (tplErr.metaError && tplErr.metaError.code === 190);
+            const isConnError = errorMsg.includes('Conexão fechada') || errorMsg.includes('Desconectado');
+
+            if (isAuthError || isConnError) {
+              console.log(`  ⚠ [CAMPAIGN] Pausing campaign ${msg.campaign_id} due to ${isAuthError ? 'Auth' : 'Connection'} error: ${errorMsg}`);
               await query(
                 `UPDATE campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
                 [msg.campaign_id]
