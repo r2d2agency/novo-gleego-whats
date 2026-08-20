@@ -8,7 +8,9 @@ import { logInfo, logError } from '../logger.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import pdfParse from 'pdf-parse';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
 import mammoth from 'mammoth';
 
 const router = Router();

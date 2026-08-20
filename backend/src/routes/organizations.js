@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
 
 // Get organization by ID
 // NOTE: constrain :id to UUID to avoid conflicts with static routes like /ai-config
-router.get('/:id([0-9a-fA-F-]{36})', async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -58,7 +58,7 @@ router.get('/:id([0-9a-fA-F-]{36})', async (req, res) => {
 });
 
 // Get organization theme
-router.get('/:id([0-9a-fA-F-]{36})/theme', async (req, res) => {
+router.get('/:id/theme', async (req, res) => {
   try {
     const { id } = req.params;
     const memberCheck = await query(
@@ -85,7 +85,7 @@ router.get('/:id([0-9a-fA-F-]{36})/theme', async (req, res) => {
 });
 
 // Update organization theme (admin/owner only)
-router.patch('/:id([0-9a-fA-F-]{36})/theme', async (req, res) => {
+router.patch('/:id/theme', async (req, res) => {
   try {
     const { id } = req.params;
     const memberCheck = await query(
@@ -122,7 +122,7 @@ router.patch('/:id([0-9a-fA-F-]{36})/theme', async (req, res) => {
 });
 
 
-router.get('/:id([0-9a-fA-F-]{36})/connections', async (req, res) => {
+router.get('/:id/connections', async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -207,7 +207,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update organization
-router.patch('/:id([0-9a-fA-F-]{36})', async (req, res) => {
+router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, logo_url, modules_enabled } = req.body;
@@ -264,7 +264,7 @@ router.patch('/:id([0-9a-fA-F-]{36})', async (req, res) => {
 });
 
 // Get organization modules settings
-router.get('/:id([0-9a-fA-F-]{36})/modules', async (req, res) => {
+router.get('/:id/modules', async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -307,7 +307,7 @@ router.get('/:id([0-9a-fA-F-]{36})/modules', async (req, res) => {
 });
 
 // List organization members with their connection assignments
-router.get('/:id([0-9a-fA-F-]{36})/members', async (req, res) => {
+router.get('/:id/members', async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -399,7 +399,7 @@ router.get('/:id([0-9a-fA-F-]{36})/members', async (req, res) => {
 });
 
 // Get single member of organization
-router.get('/:id([0-9a-fA-F-]{36})/members/:userId([0-9a-fA-F-]{36})', async (req, res) => {
+router.get('/:id/members/:userId', async (req, res) => {
   try {
     const { id, userId } = req.params;
 
@@ -441,7 +441,7 @@ router.get('/:id([0-9a-fA-F-]{36})/members/:userId([0-9a-fA-F-]{36})', async (re
 });
 
 // Add member to organization (creates user if not exists)
-router.post('/:id([0-9a-fA-F-]{36})/members', async (req, res) => {
+router.post('/:id/members', async (req, res) => {
   try {
     const { id } = req.params;
     const { email, name, password, role, connection_ids } = req.body;
