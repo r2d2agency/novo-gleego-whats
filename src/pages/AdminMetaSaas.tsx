@@ -6,11 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Loader2, RefreshCw, Trash2, Facebook, Instagram, Phone, AlertTriangle, CheckCircle2, XCircle, ArrowLeft, Shield, ExternalLink } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Loader2, RefreshCw, Trash2, Facebook, Instagram, Phone, AlertTriangle, CheckCircle2, XCircle, ArrowLeft, Shield, ExternalLink, Copy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, API_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface Status {
@@ -340,9 +342,61 @@ export default function AdminMetaSaas() {
           <TabsContent value="setup" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Secrets necessários</CardTitle>
+                <CardTitle className="text-base">Configuração do Webhook (Meta Developers)</CardTitle>
                 <CardDescription>
-                  Cadastre os 4 secrets na Lovable Cloud para ativar o App central.
+                  Copie estes valores e cole nas configurações de Webhook do seu App na Meta.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground uppercase font-semibold">Callback URL</Label>
+                  <div className="flex gap-2">
+                    <Input readOnly value={`${API_URL}/api/meta/webhook`} className="bg-muted font-mono text-xs" />
+                    <Button variant="outline" size="sm" onClick={() => {
+                      navigator.clipboard.writeText(`${API_URL}/api/meta/webhook`);
+                      toast.success("URL copiada!");
+                    }}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground uppercase font-semibold">Verify Token</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                      readOnly 
+                      value={status?.webhook_verify_token_configured ? "••••••••••••" : "Não configurado"} 
+                      className="bg-muted font-mono text-xs" 
+                    />
+                    <Button variant="outline" size="sm" onClick={() => {
+                      toast.info("O token está configurado no backend (META_WEBHOOK_VERIFY_TOKEN).");
+                    }}>
+                      <Shield className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-2">
+                  <h4 className="text-sm font-bold flex items-center gap-2">
+                    <ExternalLink className="h-4 w-4 text-primary" />
+                    Onde configurar?
+                  </h4>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    1. Vá em <a href="https://developers.facebook.com/apps" target="_blank" rel="noreferrer" className="text-primary hover:underline">developers.facebook.com/apps</a><br/>
+                    2. Selecione seu App &gt; Webhooks &gt; Editar Assinatura.<br/>
+                    3. Cole a <strong>Callback URL</strong> acima.<br/>
+                    4. O <strong>Verify Token</strong> é o valor que você definiu na variável <code className="text-primary">META_WEBHOOK_VERIFY_TOKEN</code> no seu servidor.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Secrets necessários (Easypanel / Cloud)</CardTitle>
+                <CardDescription>
+                  Certifique-se de que estas variáveis de ambiente estão configuradas no seu serviço de backend.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -350,18 +404,6 @@ export default function AdminMetaSaas() {
                 <SecretRow name="META_APP_SECRET" configured={status?.app_secret_configured} />
                 <SecretRow name="META_WEBHOOK_VERIFY_TOKEN" configured={status?.webhook_verify_token_configured} />
                 <SecretRow name="META_CONFIG_ID_WHATSAPP" configured={status?.whatsapp_config_id_configured} />
-                <p className="text-sm text-muted-foreground pt-2">
-                  Os valores vêm do App criado em{" "}
-                  <a
-                    href="https://developers.facebook.com/apps"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-primary hover:underline"
-                  >
-                    developers.facebook.com/apps <ExternalLink className="h-3 w-3" />
-                  </a>
-                  . Veja o passo a passo em <code className="text-xs">docs/meta-saas-setup.md</code>.
-                </p>
               </CardContent>
             </Card>
           </TabsContent>
