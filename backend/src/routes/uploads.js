@@ -270,8 +270,8 @@ router.post('/', authenticate, (req, res) => {
       const baseUrl = String(process.env.API_BASE_URL || '').trim().replace(/\/+$/, '');
       
       const fileUrl = baseUrl
-        ? `${baseUrl}/uploads/${filename}`
-        : `/uploads/${filename}`;
+        ? `${baseUrl}/api/uploads/${filename}`
+        : `/api/uploads/${filename}`;
 
       res.json({
         success: true,

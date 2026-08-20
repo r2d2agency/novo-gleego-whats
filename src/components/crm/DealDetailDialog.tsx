@@ -1810,7 +1810,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                         </div>
                         <div>
                           <a
-                            href={attachment.url.startsWith('http') ? attachment.url : `${import.meta.env.VITE_API_URL || ''}${attachment.url.startsWith('/api') ? '' : '/api'}${attachment.url}`}
+                            href={attachment.url.startsWith('http') ? attachment.url : `${import.meta.env.VITE_API_URL || ''}${attachment.url.startsWith('/api') ? '' : '/api'}${attachment.url.startsWith('/uploads') ? '/api' + attachment.url : attachment.url}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="font-medium text-sm hover:underline"
