@@ -19,13 +19,16 @@ import {
   AlertCircle,
   Volume2,
   VolumeX,
-  Pause as PauseIcon
+  Pause as PauseIcon,
+  Search,
+  Download
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
 
 interface CampaignMessage {
   id: string;
@@ -122,6 +125,7 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
   const [details, setDetails] = useState<CampaignDetails | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'sent' | 'failed' | 'pending'>('all');
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [countdown, setCountdown] = useState(10);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const prevStatusRef = useRef<string | null>(null);
@@ -191,8 +195,49 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
       prevStatusRef.current = null;
       loadDetails();
       setCountdown(10);
+      setSearchTerm('');
+      setStatusFilter('all');
     }
   }, [open, campaignId, loadDetails]);
+
+  const exportFilteredMessages = () => {
+    if (!details?.messages) return;
+
+    const filtered = details.messages.filter(msg => {
+      const matchesStatus = statusFilter === 'all' || msg.status === statusFilter;
+      const search = searchTerm.toLowerCase().trim();
+      const matchesSearch = !search || 
+        (msg.contact_name?.toLowerCase().includes(search)) || 
+        (msg.phone.includes(search));
+      return matchesStatus && matchesSearch;
+    });
+
+    if (filtered.length === 0) {
+      toast.error("Nenhum dado para exportar com os filtros atuais");
+      return;
+    }
+
+    const headers = ["Nome", "Telefone", "Status", "Data de Envio", "Erro"];
+    const rows = filtered.map(msg => [
+      msg.contact_name || "",
+      msg.phone,
+      msg.status === 'sent' ? 'Enviado' : msg.status === 'failed' ? 'Falha' : 'Pendente',
+      msg.sent_at ? format(new Date(msg.sent_at), "dd/MM/yyyy HH:mm:ss") : "",
+      msg.error_message || ""
+    ]);
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `campanha_${details.campaign.name.replace(/\s+/g, '_')}_detalhes.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Exportação concluída com sucesso!");
+  };
 
   // Auto-refresh for running and pending campaigns
   useEffect(() => {
@@ -224,10 +269,10 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-4xl max-h-[95vh] flex flex-col overflow-hidden">
         <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-4">
+            <DialogTitle className="flex items-center gap-2 truncate">
               <MessageSquare className="h-5 w-5 text-primary" />
               {details?.campaign?.name || 'Carregando...'}
             </DialogTitle>
@@ -370,56 +415,89 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
 
             {/* Messages List */}
             <div className="flex-1 min-h-0">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium flex items-center gap-2">
-                  <Users className="h-4 w-4" />
-                  Contatos ({details.messages.length})
-                </h3>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-4">
+                  <h3 className="text-sm font-medium flex items-center gap-2 whitespace-nowrap">
+                    <Users className="h-4 w-4" />
+                    Contatos ({details.messages.length})
+                  </h3>
+                  
+                  <div className="relative w-full md:w-64">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar nome ou telefone..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-8 h-8 text-xs"
+                    />
+                  </div>
+                </div>
                 
-                <div className="flex items-center gap-1">
-                  <Badge 
-                    variant={statusFilter === 'all' ? "default" : "outline"}
-                    className="cursor-pointer text-[10px] px-2 py-0"
-                    onClick={() => setStatusFilter('all')}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 bg-accent/30 p-1 rounded-md">
+                    <Badge 
+                      variant={statusFilter === 'all' ? "default" : "outline"}
+                      className="cursor-pointer text-[10px] px-2 py-0 h-6"
+                      onClick={() => setStatusFilter('all')}
+                    >
+                      Todos
+                    </Badge>
+                    <Badge 
+                      variant={statusFilter === 'sent' ? "default" : "outline"}
+                      className={cn(
+                        "cursor-pointer text-[10px] px-2 py-0 h-6", 
+                        statusFilter !== 'sent' && "text-green-500 hover:bg-green-500/10 border-green-500/30"
+                      )}
+                      onClick={() => setStatusFilter('sent')}
+                    >
+                      Enviados
+                    </Badge>
+                    <Badge 
+                      variant={statusFilter === 'failed' ? "default" : "outline"}
+                      className={cn(
+                        "cursor-pointer text-[10px] px-2 py-0 h-6", 
+                        statusFilter !== 'failed' && "text-red-500 hover:bg-red-500/10 border-red-500/30"
+                      )}
+                      onClick={() => setStatusFilter('failed')}
+                    >
+                      Erros
+                    </Badge>
+                    <Badge 
+                      variant={statusFilter === 'pending' ? "default" : "outline"}
+                      className={cn(
+                        "cursor-pointer text-[10px] px-2 py-0 h-6", 
+                        statusFilter !== 'pending' && "text-yellow-500 hover:bg-yellow-500/10 border-yellow-500/30"
+                      )}
+                      onClick={() => setStatusFilter('pending')}
+                    >
+                      Pendentes
+                    </Badge>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-2 text-xs"
+                    onClick={exportFilteredMessages}
+                    title="Exportar filtros atuais para CSV"
                   >
-                    Todos
-                  </Badge>
-                  <Badge 
-                    variant={statusFilter === 'sent' ? "default" : "outline"}
-                    className={cn(
-                      "cursor-pointer text-[10px] px-2 py-0", 
-                      statusFilter !== 'sent' && "text-green-500 border-green-500/30"
-                    )}
-                    onClick={() => setStatusFilter('sent')}
-                  >
-                    Enviados
-                  </Badge>
-                  <Badge 
-                    variant={statusFilter === 'failed' ? "default" : "outline"}
-                    className={cn(
-                      "cursor-pointer text-[10px] px-2 py-0", 
-                      statusFilter !== 'failed' && "text-red-500 border-red-500/30"
-                    )}
-                    onClick={() => setStatusFilter('failed')}
-                  >
-                    Erros
-                  </Badge>
-                  <Badge 
-                    variant={statusFilter === 'pending' ? "default" : "outline"}
-                    className={cn(
-                      "cursor-pointer text-[10px] px-2 py-0", 
-                      statusFilter !== 'pending' && "text-yellow-500 border-yellow-500/30"
-                    )}
-                    onClick={() => setStatusFilter('pending')}
-                  >
-                    Pendentes
-                  </Badge>
+                    <Download className="h-3.5 w-3.5" />
+                    Exportar
+                  </Button>
                 </div>
               </div>
+
               <ScrollArea className="h-[40vh] rounded-lg border">
                 <div className="divide-y divide-border">
                   {details.messages
-                    .filter(msg => statusFilter === 'all' || msg.status === statusFilter)
+                    .filter(msg => {
+                      const matchesStatus = statusFilter === 'all' || msg.status === statusFilter;
+                      const search = searchTerm.toLowerCase().trim();
+                      const matchesSearch = !search || 
+                        (msg.contact_name?.toLowerCase().includes(search)) || 
+                        (msg.phone.includes(search));
+                      return matchesStatus && matchesSearch;
+                    })
                     .map((msg) => {
                     const config = statusConfig[msg.status];
                     const StatusIcon = config.icon;
