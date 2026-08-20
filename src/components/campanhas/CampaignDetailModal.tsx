@@ -89,19 +89,21 @@ const translateError = (error?: string): string => {
     "number not on whatsapp": "Número não está no WhatsApp",
     "invalid number": "Número inválido",
     "connection closed": "Conexão fechada",
-    "timeout": "Tempo esgotado",
-    "rate limit": "Limite de envio atingido",
+    "timeout": "Tempo esgotado (15s)",
+    "rate limit": "Limite de envio atingido (Spam)",
     "blocked": "Número bloqueado",
     "not found": "Número não encontrado",
-    "unauthorized": "Não autorizado",
-    "instance not connected": "Conexão não ativa",
-    "failed to send": "Falha no envio",
+    "unauthorized": "Token de autenticação inválido",
+    "instance not connected": "Conexão não ativa no backend",
+    "failed to send": "Falha genérica no envio",
     "media not found": "Mídia não encontrada",
     "invalid media": "Mídia inválida",
     "file too large": "Arquivo muito grande",
     "unsupported media type": "Tipo de mídia não suportado",
-    "network error": "Erro de rede",
-    "server error": "Erro do servidor",
+    "network error": "Erro de rede / DNS",
+    "server error": "Erro interno da Meta/Servidor",
+    "190": "Token expirado ou revogado (Reconecte)",
+    "401": "Erro de autenticação na Meta",
   };
 
   const lowerError = String(error || "").toLowerCase();
@@ -112,7 +114,12 @@ const translateError = (error?: string): string => {
     }
   }
 
-  // If no translation found, return a cleaned version
+  // Handle Meta specific error codes if present in the string
+  const metaErrorCodeMatch = lowerError.match(/#(\d+):/);
+  if (metaErrorCodeMatch && errorTranslations[metaErrorCodeMatch[1]]) {
+    return errorTranslations[metaErrorCodeMatch[1]];
+  }
+
   if (error.length > 500) {
     return error.substring(0, 497) + "...";
   }
@@ -336,7 +343,7 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
             </div>
           </div>
           <DialogDescription>
-            Acompanhe o progresso e status das mensagens da campanha.
+            Acompanhe o progresso e status das mensagens da campanha. Você pode ver os erros detalhados na lista abaixo.
           </DialogDescription>
         </DialogHeader>
 
