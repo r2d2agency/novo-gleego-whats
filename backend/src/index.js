@@ -958,6 +958,7 @@ app.use('/api/task-boards', taskBoardsRoutes);
 app.use('/api/lead-gleego', leadGleegoRoutes);
 app.use('/api/global-agents', globalAgentsRoutes);
 app.use('/api/meta', metaTemplatesRoutes);
+app.use('/api/meta/admin', metaAdminRoutes);
 app.use('/api/meta/lead-ads', metaLeadAdsRoutes);
 app.use('/api/meta/webhook', metaWebhookRouter);
 app.use('/api/doc-signatures', docSignaturesRoutes);
