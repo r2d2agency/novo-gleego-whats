@@ -12,7 +12,7 @@ import { Loader2, RefreshCw, Trash2, Facebook, Instagram, Phone, AlertTriangle, 
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, API_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface Status {

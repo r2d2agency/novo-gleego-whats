@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +69,7 @@ const isWapiConnection = (connection: Pick<Connection, 'provider' | 'instance_id
  const DEFAULT_UAZAPI_WEBHOOK_URL = "https://whats.gleego.com.br/api/uazapi/webhook";
  
 const Conexao = () => {
+  const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
