@@ -2830,7 +2830,8 @@ CREATE TABLE IF NOT EXISTS external_forms (
   is_active BOOLEAN DEFAULT true,
   
   -- Branding
-  logo_url TEXT,
+   logo_url TEXT,
+   logo_size INTEGER DEFAULT 48,
   primary_color VARCHAR(20) DEFAULT '#6366f1',
   background_color VARCHAR(20) DEFAULT '#ffffff',
   text_color VARCHAR(20) DEFAULT '#1f2937',
@@ -2918,6 +2919,7 @@ CREATE INDEX IF NOT EXISTS idx_external_form_submissions_org ON external_form_su
 -- Display mode: chat | typeform | standard
 DO $$ BEGIN
     ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS display_mode VARCHAR(20) DEFAULT 'chat';
+    ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS logo_size INTEGER DEFAULT 48;
 EXCEPTION WHEN duplicate_column THEN null; END $$;
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_phone ON external_form_submissions(phone);
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_created ON external_form_submissions(created_at DESC);

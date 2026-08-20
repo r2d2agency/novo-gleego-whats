@@ -71,6 +71,7 @@ export function ExternalFormEditorDialog({
     name: "",
     description: "",
     logo_url: "",
+    logo_size: 48,
     primary_color: "#6366f1",
     background_color: "#ffffff",
     text_color: "#1f2937",
@@ -115,6 +116,7 @@ export function ExternalFormEditorDialog({
         name: fullForm.name || "",
         description: fullForm.description || "",
         logo_url: fullForm.logo_url || "",
+        logo_size: fullForm.logo_size || 48,
         primary_color: fullForm.primary_color || "#6366f1",
         background_color: fullForm.background_color || "#ffffff",
         text_color: fullForm.text_color || "#1f2937",
@@ -135,6 +137,7 @@ export function ExternalFormEditorDialog({
       name: "",
       description: "",
       logo_url: "",
+      logo_size: 48,
       primary_color: "#6366f1",
       background_color: "#ffffff",
       text_color: "#1f2937",
@@ -438,14 +441,30 @@ export function ExternalFormEditorDialog({
                   )}
                 </div>
 
-                <div className="grid gap-2">
-                  <Label>Logo (opcional)</Label>
-                  <FileUploadInput
-                    value={formData.logo_url}
-                    onChange={(url) => setFormData({ ...formData, logo_url: url })}
-                    accept="image/*"
-                    placeholder="https://exemplo.com/logo.png"
-                  />
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label>Logo (opcional)</Label>
+                    <FileUploadInput
+                      value={formData.logo_url}
+                      onChange={(url) => setFormData({ ...formData, logo_url: url })}
+                      accept="image/*"
+                      placeholder="https://exemplo.com/logo.png"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Tamanho da Logo (px)</Label>
+                    <div className="flex items-center gap-4">
+                      <Input
+                        type="number"
+                        value={formData.logo_size}
+                        onChange={(e) => setFormData({ ...formData, logo_size: parseInt(e.target.value) || 48 })}
+                        className="flex-1"
+                        min={20}
+                        max={300}
+                      />
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">{formData.logo_size}px</span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid sm:grid-cols-3 gap-4">
@@ -519,7 +538,8 @@ export function ExternalFormEditorDialog({
                       <img
                         src={formData.logo_url}
                         alt="Logo"
-                        className="h-12 object-contain"
+                        style={{ height: `${formData.logo_size}px` }}
+                        className="object-contain"
                         onError={(e) => (e.currentTarget.style.display = "none")}
                       />
                     )}

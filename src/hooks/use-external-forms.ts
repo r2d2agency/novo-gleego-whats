@@ -28,6 +28,7 @@ export interface ExternalForm {
   background_color: string;
   text_color: string;
   button_text: string;
+  logo_size?: number;
   welcome_message: string;
   
   // Post-submission
