@@ -304,7 +304,9 @@ router.post('/', async (req, res) => {
     } else if (start_time) {
       currentScheduleTime = makeUtcFromSaoPauloLocal(null, start_time);
     } else {
-      currentScheduleTime = new Date();
+      // Use "NOW" from DB to ensure synchronicity with the scheduler
+      const nowDb = await query('SELECT NOW()');
+      currentScheduleTime = new Date(nowDb.rows[0].now);
     }
 
     // Parse time bounds (São Paulo clock)
@@ -313,8 +315,9 @@ router.post('/', async (req, res) => {
     const endTimeHours = end_time ? parseInt(end_time.split(':')[0]) : 23;
     const endTimeMinutes = end_time ? parseInt(end_time.split(':')[1]) : 59;
 
-    // Get current time for comparison (UTC)
-    const now = new Date();
+    // Get current time from DB for comparison
+    const nowDbResult = await query('SELECT NOW()');
+    const now = new Date(nowDbResult.rows[0].now);
 
     // Only adjust if scheduled time is in the past
     if (currentScheduleTime < now) {
@@ -327,7 +330,7 @@ router.post('/', async (req, res) => {
           currentScheduleTime = now;
         }
       } else {
-        currentScheduleTime = now;
+        currentScheduleTime = new Date(nowDb.rows[0].now);
       }
     }
 
@@ -339,7 +342,7 @@ router.post('/', async (req, res) => {
     // Otherwise, schedule for future as 'pending'
     let initialStatus = 'pending';
     
-    const nowSp = toSaoPauloDate(new Date());
+    const nowSp = toSaoPauloDate(now);
     const nowSpHour = nowSp.getUTCHours();
     const nowSpMinute = nowSp.getUTCMinutes();
     const nowSpTotalMinutes = nowSpHour * 60 + nowSpMinute;

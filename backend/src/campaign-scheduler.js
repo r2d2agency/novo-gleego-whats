@@ -204,23 +204,33 @@ export async function executeCampaignMessages() {
     }
 
     // Auto-start campaigns that have pending messages with scheduled_at <= NOW()
+    // We add a 5-minute buffer to handle minor timezone or clock skews
     const campaignsToStart = await query(`
-      SELECT DISTINCT c.id, c.name
+      SELECT DISTINCT c.id, c.name, c.connection_id
       FROM campaigns c
       JOIN campaign_messages cm ON cm.campaign_id = c.id
       WHERE c.status = 'pending'
         AND cm.status = 'pending'
-        AND cm.scheduled_at <= NOW()
+        AND cm.scheduled_at <= (NOW() + INTERVAL '5 minutes')
     `);
 
     if (campaignsToStart.rows.length > 0) {
       for (const campaign of campaignsToStart.rows) {
+        // Double check if connection is valid for this campaign
+        const conn = await query('SELECT status, provider, meta_token FROM connections WHERE id = $1', [campaign.connection_id]);
+        const connection = conn.rows[0];
+        
+        if (!connection) {
+          console.log(`  ⚠ [CAMPAIGN] Skipping auto-start for "${campaign.name}" - connection not found`);
+          continue;
+        }
+
         await query(
           `UPDATE campaigns SET status = 'running', updated_at = NOW() WHERE id = $1`,
           [campaign.id]
         );
         stats.campaignsStarted++;
-        console.log(`📤 [CAMPAIGN] Auto-started campaign: ${campaign.name}`);
+        console.log(`📤 [CAMPAIGN] Auto-started campaign: ${campaign.name} (Connection: ${connection.provider})`);
       }
     }
 
@@ -265,10 +275,14 @@ export async function executeCampaignMessages() {
       LEFT JOIN message_templates mt ON mt.id = cm.message_id
       LEFT JOIN contacts co ON co.id = cm.contact_id
       WHERE cm.status = 'pending'
-        AND cm.scheduled_at <= NOW()
+        AND cm.scheduled_at <= (NOW() + INTERVAL '5 minutes')
         AND c.status = 'running'
-        AND (conn.status = 'connected' OR (conn.instance_id IS NOT NULL AND conn.wapi_token IS NOT NULL) OR (conn.uazapi_url IS NOT NULL AND conn.uazapi_token IS NOT NULL) OR (conn.provider = 'meta' AND conn.meta_token IS NOT NULL AND conn.meta_phone_number_id IS NOT NULL))
-        AND cm.scheduled_at <= NOW()
+        AND (
+          conn.status = 'connected' 
+          OR (conn.instance_id IS NOT NULL AND conn.wapi_token IS NOT NULL) 
+          OR (conn.uazapi_url IS NOT NULL AND conn.uazapi_token IS NOT NULL) 
+          OR (conn.provider = 'meta' AND conn.meta_token IS NOT NULL AND conn.meta_phone_number_id IS NOT NULL)
+        )
       ORDER BY cm.scheduled_at ASC
       LIMIT 50
     `;
@@ -302,7 +316,7 @@ export async function executeCampaignMessages() {
       return stats;
     }
 
-    console.log(`📤 [CAMPAIGN] Found ${pendingMessages.rows.length} messages to process.`);
+    console.log(`📤 [CAMPAIGN] Found ${pendingMessages.rows.length} messages to process. Server Time: ${new Date().toISOString()}`);
 
     for (const msg of pendingMessages.rows) {
       // Step 1: Atomic update to 'processing' to prevent race conditions between scheduler cycles
@@ -427,8 +441,12 @@ export async function executeCampaignMessages() {
               [msg.campaign_id]
             );
 
-            // If it's a connection error, pause the campaign
-            if (errorMsg.includes('Conexão fechada') || errorMsg.includes('Desconectado')) {
+            // If it's a connection error or authentication error, pause the campaign
+            const isAuthError = tplErr.status === 401 || (tplErr.metaError && tplErr.metaError.code === 190);
+            const isConnError = errorMsg.includes('Conexão fechada') || errorMsg.includes('Desconectado');
+
+            if (isAuthError || isConnError) {
+              console.log(`  ⚠ [CAMPAIGN] Pausing campaign ${msg.campaign_id} due to ${isAuthError ? 'Auth' : 'Connection'} error: ${errorMsg}`);
               await query(
                 `UPDATE campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
                 [msg.campaign_id]
