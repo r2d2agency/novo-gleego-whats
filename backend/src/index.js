@@ -212,6 +212,21 @@ app.use('/uploads', (req, res, next) => {
 }));
 
 // Fallback for direct /uploads access when static middle-ware is skipped or mis-configured
+app.get('/api/uploads/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(uploadsDir, filename);
+  
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Disposition', 'inline');
+    const ext = path.extname(filename).toLowerCase();
+    if (ext === '.pdf') res.setHeader('Content-Type', 'application/pdf');
+    return res.sendFile(filePath);
+  }
+  
+  res.status(404).json({ error: 'Arquivo não encontrado' });
+});
+
 app.get('/uploads/:filename', (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(uploadsDir, filename);
