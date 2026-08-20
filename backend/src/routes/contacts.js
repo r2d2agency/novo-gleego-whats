@@ -350,11 +350,8 @@ router.post('/lists/:listId/import', async (req, res) => {
     let whereClause = 'id = $1 AND user_id = $2';
     let params = [listId, req.userId];
 
-    if (isOwnerOrAdmin) {
+    if (org) {
       whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3 OR user_id IN (SELECT user_id FROM organization_members WHERE organization_id = $3) OR connection_id IN (SELECT id FROM connections WHERE organization_id = $3))`;
-      params = [listId, req.userId, org.organization_id];
-    } else if (org) {
-      whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3)`;
       params = [listId, req.userId, org.organization_id];
     }
 
