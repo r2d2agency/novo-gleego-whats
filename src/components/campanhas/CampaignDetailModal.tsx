@@ -122,6 +122,7 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
   const [details, setDetails] = useState<CampaignDetails | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'sent' | 'failed' | 'pending'>('all');
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [countdown, setCountdown] = useState(10);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const prevStatusRef = useRef<string | null>(null);
