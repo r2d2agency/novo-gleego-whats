@@ -83,18 +83,14 @@ router.get('/lists', async (req, res) => {
     let whereClause = 'cl.user_id = $1';
     let params = [req.userId];
 
-    if (isOwnerOrAdmin) {
-      // Owner/Admin sees EVERYTHING in the organization (including unshared ones)
+    if (org) {
+      // All members of the organization see all lists from the organization
       whereClause = `(
         cl.user_id = $1
         OR cl.organization_id = $2
         OR cl.user_id IN (SELECT user_id FROM organization_members WHERE organization_id = $2)
         OR cl.connection_id IN (SELECT id FROM connections WHERE organization_id = $2)
       )`;
-      params = [req.userId, org.organization_id];
-    } else if (org) {
-      // Agent/Manager sees their own OR explicitly shared ones (organization_id is not null)
-      whereClause = `(cl.user_id = $1 OR cl.organization_id = $2)`;
       params = [req.userId, org.organization_id];
     }
 
@@ -179,11 +175,8 @@ async function checkListAccess(listId, userId) {
   let whereClause = 'id = $1 AND user_id = $2';
   let params = [listId, userId];
 
-  if (isOwnerOrAdmin) {
+  if (org) {
     whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3 OR user_id IN (SELECT user_id FROM organization_members WHERE organization_id = $3) OR connection_id IN (SELECT id FROM connections WHERE organization_id = $3))`;
-    params = [listId, userId, org.organization_id];
-  } else if (org) {
-    whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3)`;
     params = [listId, userId, org.organization_id];
   }
 
@@ -269,11 +262,8 @@ router.get('/lists/:listId/contacts', async (req, res) => {
     let whereClause = 'id = $1 AND user_id = $2';
     let params = [listId, req.userId];
 
-    if (isOwnerOrAdmin) {
+    if (org) {
       whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3 OR user_id IN (SELECT user_id FROM organization_members WHERE organization_id = $3) OR connection_id IN (SELECT id FROM connections WHERE organization_id = $3))`;
-      params = [listId, req.userId, org.organization_id];
-    } else if (org) {
-      whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3)`;
       params = [listId, req.userId, org.organization_id];
     }
 
@@ -316,11 +306,8 @@ router.post('/lists/:listId/contacts', async (req, res) => {
     let whereClause = 'id = $1 AND user_id = $2';
     let params = [listId, req.userId];
 
-    if (isOwnerOrAdmin) {
+    if (org) {
       whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3 OR user_id IN (SELECT user_id FROM organization_members WHERE organization_id = $3) OR connection_id IN (SELECT id FROM connections WHERE organization_id = $3))`;
-      params = [listId, req.userId, org.organization_id];
-    } else if (org) {
-      whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3)`;
       params = [listId, req.userId, org.organization_id];
     }
 
@@ -363,11 +350,8 @@ router.post('/lists/:listId/import', async (req, res) => {
     let whereClause = 'id = $1 AND user_id = $2';
     let params = [listId, req.userId];
 
-    if (isOwnerOrAdmin) {
+    if (org) {
       whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3 OR user_id IN (SELECT user_id FROM organization_members WHERE organization_id = $3) OR connection_id IN (SELECT id FROM connections WHERE organization_id = $3))`;
-      params = [listId, req.userId, org.organization_id];
-    } else if (org) {
-      whereClause = `id = $1 AND (user_id = $2 OR organization_id = $3)`;
       params = [listId, req.userId, org.organization_id];
     }
 
