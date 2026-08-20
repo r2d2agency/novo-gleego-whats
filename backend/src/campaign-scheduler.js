@@ -265,6 +265,7 @@ export async function executeCampaignMessages() {
       LEFT JOIN message_templates mt ON mt.id = cm.message_id
       LEFT JOIN contacts co ON co.id = cm.contact_id
       WHERE cm.status = 'pending'
+        AND cm.scheduled_at <= NOW()
         AND c.status = 'running'
         AND (conn.status = 'connected' OR (conn.instance_id IS NOT NULL AND conn.wapi_token IS NOT NULL) OR (conn.uazapi_url IS NOT NULL AND conn.uazapi_token IS NOT NULL) OR (conn.provider = 'meta' AND conn.meta_token IS NOT NULL AND conn.meta_phone_number_id IS NOT NULL))
         AND cm.scheduled_at <= NOW()
@@ -411,6 +412,12 @@ export async function executeCampaignMessages() {
             console.log(`  ✓ [${msg.phone}] Template "${msg.meta_template_name}" enviado`);
           } catch (tplErr) {
             const errorMsg = translateError(tplErr.message || 'Erro ao enviar template');
+            const isDefinitiveError = 
+              errorMsg.includes('Número não é WhatsApp') || 
+              errorMsg.includes('Número inválido') || 
+              errorMsg.includes('Não autorizado') ||
+              errorMsg.includes('Acesso negado');
+
             await query(
               `UPDATE campaign_messages SET status = 'failed', error_message = $1, sent_at = NOW() WHERE id = $2`,
               [errorMsg, msg.id]
@@ -419,6 +426,15 @@ export async function executeCampaignMessages() {
               `UPDATE campaigns SET failed_count = failed_count + 1, updated_at = NOW() WHERE id = $1`,
               [msg.campaign_id]
             );
+
+            // If it's a connection error, pause the campaign
+            if (errorMsg.includes('Conexão fechada') || errorMsg.includes('Desconectado')) {
+              await query(
+                `UPDATE campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
+                [msg.campaign_id]
+              );
+            }
+
             stats.failed++;
             console.log(`  ✗ [${msg.phone}] ${errorMsg}`);
           }
@@ -604,6 +620,11 @@ export async function executeCampaignMessages() {
           );
         } else {
           const translatedError = translateError(result.error);
+          const isDefinitiveError = 
+            translatedError.includes('Número não é WhatsApp') || 
+            translatedError.includes('Número inválido') ||
+            translatedError.includes('Não autorizado');
+
           await query(
             `UPDATE campaign_messages 
              SET status = 'failed', error_message = $1, sent_at = NOW()
@@ -612,6 +633,14 @@ export async function executeCampaignMessages() {
           );
           stats.failed++;
           console.log(`  ✗ [${msg.phone}] ${translatedError}`);
+
+          // If connection is lost, pause campaign
+          if (translatedError.includes('Conexão fechada') || translatedError.includes('Desconectado')) {
+            await query(
+              `UPDATE campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
+              [msg.campaign_id]
+            );
+          }
 
           // Update campaign failed_count
           await query(
