@@ -436,37 +436,37 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1 bg-accent/30 p-1 rounded-md">
                     <Badge 
-                      variant={statusFilter === 'all' ? "default" : "ghost"}
+                      variant={statusFilter === 'all' ? "default" : "outline"}
                       className="cursor-pointer text-[10px] px-2 py-0 h-6"
                       onClick={() => setStatusFilter('all')}
                     >
                       Todos
                     </Badge>
                     <Badge 
-                      variant={statusFilter === 'sent' ? "default" : "ghost"}
+                      variant={statusFilter === 'sent' ? "default" : "outline"}
                       className={cn(
                         "cursor-pointer text-[10px] px-2 py-0 h-6", 
-                        statusFilter !== 'sent' && "text-green-500 hover:bg-green-500/10"
+                        statusFilter !== 'sent' && "text-green-500 hover:bg-green-500/10 border-green-500/30"
                       )}
                       onClick={() => setStatusFilter('sent')}
                     >
                       Enviados
                     </Badge>
                     <Badge 
-                      variant={statusFilter === 'failed' ? "default" : "ghost"}
+                      variant={statusFilter === 'failed' ? "default" : "outline"}
                       className={cn(
                         "cursor-pointer text-[10px] px-2 py-0 h-6", 
-                        statusFilter !== 'failed' && "text-red-500 hover:bg-red-500/10"
+                        statusFilter !== 'failed' && "text-red-500 hover:bg-red-500/10 border-red-500/30"
                       )}
                       onClick={() => setStatusFilter('failed')}
                     >
                       Erros
                     </Badge>
                     <Badge 
-                      variant={statusFilter === 'pending' ? "default" : "ghost"}
+                      variant={statusFilter === 'pending' ? "default" : "outline"}
                       className={cn(
                         "cursor-pointer text-[10px] px-2 py-0 h-6", 
-                        statusFilter !== 'pending' && "text-yellow-500 hover:bg-yellow-500/10"
+                        statusFilter !== 'pending' && "text-yellow-500 hover:bg-yellow-500/10 border-yellow-500/30"
                       )}
                       onClick={() => setStatusFilter('pending')}
                     >
