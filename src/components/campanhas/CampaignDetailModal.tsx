@@ -206,9 +206,15 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
     const filtered = details.messages.filter(msg => {
       const matchesStatus = statusFilter === 'all' || msg.status === statusFilter;
       const search = searchTerm.toLowerCase().trim();
+      
+      // Clean search term and phone for better matching
+      const cleanSearch = search.replace(/\D/g, '');
+      const cleanPhone = msg.phone.replace(/\D/g, '');
+
       const matchesSearch = !search || 
         (msg.contact_name?.toLowerCase().includes(search)) || 
-        (msg.phone.includes(search));
+        (msg.phone.includes(search)) ||
+        (cleanSearch !== '' && cleanPhone.includes(cleanSearch));
       return matchesStatus && matchesSearch;
     });
 
@@ -493,9 +499,15 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
                     .filter(msg => {
                       const matchesStatus = statusFilter === 'all' || msg.status === statusFilter;
                       const search = searchTerm.toLowerCase().trim();
+                      
+                      // Clean search term and phone for better matching
+                      const cleanSearch = search.replace(/\D/g, '');
+                      const cleanPhone = msg.phone.replace(/\D/g, '');
+
                       const matchesSearch = !search || 
                         (msg.contact_name?.toLowerCase().includes(search)) || 
-                        (msg.phone.includes(search));
+                        (msg.phone.includes(search)) ||
+                        (cleanSearch !== '' && cleanPhone.includes(cleanSearch));
                       return matchesStatus && matchesSearch;
                     })
                     .map((msg) => {
