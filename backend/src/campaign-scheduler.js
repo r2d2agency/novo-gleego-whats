@@ -453,6 +453,12 @@ export async function executeCampaignMessages() {
                 `UPDATE campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
                 [msg.campaign_id]
               );
+              // Also reset processing messages for this campaign to pending so they can be retried once fixed
+              await query(
+                `UPDATE campaign_messages SET status = 'pending', updated_at = NOW() 
+                 WHERE campaign_id = $1 AND status = 'processing'`,
+                [msg.campaign_id]
+              );
             }
 
             stats.failed++;
@@ -658,6 +664,12 @@ export async function executeCampaignMessages() {
           if (translatedError.includes('Conexão fechada') || translatedError.includes('Desconectado')) {
             await query(
               `UPDATE campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
+              [msg.campaign_id]
+            );
+            // Reset other processing messages
+            await query(
+              `UPDATE campaign_messages SET status = 'pending', updated_at = NOW() 
+               WHERE campaign_id = $1 AND status = 'processing'`,
               [msg.campaign_id]
             );
           }
