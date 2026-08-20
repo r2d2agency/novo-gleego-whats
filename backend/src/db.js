@@ -60,7 +60,7 @@ function paramTypes(params) {
 }
 
 const dbConfig = {
-  connectionString: process.env.DATABASE_URL || "postgres://postgres:bc3hptmj5wgnowz62nf0@gleego_whats-bd:5432/whats-bd?sslmode=disable",
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
   max: Number(process.env.PG_POOL_MAX || 20),
   idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
