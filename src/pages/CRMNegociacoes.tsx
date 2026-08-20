@@ -12,7 +12,7 @@ import { WinCelebration } from "@/components/crm/WinCelebration";
 import { LossReasonDialog } from "@/components/crm/LossReasonDialog";
 import { useCRMFunnels, useCRMFunnel, useCRMDeals, useCRMGroups, useCRMGroupMembers, useCRMDealMutations, useCRMDeal, CRMDeal, CRMFunnel } from "@/hooks/use-crm";
 import { api } from "@/lib/api";
-import { Plus, Settings, Loader2, Filter, User, Users, ArrowUpDown, CalendarIcon, X, LayoutGrid, List, Trophy, XCircle, Pause, CheckSquare, Trash2, ArrowRightLeft, UserPlus } from "lucide-react";
+import { Plus, Settings, Loader2, Filter, User, Users, ArrowUpDown, CalendarIcon, X, LayoutGrid, List, Trophy, XCircle, Pause, CheckSquare, Trash2, ArrowRightLeft, UserPlus, Search } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { parseISO, format, startOfDay, endOfDay, isWithinInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -25,6 +25,7 @@ import { useSearchParams } from "react-router-dom";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 
 export default function CRMNegociacoes() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -66,6 +67,7 @@ export default function CRMNegociacoes() {
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState("");
   
   // Selection mode
   const [selectionMode, setSelectionMode] = useState(false);
@@ -185,6 +187,16 @@ export default function CRMNegociacoes() {
       // Filter by status
       if (statusFilter !== "all") {
         filtered = filtered.filter(d => d.status === statusFilter);
+      }
+      
+      // Filter by search term
+      if (searchTerm) {
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter(d => 
+          d.title.toLowerCase().includes(lowerSearch) || 
+          d.company_name?.toLowerCase().includes(lowerSearch) ||
+          d.contacts?.some(c => c.name.toLowerCase().includes(lowerSearch))
+        );
       }
       
       // Filter by date range
@@ -359,7 +371,18 @@ export default function CRMNegociacoes() {
           )}
 
           {/* Second row: funnel selector */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-2">
+            <div className="relative flex-1 lg:max-w-md">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Pesquisar negociações..."
+                className="pl-9 w-full h-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
             <Select 
               value={currentFunnelId || ""} 
               onValueChange={(val) => setSelectedFunnelId(val)}
@@ -559,7 +582,7 @@ export default function CRMNegociacoes() {
               )}
             </div>
 
-            {(ownerFilter !== "all" || groupFilter !== "all" || sortOrder !== "recent" || startDate || endDate || statusFilter !== "all") && (
+            {(ownerFilter !== "all" || groupFilter !== "all" || sortOrder !== "recent" || startDate || endDate || statusFilter !== "all" || searchTerm) && (
               <Button 
                 variant="ghost" 
                 size="sm"
@@ -570,6 +593,7 @@ export default function CRMNegociacoes() {
                   setStartDate(undefined);
                   setEndDate(undefined);
                   setStatusFilter("all");
+                  setSearchTerm("");
                 }}
               >
                 Limpar filtros
