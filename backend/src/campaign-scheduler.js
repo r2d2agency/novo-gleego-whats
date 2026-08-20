@@ -320,16 +320,18 @@ export async function executeCampaignMessages() {
 
     for (const msg of pendingMessages.rows) {
       // Step 1: Atomic update to 'processing' to prevent race conditions between scheduler cycles
+      // A message is only processing if its status is 'processing' AND it was updated in the last 15 minutes.
+      // If it has been 'processing' for more than 15 minutes, it's considered stuck and we retry it.
       const lockResult = await query(
         `UPDATE campaign_messages 
          SET status = 'processing', updated_at = NOW() 
-         WHERE id = $1 AND status = 'pending'
+         WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
          RETURNING id`,
         [msg.id]
       );
 
       if (lockResult.rows.length === 0) {
-        console.log(`  ⚠ [${msg.phone}] Message already being processed or not pending, skipping.`);
+        console.log(`  ⚠ [${msg.phone}] Message already being processed or locked by another cycle, skipping.`);
         continue;
       }
 
@@ -449,6 +451,12 @@ export async function executeCampaignMessages() {
               console.log(`  ⚠ [CAMPAIGN] Pausing campaign ${msg.campaign_id} due to ${isAuthError ? 'Auth' : 'Connection'} error: ${errorMsg}`);
               await query(
                 `UPDATE campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
+                [msg.campaign_id]
+              );
+              // Also reset processing messages for this campaign to pending so they can be retried once fixed
+              await query(
+                `UPDATE campaign_messages SET status = 'pending', updated_at = NOW() 
+                 WHERE campaign_id = $1 AND status = 'processing'`,
                 [msg.campaign_id]
               );
             }
@@ -656,6 +664,12 @@ export async function executeCampaignMessages() {
           if (translatedError.includes('Conexão fechada') || translatedError.includes('Desconectado')) {
             await query(
               `UPDATE campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
+              [msg.campaign_id]
+            );
+            // Reset other processing messages
+            await query(
+              `UPDATE campaign_messages SET status = 'pending', updated_at = NOW() 
+               WHERE campaign_id = $1 AND status = 'processing'`,
               [msg.campaign_id]
             );
           }

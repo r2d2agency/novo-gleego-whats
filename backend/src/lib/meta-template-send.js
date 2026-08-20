@@ -107,14 +107,19 @@ export async function sendMetaTemplate({
     },
   };
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
   const response = await fetch(
     `https://graph.facebook.com/v21.0/${metaPhoneNumberId}/messages`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${metaToken}` },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     }
   );
+  clearTimeout(timeout);
 
   const result = await response.json().catch(() => ({}));
 

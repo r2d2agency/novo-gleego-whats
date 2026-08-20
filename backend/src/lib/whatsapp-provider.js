@@ -881,6 +881,9 @@ async function sendMetaMessage(connection, phone, content, messageType, mediaUrl
       };
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
     const response = await fetch(
       `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
       {
@@ -890,8 +893,10 @@ async function sendMetaMessage(connection, phone, content, messageType, mediaUrl
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(body),
+        signal: controller.signal,
       }
     );
+    clearTimeout(timeout);
 
     const result = await response.json();
 
