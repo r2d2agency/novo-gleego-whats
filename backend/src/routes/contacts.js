@@ -755,7 +755,7 @@ router.post('/lists/from-tag', async (req, res) => {
     // Get all conversations with this tag that have phone numbers
     // Only get active (non-archived) individual conversations with messages
     const conversationsResult = await query(
-      `SELECT DISTINCT 
+      `SELECT DISTINCT ON (conv.contact_phone)
         conv.contact_name,
         conv.contact_phone
        FROM conversations conv
