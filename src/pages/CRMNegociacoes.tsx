@@ -195,7 +195,7 @@ export default function CRMNegociacoes() {
         filtered = filtered.filter(d => 
           d.title.toLowerCase().includes(lowerSearch) || 
           d.company_name?.toLowerCase().includes(lowerSearch) ||
-          d.contact_name?.toLowerCase().includes(lowerSearch)
+          d.contacts?.some(c => c.name.toLowerCase().includes(lowerSearch))
         );
       }
       
