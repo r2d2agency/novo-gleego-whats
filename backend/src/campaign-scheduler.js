@@ -265,6 +265,7 @@ export async function executeCampaignMessages() {
       LEFT JOIN message_templates mt ON mt.id = cm.message_id
       LEFT JOIN contacts co ON co.id = cm.contact_id
       WHERE cm.status = 'pending'
+        AND cm.scheduled_at <= NOW()
         AND c.status = 'running'
         AND (conn.status = 'connected' OR (conn.instance_id IS NOT NULL AND conn.wapi_token IS NOT NULL) OR (conn.uazapi_url IS NOT NULL AND conn.uazapi_token IS NOT NULL) OR (conn.provider = 'meta' AND conn.meta_token IS NOT NULL AND conn.meta_phone_number_id IS NOT NULL))
         AND cm.scheduled_at <= NOW()
@@ -304,6 +305,38 @@ export async function executeCampaignMessages() {
     console.log(`📤 [CAMPAIGN] Found ${pendingMessages.rows.length} messages to process.`);
 
     for (const msg of pendingMessages.rows) {
+      // Step 1: Atomic update to 'processing' to prevent race conditions between scheduler cycles
+      const lockResult = await query(
+        `UPDATE campaign_messages 
+         SET status = 'processing', updated_at = NOW() 
+         WHERE id = $1 AND status = 'pending'
+         RETURNING id`,
+        [msg.id]
+      );
+
+      if (lockResult.rows.length === 0) {
+        console.log(`  ⚠ [${msg.phone}] Message already being processed or not pending, skipping.`);
+        continue;
+      }
+
+      // Step 2: Double-check if this contact already received a message for THIS campaign
+      // (Safety net for duplicate list entries or multiple campaign_messages for same contact)
+      const alreadySent = await query(
+        `SELECT id FROM campaign_messages 
+         WHERE campaign_id = $1 AND contact_id = $2 AND status = 'sent' AND id != $3
+         LIMIT 1`,
+        [msg.campaign_id, msg.contact_id, msg.id]
+      );
+
+      if (alreadySent.rows.length > 0) {
+        console.log(`  ⚠ [${msg.phone}] Contact already received a message for this campaign, marking duplicate as cancelled.`);
+        await query(
+          `UPDATE campaign_messages SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+          [msg.id]
+        );
+        continue;
+      }
+
       stats.processed++;
 
       try {
@@ -379,6 +412,12 @@ export async function executeCampaignMessages() {
             console.log(`  ✓ [${msg.phone}] Template "${msg.meta_template_name}" enviado`);
           } catch (tplErr) {
             const errorMsg = translateError(tplErr.message || 'Erro ao enviar template');
+            const isDefinitiveError = 
+              errorMsg.includes('Número não é WhatsApp') || 
+              errorMsg.includes('Número inválido') || 
+              errorMsg.includes('Não autorizado') ||
+              errorMsg.includes('Acesso negado');
+
             await query(
               `UPDATE campaign_messages SET status = 'failed', error_message = $1, sent_at = NOW() WHERE id = $2`,
               [errorMsg, msg.id]
@@ -387,6 +426,15 @@ export async function executeCampaignMessages() {
               `UPDATE campaigns SET failed_count = failed_count + 1, updated_at = NOW() WHERE id = $1`,
               [msg.campaign_id]
             );
+
+            // If it's a connection error, pause the campaign
+            if (errorMsg.includes('Conexão fechada') || errorMsg.includes('Desconectado')) {
+              await query(
+                `UPDATE campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
+                [msg.campaign_id]
+              );
+            }
+
             stats.failed++;
             console.log(`  ✗ [${msg.phone}] ${errorMsg}`);
           }
@@ -572,6 +620,11 @@ export async function executeCampaignMessages() {
           );
         } else {
           const translatedError = translateError(result.error);
+          const isDefinitiveError = 
+            translatedError.includes('Número não é WhatsApp') || 
+            translatedError.includes('Número inválido') ||
+            translatedError.includes('Não autorizado');
+
           await query(
             `UPDATE campaign_messages 
              SET status = 'failed', error_message = $1, sent_at = NOW()
@@ -580,6 +633,14 @@ export async function executeCampaignMessages() {
           );
           stats.failed++;
           console.log(`  ✗ [${msg.phone}] ${translatedError}`);
+
+          // If connection is lost, pause campaign
+          if (translatedError.includes('Conexão fechada') || translatedError.includes('Desconectado')) {
+            await query(
+              `UPDATE campaigns SET status = 'paused', updated_at = NOW() WHERE id = $1`,
+              [msg.campaign_id]
+            );
+          }
 
           // Update campaign failed_count
           await query(
