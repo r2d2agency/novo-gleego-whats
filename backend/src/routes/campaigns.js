@@ -127,6 +127,7 @@ router.post('/', async (req, res) => {
         `SELECT id FROM contact_lists WHERE id = $1 AND (
           user_id = $2 OR 
           organization_id = $3 OR
+          user_id IN (SELECT user_id FROM organization_members WHERE organization_id = $3) OR
           connection_id IN (SELECT id FROM connections WHERE organization_id = $3)
         )`,
         [list_id, req.userId, org.organization_id]
