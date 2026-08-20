@@ -120,6 +120,7 @@ const translateError = (error?: string): string => {
 export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetailModalProps) {
   const [loading, setLoading] = useState(false);
   const [details, setDetails] = useState<CampaignDetails | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'sent' | 'failed' | 'pending'>('all');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [countdown, setCountdown] = useState(10);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -369,13 +370,57 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
 
             {/* Messages List */}
             <div className="flex-1 min-h-0">
-              <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Contatos ({details.messages.length})
-              </h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Contatos ({details.messages.length})
+                </h3>
+                
+                <div className="flex items-center gap-1">
+                  <Badge 
+                    variant={statusFilter === 'all' ? "default" : "outline"}
+                    className="cursor-pointer text-[10px] px-2 py-0"
+                    onClick={() => setStatusFilter('all')}
+                  >
+                    Todos
+                  </Badge>
+                  <Badge 
+                    variant={statusFilter === 'sent' ? "default" : "outline"}
+                    className={cn(
+                      "cursor-pointer text-[10px] px-2 py-0", 
+                      statusFilter !== 'sent' && "text-green-500 border-green-500/30"
+                    )}
+                    onClick={() => setStatusFilter('sent')}
+                  >
+                    Enviados
+                  </Badge>
+                  <Badge 
+                    variant={statusFilter === 'failed' ? "default" : "outline"}
+                    className={cn(
+                      "cursor-pointer text-[10px] px-2 py-0", 
+                      statusFilter !== 'failed' && "text-red-500 border-red-500/30"
+                    )}
+                    onClick={() => setStatusFilter('failed')}
+                  >
+                    Erros
+                  </Badge>
+                  <Badge 
+                    variant={statusFilter === 'pending' ? "default" : "outline"}
+                    className={cn(
+                      "cursor-pointer text-[10px] px-2 py-0", 
+                      statusFilter !== 'pending' && "text-yellow-500 border-yellow-500/30"
+                    )}
+                    onClick={() => setStatusFilter('pending')}
+                  >
+                    Pendentes
+                  </Badge>
+                </div>
+              </div>
               <ScrollArea className="h-[40vh] rounded-lg border">
                 <div className="divide-y divide-border">
-                  {details.messages.map((msg) => {
+                  {details.messages
+                    .filter(msg => statusFilter === 'all' || msg.status === statusFilter)
+                    .map((msg) => {
                     const config = statusConfig[msg.status];
                     const StatusIcon = config.icon;
                     
