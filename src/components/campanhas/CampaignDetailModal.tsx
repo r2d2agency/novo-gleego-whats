@@ -228,10 +228,10 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-4xl max-h-[95vh] flex flex-col overflow-hidden">
         <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-4">
+            <DialogTitle className="flex items-center gap-2 truncate">
               <MessageSquare className="h-5 w-5 text-primary" />
               {details?.campaign?.name || 'Carregando...'}
             </DialogTitle>
