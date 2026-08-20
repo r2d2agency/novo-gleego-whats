@@ -67,7 +67,14 @@ export async function deleteMessage(connection, phone, messageId, options = {}) 
       // O melhor que conseguimos é remover a reação. Retornamos sucesso apenas
       // se a API aceitou o request, mas avisamos no error.
       if (!response.ok) {
-        return { success: false, error: data?.error?.message || `HTTP ${response.status}` };
+        const errorDetails = data?.error?.message || `HTTP ${response.status}`;
+        const errorCode = data?.error?.code || response.status;
+        console.error(`[Meta API Error] Code ${errorCode}: ${errorDetails}`);
+        return { 
+          success: false, 
+          error: `Meta Error #${errorCode}: ${errorDetails}`,
+          metaError: data?.error 
+        };
       }
       return { success: true, warning: 'Meta Cloud API não permite apagar mensagens para o destinatário; apagada apenas localmente.' };
      } catch (error) {
