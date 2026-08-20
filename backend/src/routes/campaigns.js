@@ -342,7 +342,7 @@ router.post('/', async (req, res) => {
     // Otherwise, schedule for future as 'pending'
     let initialStatus = 'pending';
     
-    const nowSp = toSaoPauloDate(new Date());
+    const nowSp = toSaoPauloDate(now);
     const nowSpHour = nowSp.getUTCHours();
     const nowSpMinute = nowSp.getUTCMinutes();
     const nowSpTotalMinutes = nowSpHour * 60 + nowSpMinute;
