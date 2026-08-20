@@ -658,7 +658,7 @@ router.patch('/:id/members/:userId', async (req, res) => {
 });
 
 // Get organization departments (for member assignment)
-router.get('/:id([0-9a-fA-F-]{36})/departments', async (req, res) => {
+router.get('/:id/departments', async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -693,7 +693,7 @@ router.get('/:id([0-9a-fA-F-]{36})/departments', async (req, res) => {
 });
 
 // Update user password (admin only)
-router.patch('/:id([0-9a-fA-F-]{36})/members/:userId([0-9a-fA-F-]{36})/password', async (req, res) => {
+router.patch('/:id/members/:userId/password', async (req, res) => {
   try {
     const { id, userId } = req.params;
     const { password } = req.body;
@@ -729,7 +729,7 @@ router.patch('/:id([0-9a-fA-F-]{36})/members/:userId([0-9a-fA-F-]{36})/password'
 });
 
 // Remove member from organization
-router.delete('/:id([0-9a-fA-F-]{36})/members/:userId([0-9a-fA-F-]{36})', async (req, res) => {
+router.delete('/:id/members/:userId', async (req, res) => {
   try {
     const { id, userId } = req.params;
 
@@ -1129,7 +1129,7 @@ router.put('/work-schedule', async (req, res) => {
 // ========================================
 
 // List permission templates for org
-router.get('/:id([0-9a-fA-F-]{36})/permission-templates', async (req, res) => {
+router.get('/:id/permission-templates', async (req, res) => {
   try {
     const { id } = req.params;
     const memberCheck = await query(
@@ -1154,7 +1154,7 @@ router.get('/:id([0-9a-fA-F-]{36})/permission-templates', async (req, res) => {
 });
 
 // Create permission template
-router.post('/:id([0-9a-fA-F-]{36})/permission-templates', async (req, res) => {
+router.post('/:id/permission-templates', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, color, permissions } = req.body;
@@ -1180,7 +1180,7 @@ router.post('/:id([0-9a-fA-F-]{36})/permission-templates', async (req, res) => {
 });
 
 // Update permission template
-router.put('/:id([0-9a-fA-F-]{36})/permission-templates/:templateId', async (req, res) => {
+router.put('/:id/permission-templates/:templateId', async (req, res) => {
   try {
     const { id, templateId } = req.params;
     const { name, description, color, permissions } = req.body;
@@ -1211,7 +1211,7 @@ router.put('/:id([0-9a-fA-F-]{36})/permission-templates/:templateId', async (req
 });
 
 // Delete permission template
-router.delete('/:id([0-9a-fA-F-]{36})/permission-templates/:templateId', async (req, res) => {
+router.delete('/:id/permission-templates/:templateId', async (req, res) => {
   try {
     const { id, templateId } = req.params;
 
@@ -1233,7 +1233,7 @@ router.delete('/:id([0-9a-fA-F-]{36})/permission-templates/:templateId', async (
 });
 
 // Assign template to member
-router.patch('/:id([0-9a-fA-F-]{36})/members/:userId([0-9a-fA-F-]{36})/template', async (req, res) => {
+router.patch('/:id/members/:userId/template', async (req, res) => {
   try {
     const { id, userId } = req.params;
     const { permission_template_id } = req.body;
@@ -1262,7 +1262,7 @@ router.patch('/:id([0-9a-fA-F-]{36})/members/:userId([0-9a-fA-F-]{36})/template'
 // ========================================
 
 // List access groups for an organization
-router.get('/:id([0-9a-fA-F-]{36})/access-groups', async (req, res) => {
+router.get('/:id/access-groups', async (req, res) => {
   try {
     const { id } = req.params;
     const memberCheck = await query(
@@ -1289,7 +1289,7 @@ router.get('/:id([0-9a-fA-F-]{36})/access-groups', async (req, res) => {
 });
 
 // Create access group
-router.post('/:id([0-9a-fA-F-]{36})/access-groups', async (req, res) => {
+router.post('/:id/access-groups', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, description, user_ids, connection_ids } = req.body;
@@ -1326,7 +1326,7 @@ router.post('/:id([0-9a-fA-F-]{36})/access-groups', async (req, res) => {
 });
 
 // Update access group
-router.patch('/:id([0-9a-fA-F-]{36})/access-groups/:groupId', async (req, res) => {
+router.patch('/:id/access-groups/:groupId', async (req, res) => {
   try {
     const { id, groupId } = req.params;
     const { name, description, user_ids, connection_ids } = req.body;
@@ -1365,7 +1365,7 @@ router.patch('/:id([0-9a-fA-F-]{36})/access-groups/:groupId', async (req, res) =
 });
 
 // Delete access group
-router.delete('/:id([0-9a-fA-F-]{36})/access-groups/:groupId', async (req, res) => {
+router.delete('/:id/access-groups/:groupId', async (req, res) => {
   try {
     const { id, groupId } = req.params;
     const memberCheck = await query(
