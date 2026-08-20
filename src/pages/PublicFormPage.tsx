@@ -362,7 +362,7 @@ export default function PublicFormPage() {
           <img
             src={form.logo_url}
             alt="Logo"
-            style={{ height: `${form.logo_size || 40}px` }}
+            style={{ height: `${form.logo_size || 48}px`, width: 'auto' }}
             className="object-contain"
             onError={(e) => (e.currentTarget.style.display = "none")}
           />
@@ -600,7 +600,7 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
       {/* Header with logo + title */}
       <header className="py-6 px-6 flex flex-col items-center gap-3 border-b" style={{ borderColor: `${primaryColor}15` }}>
         {form.logo_url && (
-          <img src={form.logo_url} alt="Logo" style={{ height: `${form.logo_size || 48}px` }} className="object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
+          <img src={form.logo_url} alt="Logo" style={{ height: `${form.logo_size || 48}px`, width: 'auto' }} className="object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
         )}
         <h1 className="text-xl font-semibold text-center" style={{ color: textColor }}>{form.name}</h1>
       </header>
@@ -720,7 +720,7 @@ function StandardView({ form, primaryColor, bgColor, textColor, submitted, submi
         {/* Header */}
         <div className="text-center mb-6">
           {form.logo_url && (
-            <img src={form.logo_url} alt="Logo" style={{ height: `${form.logo_size || 56}px` }} className="mx-auto mb-3 object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
+            <img src={form.logo_url} alt="Logo" style={{ height: `${form.logo_size || 48}px`, width: 'auto' }} className="mx-auto mb-3 object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
           )}
           <h1 className="text-2xl font-semibold" style={{ color: textColor }}>{form.name}</h1>
           {form.welcome_message && (
