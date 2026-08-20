@@ -1,3 +1,7 @@
+/**
+ * Gleego Whats - WhatsApp Multi-tenant Platform
+ * Final fix for Meta Webhook Validation and Multi-tenant identifier mapping.
+ */
 import 'dotenv/config'; // Preload — side-effect import, loads .env BEFORE other modules
 
 import express from 'express';
