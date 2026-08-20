@@ -230,6 +230,15 @@ router.post('/', async (req, res) => {
 
     let contacts = contactsResult.rows;
 
+    // Remove duplicates based on phone number
+    const seenPhones = new Set();
+    contacts = contacts.filter(contact => {
+      const phone = String(contact.phone || '').trim();
+      if (!phone || seenPhones.has(phone)) return false;
+      seenPhones.add(phone);
+      return true;
+    });
+
     // Shuffle contacts if random_order is enabled
     if (random_order) {
       contacts = contacts.sort(() => Math.random() - 0.5);
