@@ -211,7 +211,7 @@ export async function executeCampaignMessages() {
       JOIN campaign_messages cm ON cm.campaign_id = c.id
       WHERE c.status = 'pending'
         AND cm.status = 'pending'
-        AND cm.scheduled_at <= (NOW() + INTERVAL '5 minutes')
+        AND cm.scheduled_at <= (NOW() + INTERVAL '10 minutes')
     `);
 
     if (campaignsToStart.rows.length > 0) {
@@ -275,7 +275,7 @@ export async function executeCampaignMessages() {
       LEFT JOIN message_templates mt ON mt.id = cm.message_id
       LEFT JOIN contacts co ON co.id = cm.contact_id
       WHERE cm.status = 'pending'
-        AND cm.scheduled_at <= (NOW() + INTERVAL '5 minutes')
+        AND cm.scheduled_at <= (NOW() + INTERVAL '10 minutes')
         AND c.status = 'running'
         AND (
           conn.status = 'connected' 
