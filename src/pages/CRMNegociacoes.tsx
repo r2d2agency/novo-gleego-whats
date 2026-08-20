@@ -192,11 +192,22 @@ export default function CRMNegociacoes() {
       // Filter by search term
       if (searchTerm) {
         const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter(d => 
-          d.title.toLowerCase().includes(lowerSearch) || 
-          d.company_name?.toLowerCase().includes(lowerSearch) ||
-          d.contacts?.some(c => c.name.toLowerCase().includes(lowerSearch))
-        );
+        const cleanSearch = lowerSearch.replace(/\D/g, '');
+
+        filtered = filtered.filter(d => {
+          const matchesTitle = d.title.toLowerCase().includes(lowerSearch);
+          const matchesCompany = d.company_name?.toLowerCase().includes(lowerSearch);
+          const matchesContactName = d.contacts?.some(c => c.name.toLowerCase().includes(lowerSearch));
+          
+          // Check contacts phone numbers too
+          const matchesPhone = d.contacts?.some(c => {
+            const cleanPhone = c.phone?.replace(/\D/g, '') || '';
+            return (c.phone && c.phone.includes(lowerSearch)) || 
+                   (cleanSearch !== '' && cleanPhone.includes(cleanSearch));
+          });
+
+          return matchesTitle || matchesCompany || matchesContactName || matchesPhone;
+        });
       }
       
       // Filter by date range
