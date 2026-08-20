@@ -356,13 +356,22 @@ app.get('/api/meta/webhook', async (req, res) => {
       return res.status(200).send(challenge);
     }
 
-    // 2. Fallback: check individual connections
+    // 2. Fallback: check individual connections (including leads/pages tokens)
     const result = await dbQuery(
-      `SELECT id FROM connections WHERE provider = 'meta' AND meta_webhook_verify_token = $1 LIMIT 1`,
+      `SELECT id FROM connections WHERE provider = 'meta' AND meta_webhook_verify_token = $1 
+       UNION
+       SELECT id FROM meta_pages WHERE kind = 'facebook_page' AND page_access_token = $1 -- unlikely match but added for completeness if page token used as verify
+       LIMIT 1`,
       [token]
     );
 
     if (result.rows.length === 0) {
+      // 3. Last fallback: Check if token is explicitly for Leads (Centralized)
+      if (process.env.META_LEAD_ADS_VERIFY_TOKEN && token === process.env.META_LEAD_ADS_VERIFY_TOKEN) {
+         logMetaEvent('verify_success_leads', { ...verifyContext, connection_id: 'leads_global' });
+         return res.status(200).send(challenge);
+      }
+
       logMetaEvent('verify_token_not_found', {
         ...verifyContext,
         reason: 'verify_token_not_found',

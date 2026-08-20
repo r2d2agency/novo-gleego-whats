@@ -374,9 +374,21 @@ webhookRouter.get('/', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-  if (mode === 'subscribe' && token && token === process.env.META_WEBHOOK_VERIFY_TOKEN) {
-    return res.status(200).send(challenge);
+  
+  // Prioritize global token (Centralized App)
+  const globalToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
+  
+  if (mode === 'subscribe' && token) {
+    if (globalToken && token === globalToken) {
+      return res.status(200).send(challenge);
+    }
+    
+    // Support separate token for leads if needed
+    if (process.env.META_LEAD_ADS_VERIFY_TOKEN && token === process.env.META_LEAD_ADS_VERIFY_TOKEN) {
+      return res.status(200).send(challenge);
+    }
   }
+  
   return res.sendStatus(403);
 });
 
