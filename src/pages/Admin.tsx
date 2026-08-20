@@ -26,6 +26,9 @@ import { UazapiInstancesTab } from '@/components/admin/UazapiInstancesTab';
 import { GlobalAgentsTab } from '@/components/admin/GlobalAgentsTab';
 import { api } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 const AdminMetaSaas = lazy(() => import("./AdminMetaSaas"));
 import { format } from 'date-fns';
