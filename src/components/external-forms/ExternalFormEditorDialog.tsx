@@ -81,7 +81,7 @@ export function ExternalFormEditorDialog({
     redirect_url: "",
     trigger_flow_id: "",
     connection_id: "",
-    display_mode: ("chat" as "chat" | "typeform" | "standard"),
+    display_mode: "chat" as "chat" | "typeform" | "standard",
   });
   
   const [fields, setFields] = useState<FormField[]>(DEFAULT_FIELDS);
@@ -169,6 +169,7 @@ export function ExternalFormEditorDialog({
     try {
       const payload = {
         ...formData,
+        display_mode: formData.display_mode, // Explicitly ensure it's included
         trigger_flow_id: formData.trigger_flow_id || undefined,
         connection_id: formData.connection_id || undefined,
         fields: fields.map((f, idx) => ({ ...f, position: idx })),
