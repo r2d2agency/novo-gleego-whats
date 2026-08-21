@@ -84,6 +84,10 @@ export default function PublicFormPage() {
           askNextQuestion(0, result.fields || []);
         }, 800);
       }, 500);
+    } else if (mode === "typeform") {
+      // For Typeform mode, we don't start with chat messages, 
+      // the view handles the current question index
+      setMessages([]);
     }
   };
 
