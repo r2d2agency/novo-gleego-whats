@@ -76,7 +76,7 @@ export default function PublicFormPage() {
     setForm(result);
     setLoading(false);
 
-    const mode = result.display_mode || "chat";
+    const mode = result.display_mode || "typeform";
     if (mode === "chat") {
       setTimeout(() => {
         addBotMessage(result.welcome_message || "Olá! Vamos começar?");
@@ -296,7 +296,7 @@ export default function PublicFormPage() {
   const bgColor = form.background_color || "#ffffff";
   const textColor = form.text_color || "#1f2937";
 
-  const mode = (form.display_mode as "chat" | "typeform" | "standard") || "chat";
+  const mode = (form.display_mode as "chat" | "typeform" | "standard") || "typeform";
 
   const doSubmit = async (data: Record<string, string>) => {
     if (!slug) return null;
@@ -558,6 +558,7 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
   const [values, setValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [animKey, setAnimKey] = useState(0);
+  const [direction, setDirection] = useState<"next" | "prev">("next");
 
   const total = fields.length;
   const current = fields[index];
@@ -576,11 +577,12 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
     if (index + 1 >= total) {
       await onSubmit(values);
     } else {
+      setDirection("next");
       setIndex(index + 1);
     }
   };
 
-  const goPrev = () => { if (index > 0) setIndex(index - 1); };
+  const goPrev = () => { if (index > 0) { setDirection("prev"); setIndex(index - 1); } };
 
   const setVal = (v: string) => setValues({ ...values, [current.field_key]: v });
   const opts = current ? normalizeOpts((current as any).options) : [];
@@ -610,8 +612,16 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
       </header>
 
       {/* Question */}
-      <main className="flex-1 flex items-center justify-center p-6">
-        <div key={animKey} className="w-full max-w-xl animate-fade-in">
+      <main className="flex-1 flex items-center justify-center p-6 overflow-hidden relative">
+        <div 
+          key={animKey} 
+          className={`w-full max-w-xl transition-all duration-500 transform
+            ${direction === "next" 
+              ? (form.transition_type === "slide-left" ? "animate-in slide-in-from-left" : "animate-in slide-in-from-right")
+              : (form.transition_type === "slide-left" ? "animate-in slide-in-from-right" : "animate-in slide-in-from-left")
+            }
+          `}
+        >
           <div className="mb-4 text-sm opacity-60">{index + 1} / {total}</div>
           <h2 className="text-2xl sm:text-3xl font-medium mb-6" style={{ color: textColor }}>
             {current?.field_label}

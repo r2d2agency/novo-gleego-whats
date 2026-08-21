@@ -81,7 +81,8 @@ export function ExternalFormEditorDialog({
     redirect_url: "",
     trigger_flow_id: "",
     connection_id: "",
-    display_mode: "chat" as "chat" | "typeform" | "standard",
+    display_mode: "typeform" as "chat" | "typeform" | "standard",
+    transition_type: "slide-right" as "slide-right" | "slide-left",
   });
   
   const [fields, setFields] = useState<FormField[]>(DEFAULT_FIELDS);
@@ -126,7 +127,8 @@ export function ExternalFormEditorDialog({
         redirect_url: fullForm.redirect_url || "",
         trigger_flow_id: fullForm.trigger_flow_id || "",
         connection_id: fullForm.connection_id || "",
-        display_mode: (fullForm.display_mode as "chat" | "typeform" | "standard") || "chat",
+        display_mode: (fullForm.display_mode as "chat" | "typeform" | "standard") || "typeform",
+        transition_type: (fullForm.transition_type as "slide-right" | "slide-left") || "slide-right",
       });
       setFields(fullForm.fields || DEFAULT_FIELDS);
     }
@@ -147,7 +149,8 @@ export function ExternalFormEditorDialog({
       redirect_url: "",
       trigger_flow_id: "",
       connection_id: "",
-      display_mode: "chat",
+      display_mode: "typeform",
+      transition_type: "slide-right",
     });
     setFields(DEFAULT_FIELDS);
     setActiveTab("fields");
@@ -408,9 +411,8 @@ export function ExternalFormEditorDialog({
               <div className="pr-4 space-y-4">
                 <div className="grid gap-2">
                   <Label>Layout do Formulário</Label>
-                  <div className="grid sm:grid-cols-3 gap-2">
+                  <div className="grid sm:grid-cols-2 gap-2">
                     {[
-                      { value: "chat", label: "Chat", desc: "Conversa em bolhas (atual)" },
                       { value: "typeform", label: "Typeform", desc: "1 pergunta por vez com animação" },
                       { value: "standard", label: "Padrão", desc: "Formulário clássico (embed)" },
                     ].map((opt) => {
@@ -441,6 +443,24 @@ export function ExternalFormEditorDialog({
                     </p>
                   )}
                 </div>
+
+                {formData.display_mode === "typeform" && (
+                  <div className="grid gap-2">
+                    <Label>Tipo de Transição</Label>
+                    <Select
+                      value={formData.transition_type}
+                      onValueChange={(value) => setFormData({ ...formData, transition_type: value as any })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a transição..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="slide-right">Deslizar para Direita</SelectItem>
+                        <SelectItem value="slide-left">Deslizar para Esquerda</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="grid gap-2">

@@ -2912,6 +2912,11 @@ CREATE TABLE IF NOT EXISTS external_form_submissions (
 CREATE INDEX IF NOT EXISTS idx_external_forms_org ON external_forms(organization_id);
 CREATE INDEX IF NOT EXISTS idx_external_forms_slug ON external_forms(slug);
 CREATE INDEX IF NOT EXISTS idx_external_forms_active ON external_forms(is_active) WHERE is_active = true;
+
+-- Update display_mode default to typeform
+DO $$ BEGIN
+    ALTER TABLE external_forms ALTER COLUMN display_mode SET DEFAULT 'typeform';
+EXCEPTION WHEN others THEN null; END $$;
 CREATE INDEX IF NOT EXISTS idx_external_form_fields_form ON external_form_fields(form_id);
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_form ON external_form_submissions(form_id);
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_org ON external_form_submissions(organization_id);
@@ -2920,6 +2925,7 @@ CREATE INDEX IF NOT EXISTS idx_external_form_submissions_org ON external_form_su
 DO $$ BEGIN
     ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS display_mode VARCHAR(20) DEFAULT 'chat';
     ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS logo_size INTEGER DEFAULT 48;
+    ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS transition_type VARCHAR(20) DEFAULT 'slide-right';
 EXCEPTION WHEN duplicate_column THEN null; END $$;
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_phone ON external_form_submissions(phone);
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_created ON external_form_submissions(created_at DESC);
