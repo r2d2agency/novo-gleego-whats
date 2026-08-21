@@ -142,10 +142,16 @@ export function useExternalForms() {
 // Public API (no auth)
 export async function getPublicForm(slug: string): Promise<ExternalForm | null> {
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_URL || ""}/api/external-forms/public/${slug}`);
-    if (!res.ok) return null;
+    const apiUrl = import.meta.env.VITE_API_URL || "";
+    console.log(`[getPublicForm] Slug: ${slug}, API: ${apiUrl}`);
+    const res = await fetch(`${apiUrl}/api/external-forms/public/${slug}`);
+    if (!res.ok) {
+      console.warn(`[getPublicForm] Failed: ${res.status} ${res.statusText}`);
+      return null;
+    }
     return res.json();
-  } catch {
+  } catch (err) {
+    console.error(`[getPublicForm] Error:`, err);
     return null;
   }
 }
@@ -155,7 +161,8 @@ export async function submitPublicForm(
   data: Record<string, string>,
   meta?: { utm_source?: string; utm_medium?: string; utm_campaign?: string; referrer?: string }
 ): Promise<{ success: boolean; thank_you_message?: string; redirect_url?: string }> {
-  const res = await fetch(`${import.meta.env.VITE_API_URL || ""}/api/external-forms/public/${slug}/submit`, {
+  const apiUrl = import.meta.env.VITE_API_URL || "";
+  const res = await fetch(`${apiUrl}/api/external-forms/public/${slug}/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ data, ...meta }),
