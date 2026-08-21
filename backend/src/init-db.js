@@ -2912,6 +2912,11 @@ CREATE TABLE IF NOT EXISTS external_form_submissions (
 CREATE INDEX IF NOT EXISTS idx_external_forms_org ON external_forms(organization_id);
 CREATE INDEX IF NOT EXISTS idx_external_forms_slug ON external_forms(slug);
 CREATE INDEX IF NOT EXISTS idx_external_forms_active ON external_forms(is_active) WHERE is_active = true;
+
+-- Update display_mode default to typeform
+DO $$ BEGIN
+    ALTER TABLE external_forms ALTER COLUMN display_mode SET DEFAULT 'typeform';
+EXCEPTION WHEN others THEN null; END $$;
 CREATE INDEX IF NOT EXISTS idx_external_form_fields_form ON external_form_fields(form_id);
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_form ON external_form_submissions(form_id);
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_org ON external_form_submissions(organization_id);
