@@ -230,7 +230,7 @@ router.put('/:id', authenticate, async (req, res) => {
         redirect_url = $11,
         trigger_flow_id = $12,
         connection_id = $13,
-        display_mode = COALESCE($16, display_mode),
+        display_mode = $16,
         updated_at = NOW()
        WHERE id = $14 AND organization_id = $15`,
       [
@@ -238,7 +238,7 @@ router.put('/:id', authenticate, async (req, res) => {
         background_color, text_color, button_text, welcome_message,
         thank_you_message, redirect_url, trigger_flow_id || null,
         connection_id || null, req.params.id, org.organization_id,
-        ['chat', 'typeform', 'standard'].includes(display_mode) ? display_mode : null,
+        display_mode || 'chat',
         logo_size
       ]
     );
