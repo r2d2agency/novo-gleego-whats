@@ -142,7 +142,10 @@ export function useExternalForms() {
 // Public API (no auth)
 export async function getPublicForm(slug: string): Promise<ExternalForm | null> {
   try {
-    const apiUrl = import.meta.env.VITE_API_URL || "";
+    let apiUrl = import.meta.env.VITE_API_URL || "";
+    if (!apiUrl && typeof window !== 'undefined') {
+      apiUrl = 'https://gleego-whats-back.ckilhl.easypanel.host';
+    }
     console.log(`[getPublicForm] Slug: ${slug}, API: ${apiUrl}`);
     const res = await fetch(`${apiUrl}/api/external-forms/public/${slug}`);
     if (!res.ok) {
@@ -161,7 +164,10 @@ export async function submitPublicForm(
   data: Record<string, string>,
   meta?: { utm_source?: string; utm_medium?: string; utm_campaign?: string; referrer?: string }
 ): Promise<{ success: boolean; thank_you_message?: string; redirect_url?: string }> {
-  const apiUrl = import.meta.env.VITE_API_URL || "";
+  let apiUrl = import.meta.env.VITE_API_URL || "";
+  if (!apiUrl && typeof window !== 'undefined') {
+    apiUrl = 'https://gleego-whats-back.ckilhl.easypanel.host';
+  }
   const res = await fetch(`${apiUrl}/api/external-forms/public/${slug}/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
