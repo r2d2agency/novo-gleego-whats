@@ -81,7 +81,8 @@ export function ExternalFormEditorDialog({
     redirect_url: "",
     trigger_flow_id: "",
     connection_id: "",
-    display_mode: "chat" as "chat" | "typeform" | "standard",
+    display_mode: "typeform" as "chat" | "typeform" | "standard",
+    transition_type: "slide-right" as "slide-right" | "slide-left",
   });
   
   const [fields, setFields] = useState<FormField[]>(DEFAULT_FIELDS);
@@ -126,7 +127,8 @@ export function ExternalFormEditorDialog({
         redirect_url: fullForm.redirect_url || "",
         trigger_flow_id: fullForm.trigger_flow_id || "",
         connection_id: fullForm.connection_id || "",
-        display_mode: (fullForm.display_mode as "chat" | "typeform" | "standard") || "chat",
+        display_mode: (fullForm.display_mode as "chat" | "typeform" | "standard") || "typeform",
+        transition_type: (fullForm.transition_type as "slide-right" | "slide-left") || "slide-right",
       });
       setFields(fullForm.fields || DEFAULT_FIELDS);
     }
@@ -147,7 +149,8 @@ export function ExternalFormEditorDialog({
       redirect_url: "",
       trigger_flow_id: "",
       connection_id: "",
-      display_mode: "chat",
+      display_mode: "typeform",
+      transition_type: "slide-right",
     });
     setFields(DEFAULT_FIELDS);
     setActiveTab("fields");
