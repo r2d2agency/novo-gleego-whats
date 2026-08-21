@@ -2920,6 +2920,7 @@ CREATE INDEX IF NOT EXISTS idx_external_form_submissions_org ON external_form_su
 DO $$ BEGIN
     ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS display_mode VARCHAR(20) DEFAULT 'chat';
     ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS logo_size INTEGER DEFAULT 48;
+    ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS transition_type VARCHAR(20) DEFAULT 'slide-right';
 EXCEPTION WHEN duplicate_column THEN null; END $$;
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_phone ON external_form_submissions(phone);
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_created ON external_form_submissions(created_at DESC);
