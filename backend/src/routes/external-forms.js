@@ -144,7 +144,8 @@ router.post('/', authenticate, async (req, res) => {
         welcome_message || 'Olá! Vamos começar?',
         thank_you_message || 'Obrigado pelo contato! Em breve entraremos em contato.',
         redirect_url, trigger_flow_id || null, connection_id || null, req.userId,
-        ['chat', 'typeform', 'standard'].includes(display_mode) ? display_mode : 'chat'
+        ['chat', 'typeform', 'standard'].includes(display_mode) ? display_mode : 'typeform',
+        transition_type || 'slide-right'
       ]
     );
 
