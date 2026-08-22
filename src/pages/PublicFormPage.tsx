@@ -76,17 +76,15 @@ export default function PublicFormPage() {
     setForm(result);
     setLoading(false);
 
-    const mode = result.display_mode || "typeform";
-    if (mode === "chat") {
-      setTimeout(() => {
-        addBotMessage(result.welcome_message || "Olá! Vamos começar?");
-        setTimeout(() => {
-          askNextQuestion(0, result.fields || []);
-        }, 800);
-      }, 500);
-    } else if (mode === "typeform") {
-      // For Typeform mode, we don't start with chat messages, 
+    // Normalize display mode: default to typeform, ignore invalid/legacy modes
+    const rawMode = (result.display_mode || "typeform").trim().toLowerCase();
+    const mode = ['typeform', 'standard'].includes(rawMode) ? rawMode : 'typeform';
+    
+    if (mode === "typeform") {
+      // For Typeform mode, we don't start with chat messages,
       // the view handles the current question index
+      setMessages([]);
+    } else if (mode === "standard") {
       setMessages([]);
     }
   };
@@ -143,14 +141,13 @@ export default function PublicFormPage() {
     if (field.field_type === "phone" && value.trim()) {
       const phoneDigits = value.replace(/\D/g, "");
       if (phoneDigits.length < 10 || phoneDigits.length > 15) {
-        addBotMessage("Por favor, informe um telefone válido com DDD (ex: 11999998888).");
+        addBotMessage("Por favor, informe um telefone válido com DDD (ex: 11 99999-9999).");
         return false;
       }
       
-      // WhatsApp Validation Mock - In production, this would call an API to check if number exists on WhatsApp
-      // For now, we just enforce a minimum length and numeric characters
-      if (phoneDigits.length < 10) {
-        addBotMessage("Este número não parece ter o formato correto de um WhatsApp. Por favor, verifique se incluiu o DDD.");
+      const ddd = phoneDigits.substring(0, 2);
+      if (!/^[1-9][1-9]$/.test(ddd)) {
+        addBotMessage("DDD inválido. Verifique se informou o código de área corretamente.");
         return false;
       }
     }
@@ -296,7 +293,8 @@ export default function PublicFormPage() {
   const bgColor = form.background_color || "#ffffff";
   const textColor = form.text_color || "#1f2937";
 
-  const mode = (form.display_mode as "chat" | "typeform" | "standard") || "typeform";
+  const rawMode = String(form.display_mode || "typeform").trim().toLowerCase();
+  const mode = ["typeform", "standard"].includes(rawMode) ? rawMode : "typeform";
 
   const doSubmit = async (data: Record<string, string>) => {
     if (!slug) return null;
@@ -535,7 +533,10 @@ function validateField(value: string, field: FormField): string | null {
   }
   if (field.field_type === "phone" && value.trim()) {
     const digits = value.replace(/\D/g, "");
-    if (digits.length < 10 || digits.length > 15) return "Telefone inválido.";
+    if (digits.length < 10 || digits.length > 15) return "Informe um telefone válido com DDD (ex: 11 99999-9999).";
+    // Ensure DDD is present (first digit should be between 1 and 9, second 1-9)
+    const ddd = digits.substring(0, 2);
+    if (!/^[1-9][1-9]$/.test(ddd)) return "DDD inválido.";
   }
   return null;
 }
