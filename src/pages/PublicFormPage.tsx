@@ -533,7 +533,10 @@ function validateField(value: string, field: FormField): string | null {
   }
   if (field.field_type === "phone" && value.trim()) {
     const digits = value.replace(/\D/g, "");
-    if (digits.length < 10 || digits.length > 15) return "Telefone inválido.";
+    if (digits.length < 10 || digits.length > 15) return "Informe um telefone válido com DDD (ex: 11 99999-9999).";
+    // Ensure DDD is present (first digit should be between 1 and 9, second 1-9)
+    const ddd = digits.substring(0, 2);
+    if (!/^[1-9][1-9]$/.test(ddd)) return "DDD inválido.";
   }
   return null;
 }
