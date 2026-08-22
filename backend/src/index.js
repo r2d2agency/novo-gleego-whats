@@ -1003,6 +1003,44 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Database connectivity diagnostic (no secrets exposed)
+app.get('/api/health/db', async (req, res) => {
+  const raw = process.env.DATABASE_URL || '';
+  let host = null;
+  let port = null;
+  let database = null;
+  try {
+    const m = raw.match(/^postgres(?:ql)?:\/\/[^:]+:.+@([^:]+):(\d+)\/([^?]+)/);
+    if (m) {
+      host = m[1];
+      port = Number(m[2]);
+      database = m[3];
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const r = await dbQuery('SELECT NOW() as now, current_database() as db');
+    return res.json({
+      status: 'ok',
+      host,
+      port,
+      database: database || r.rows[0]?.db,
+      server_time: r.rows[0]?.now,
+      ssl: /sslmode=disable/i.test(raw) ? 'disabled' : 'relaxed',
+    });
+  } catch (error) {
+    return res.status(503).json({
+      status: 'error',
+      host,
+      port,
+      database,
+      code: error?.code || null,
+      message: error?.message || 'Erro desconhecido',
+    });
+  }
+});
+
+
 // Diagnostic endpoint to check Google Calendar env vars
 app.get('/api/debug/google-config', (req, res) => {
   const redirectUri = process.env.GOOGLE_REDIRECT_URI;

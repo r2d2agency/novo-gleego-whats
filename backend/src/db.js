@@ -59,16 +59,36 @@ function paramTypes(params) {
   });
 }
 
+const rawUrl = process.env.DATABASE_URL || '';
+const parsed = parseConnectionString(rawUrl);
+
+// SSL resolution:
+// - sslmode=disable (or PGSSL=disable) => no SSL (internal Easypanel network)
+// - otherwise => SSL allowing self-signed certificates
+const sslDisabled =
+  parsed.ssl === false ||
+  /sslmode=disable/i.test(rawUrl) ||
+  String(process.env.PGSSL || '').toLowerCase() === 'disable';
+
 const dbConfig = {
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ...parsed,
+  ssl: sslDisabled ? false : { rejectUnauthorized: false },
   max: Number(process.env.PG_POOL_MAX || 20),
   idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
-  connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 90000),
+  connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 15000),
   statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 300000),
   query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 300000),
   keepAlive: true,
 };
+
+logInfo('db.config_resolved', {
+  host: parsed.host || 'from_connection_string',
+  port: parsed.port || null,
+  database: parsed.database || null,
+  ssl: sslDisabled ? 'disabled' : 'relaxed',
+  has_database_url: Boolean(rawUrl),
+});
+
 
 export const pool = new Pool(dbConfig);
 
