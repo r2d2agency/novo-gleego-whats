@@ -293,7 +293,8 @@ export default function PublicFormPage() {
   const bgColor = form.background_color || "#ffffff";
   const textColor = form.text_color || "#1f2937";
 
-  const mode = (form.display_mode as "chat" | "typeform" | "standard") || "typeform";
+  const rawMode = String(form.display_mode || "typeform").trim().toLowerCase();
+  const mode = ["typeform", "standard"].includes(rawMode) ? rawMode : "typeform";
 
   const doSubmit = async (data: Record<string, string>) => {
     if (!slug) return null;
