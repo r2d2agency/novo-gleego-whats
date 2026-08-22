@@ -328,7 +328,16 @@ export async function executeCampaignMessages() {
          WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
          RETURNING id`,
         [msg.id]
-      );
+      ).catch(async (err) => {
+        // Fallback for legacy DBs where updated_at might be missing during first run
+        if (err.message.includes('updated_at')) {
+          return await query(
+            "UPDATE campaign_messages SET status = 'processing' WHERE id = $1 AND status = 'pending' RETURNING id",
+            [msg.id]
+          );
+        }
+        throw err;
+      });
 
       if (lockResult.rows.length === 0) {
         console.log(`  ⚠ [${msg.phone}] Message already being processed or locked by another cycle, skipping.`);

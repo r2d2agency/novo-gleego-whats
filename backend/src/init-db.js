@@ -4266,6 +4266,14 @@ export async function initDatabase() {
   } catch (e) {
     console.error('  ⚠️ Failed meta-saas schema:', e.message);
   }
+  // Fix missing campaign recovery columns
+  try {
+    await pool.query(`
+      ALTER TABLE campaign_messages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+    `);
+  } catch (e) {
+    console.error('  ⚠️ Failed recovery schema:', e.message);
+  }
 
   return true;
 }
