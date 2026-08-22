@@ -284,6 +284,7 @@ export async function executeCampaignMessages() {
           OR (conn.provider = 'meta' AND conn.meta_token IS NOT NULL AND conn.meta_phone_number_id IS NOT NULL)
         )
         AND (co.id IS NULL OR co.is_whatsapp IS NOT FALSE) -- Skip only if explicitly marked as not WhatsApp
+        AND c.connection_id IS NOT NULL -- Safety filter
       ORDER BY cm.scheduled_at ASC
       LIMIT 50
     `;
@@ -324,6 +325,7 @@ export async function executeCampaignMessages() {
           WHERE cm.status = 'pending' 
             AND cm.scheduled_at <= (NOW() + INTERVAL '10 minutes')
             AND c.status = 'running'
+            AND c.connection_id IS NOT NULL
         `);
         if (parseInt(checkBlocked.rows[0].blocked_count) > 0) {
           console.log(`  ⚠ [CAMPAIGN] Found ${checkBlocked.rows[0].blocked_count} messages that are pending/running but didn't pass connection or contact filters.`);

@@ -61,8 +61,8 @@ function paramTypes(params) {
 
 const dbUrl = process.env.DATABASE_URL || "postgres://postgres:bc3hptmj5wgnowz62nf0@127.0.0.1:5432/whats-bd";
 
-// Helper to check if it's a local address to disable SSL if needed
-const isLocal = dbUrl.includes('127.0.0.1') || dbUrl.includes('localhost');
+// Helper to check if it's a local address or explicitly disabled SSL
+const isLocal = dbUrl.includes('127.0.0.1') || dbUrl.includes('localhost') || dbUrl.includes('sslmode=disable');
 
 const dbConfig = {
   connectionString: dbUrl,
