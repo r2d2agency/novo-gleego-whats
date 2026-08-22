@@ -59,30 +59,18 @@ function paramTypes(params) {
   });
 }
 
-// Hardcoded fallback for the local database connection in Easypanel environment
-const FALLBACK_URL = "postgres://postgres:bc3hptmj5wgnowz62nf0@127.0.0.1:5432/whats-bd?sslmode=disable";
-
-// If DATABASE_URL is not set, or it points to a known failing internal host, use fallback
-const rawUrl = process.env.DATABASE_URL || FALLBACK_URL;
-const dbUrl = rawUrl.includes('gleego_whats-bd') ? FALLBACK_URL : rawUrl;
-
-// Internal fallback if the environment variable fails to resolve
-const getResilientConfig = () => {
-  const isLocal = (url) => url.includes('127.0.0.1') || url.includes('localhost') || url.includes('sslmode=disable');
-  
-  return {
-    connectionString: dbUrl,
-    ssl: isLocal(dbUrl) ? false : { rejectUnauthorized: false },
-    max: Number(process.env.PG_POOL_MAX || 20),
-    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
-    connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 90000),
-    statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 300000),
-    query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 300000),
-    keepAlive: true,
-  };
+const dbConfig = {
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: Number(process.env.PG_POOL_MAX || 20),
+  idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
+  connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 90000),
+  statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 300000),
+  query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 300000),
+  keepAlive: true,
 };
 
-export const pool = new Pool(getResilientConfig());
+export const pool = new Pool(dbConfig);
 
 pool.on('error', (err) => {
   logError('db.pool_error', err);
@@ -109,12 +97,6 @@ export async function query(text, params) {
     return res;
   } catch (error) {
     const durationMs = Date.now() - startedAt;
-    
-    // If DNS fails for the internal host, alert but don't crash
-    if (error.code === 'ENOTFOUND') {
-      console.error(`❌ [DB] Host não encontrado: ${error.message}. Verifique a rede interna do Easypanel.`);
-    }
-
     logError('db.query_failed', error, {
       duration_ms: durationMs,
       sql: summarizeSql(text),

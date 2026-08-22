@@ -188,9 +188,7 @@ const Index = () => {
         <div className="flex items-center justify-between animate-slide-up">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-              estava tudo funcionando ate agora o que vc mudou que parou tudo  ? nao conecta mais o sistema caiu e nao volta
-            </p>
+            <p className="text-sm text-muted-foreground">Visão geral do seu sistema</p>
           </div>
           <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-xs">
             <Activity className="h-3 w-3 text-success animate-pulse" />

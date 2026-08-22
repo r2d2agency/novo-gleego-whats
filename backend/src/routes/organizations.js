@@ -26,7 +26,8 @@ router.get('/', async (req, res) => {
 });
 
 // Get organization by ID
-router.get('/:id([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', async (req, res) => {
+// NOTE: constrain :id to UUID to avoid conflicts with static routes like /ai-config
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     

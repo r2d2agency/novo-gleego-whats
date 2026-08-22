@@ -283,8 +283,6 @@ export async function executeCampaignMessages() {
           OR (conn.uazapi_url IS NOT NULL AND conn.uazapi_token IS NOT NULL) 
           OR (conn.provider = 'meta' AND conn.meta_token IS NOT NULL AND conn.meta_phone_number_id IS NOT NULL)
         )
-        AND (co.id IS NULL OR co.is_whatsapp IS NOT FALSE) -- Skip only if explicitly marked as not WhatsApp
-        AND c.connection_id IS NOT NULL -- Safety filter
       ORDER BY cm.scheduled_at ASC
       LIMIT 50
     `;
@@ -315,22 +313,6 @@ export async function executeCampaignMessages() {
       if (stats.campaignsStarted > 0) {
         console.log(`📤 [CAMPAIGN] ${stats.campaignsStarted} campaign(s) started, processing on next cycle.`);
       }
-      
-      // LOGGING FOR DIAGNOSTICS: Check if there are messages that SHOULD be processed but aren't due to connection status
-      if (stats.campaignsStarted === 0) {
-        const checkBlocked = await query(`
-          SELECT count(*) as blocked_count 
-          FROM campaign_messages cm
-          JOIN campaigns c ON c.id = cm.campaign_id
-          WHERE cm.status = 'pending' 
-            AND cm.scheduled_at <= (NOW() + INTERVAL '10 minutes')
-            AND c.status = 'running'
-            AND c.connection_id IS NOT NULL
-        `);
-        if (parseInt(checkBlocked.rows[0].blocked_count) > 0) {
-          console.log(`  ⚠ [CAMPAIGN] Found ${checkBlocked.rows[0].blocked_count} messages that are pending/running but didn't pass connection or contact filters.`);
-        }
-      }
       return stats;
     }
 
@@ -342,8 +324,8 @@ export async function executeCampaignMessages() {
       // If it has been 'processing' for more than 15 minutes, it's considered stuck and we retry it.
       const lockResult = await query(
         `UPDATE campaign_messages 
-         SET status = 'processing'
-         WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND created_at < NOW() - INTERVAL '15 minutes'))
+         SET status = 'processing', updated_at = NOW() 
+         WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
          RETURNING id`,
         [msg.id]
       );
@@ -365,7 +347,7 @@ export async function executeCampaignMessages() {
       if (alreadySent.rows.length > 0) {
         console.log(`  ⚠ [${msg.phone}] Contact already received a message for this campaign, marking duplicate as cancelled.`);
         await query(
-          `UPDATE campaign_messages SET status = 'cancelled' WHERE id = $1`,
+          `UPDATE campaign_messages SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
           [msg.id]
         );
         continue;
@@ -473,7 +455,7 @@ export async function executeCampaignMessages() {
               );
               // Also reset processing messages for this campaign to pending so they can be retried once fixed
               await query(
-                `UPDATE campaign_messages SET status = 'pending'
+                `UPDATE campaign_messages SET status = 'pending', updated_at = NOW() 
                  WHERE campaign_id = $1 AND status = 'processing'`,
                 [msg.campaign_id]
               );
@@ -686,7 +668,7 @@ export async function executeCampaignMessages() {
             );
             // Reset other processing messages
             await query(
-              `UPDATE campaign_messages SET status = 'pending'
+              `UPDATE campaign_messages SET status = 'pending', updated_at = NOW() 
                WHERE campaign_id = $1 AND status = 'processing'`,
               [msg.campaign_id]
             );
@@ -720,7 +702,7 @@ export async function executeCampaignMessages() {
     // Check if any campaigns are now complete
     await query(`
       UPDATE campaigns 
-      SET status = 'completed'
+      SET status = 'completed', updated_at = NOW()
       WHERE status = 'running'
         AND id IN (
           SELECT campaign_id 

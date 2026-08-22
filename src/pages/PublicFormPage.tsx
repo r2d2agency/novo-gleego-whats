@@ -65,12 +65,10 @@ export default function PublicFormPage() {
     setLoading(true);
     setError(null);
     
-    console.log(`[PublicFormPage] Loading form for slug: ${slug}`);
     const result = await getPublicForm(slug);
     
     if (!result) {
-      console.warn(`[PublicFormPage] Form not found for slug: ${slug}`);
-      setError("Formulário não encontrado. Verifique se o link está correto ou se o banco de dados está acessível.");
+      setError("Formulário não encontrado ou inativo");
       setLoading(false);
       return;
     }
