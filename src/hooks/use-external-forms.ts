@@ -149,7 +149,7 @@ export async function getPublicForm(slug: string): Promise<ExternalForm | null> 
     try {
       const url = `${base.replace(/\/$/, "")}/api/external-forms/public/${slug}`;
       console.log(`[getPublicForm] Trying ${url}`);
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       if (res.ok) return res.json();
       console.warn(`[getPublicForm] Failed ${url}: ${res.status}`);
     } catch (err) {
