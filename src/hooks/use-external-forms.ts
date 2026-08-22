@@ -139,15 +139,21 @@ export function useExternalForms() {
   };
 }
 
-// Public API (no auth)
+// Public API (no auth). Tries configured API URL first, then falls back to current origin
+// for deployments where the backend is served from the same domain via proxy.
 export async function getPublicForm(slug: string): Promise<ExternalForm | null> {
-  try {
-    const res = await fetch(`${import.meta.env.VITE_API_URL || ""}/api/external-forms/public/${slug}`);
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
+  const baseUrls = [import.meta.env.VITE_API_URL || "", window.location.origin].filter(Boolean);
+  const uniqueUrls = Array.from(new Set(baseUrls));
+
+  for (const base of uniqueUrls) {
+    try {
+      const res = await fetch(`${base}/api/external-forms/public/${slug}`);
+      if (res.ok) return res.json();
+    } catch (err) {
+      // try next origin
+    }
   }
+  return null;
 }
 
 export async function submitPublicForm(
