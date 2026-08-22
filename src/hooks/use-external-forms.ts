@@ -161,16 +161,23 @@ export async function submitPublicForm(
   data: Record<string, string>,
   meta?: { utm_source?: string; utm_medium?: string; utm_campaign?: string; referrer?: string }
 ): Promise<{ success: boolean; thank_you_message?: string; redirect_url?: string }> {
-  const res = await fetch(`${import.meta.env.VITE_API_URL || ""}/api/external-forms/public/${slug}/submit`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data, ...meta }),
-  });
-  
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error || "Erro ao enviar formulário");
+  const baseUrls = [import.meta.env.VITE_API_URL || "", window.location.origin].filter(Boolean);
+  const uniqueUrls = Array.from(new Set(baseUrls));
+  let lastError: Error | null = null;
+
+  for (const base of uniqueUrls) {
+    try {
+      const res = await fetch(`${base}/api/external-forms/public/${slug}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data, ...meta }),
+      });
+      if (res.ok) return res.json();
+      const err = await res.json().catch(() => ({ error: "Erro ao enviar formulário" }));
+      lastError = new Error(err.error || "Erro ao enviar formulário");
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+    }
   }
-  
-  return res.json();
+  throw lastError || new Error("Erro ao enviar formulário");
 }
