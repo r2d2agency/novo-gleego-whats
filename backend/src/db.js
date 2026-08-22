@@ -59,9 +59,14 @@ function paramTypes(params) {
   });
 }
 
+const dbUrl = process.env.DATABASE_URL || "postgres://postgres:bc3hptmj5wgnowz62nf0@127.0.0.1:5432/whats-bd";
+
+// Helper to check if it's a local address to disable SSL if needed
+const isLocal = dbUrl.includes('127.0.0.1') || dbUrl.includes('localhost');
+
 const dbConfig = {
-  connectionString: process.env.DATABASE_URL || "postgres://postgres:bc3hptmj5wgnowz62nf0@127.0.0.1:5432/whats-bd",
-  ssl: { rejectUnauthorized: false },
+  connectionString: dbUrl,
+  ssl: isLocal ? false : { rejectUnauthorized: false },
   max: Number(process.env.PG_POOL_MAX || 20),
   idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
   connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 90000),
