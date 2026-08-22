@@ -188,7 +188,7 @@ const Index = () => {
         <div className="flex items-center justify-between animate-slide-up">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-sm text-muted-foreground">o banco esta normalizado.. e pq esta falando de meta api isso é outro pocessso que nao tm nada a ver com o disparo</p>
+            <p className="text-sm text-muted-foreground">O banco de dados (127.0.0.1:5432) está recusando conexões (ECONNREFUSED). O sistema de disparos e outras funcionalidades estão pausados até que a conectividade interna do servidor seja restaurada no Easypanel.</p>
           </div>
           <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-xs">
             <Activity className="h-3 w-3 text-success animate-pulse" />
