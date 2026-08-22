@@ -283,6 +283,7 @@ export async function executeCampaignMessages() {
           OR (conn.uazapi_url IS NOT NULL AND conn.uazapi_token IS NOT NULL) 
           OR (conn.provider = 'meta' AND conn.meta_token IS NOT NULL AND conn.meta_phone_number_id IS NOT NULL)
         )
+        AND (co.id IS NULL OR co.is_whatsapp IS NOT FALSE) -- Skip only if explicitly marked as not WhatsApp
       ORDER BY cm.scheduled_at ASC
       LIMIT 50
     `;
@@ -312,6 +313,21 @@ export async function executeCampaignMessages() {
     if (pendingMessages.rows.length === 0) {
       if (stats.campaignsStarted > 0) {
         console.log(`📤 [CAMPAIGN] ${stats.campaignsStarted} campaign(s) started, processing on next cycle.`);
+      }
+      
+      // LOGGING FOR DIAGNOSTICS: Check if there are messages that SHOULD be processed but aren't due to connection status
+      if (stats.campaignsStarted === 0) {
+        const checkBlocked = await query(`
+          SELECT count(*) as blocked_count 
+          FROM campaign_messages cm
+          JOIN campaigns c ON c.id = cm.campaign_id
+          WHERE cm.status = 'pending' 
+            AND cm.scheduled_at <= (NOW() + INTERVAL '10 minutes')
+            AND c.status = 'running'
+        `);
+        if (parseInt(checkBlocked.rows[0].blocked_count) > 0) {
+          console.log(`  ⚠ [CAMPAIGN] Found ${checkBlocked.rows[0].blocked_count} messages that are pending/running but didn't pass connection or contact filters.`);
+        }
       }
       return stats;
     }
