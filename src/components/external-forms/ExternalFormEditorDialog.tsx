@@ -411,10 +411,11 @@ export function ExternalFormEditorDialog({
               <div className="pr-4 space-y-4">
                 <div className="grid gap-2">
                   <Label>Layout do Formulário</Label>
-                  <div className="grid sm:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {[
-                      { value: "typeform", label: "Typeform", desc: "1 pergunta por vez com animação" },
-                      { value: "standard", label: "Padrão", desc: "Formulário clássico (embed)" },
+                      { value: "typeform", label: "Typeform", desc: "1 pergunta por vez" },
+                      { value: "chat", label: "Chat", desc: "Formato conversacional" },
+                      { value: "standard", label: "Padrão", desc: "Formulário clássico" },
                     ].map((opt) => {
                       const active = formData.display_mode === opt.value;
                       return (
@@ -422,13 +423,13 @@ export function ExternalFormEditorDialog({
                           key={opt.value}
                           type="button"
                           onClick={() => setFormData({ ...formData, display_mode: opt.value as "chat" | "typeform" | "standard" })}
-                          className={`text-left border rounded-lg p-3 transition-all ${
+                          className={`text-left border rounded-lg p-2 transition-all ${
                             active
                               ? "border-primary ring-2 ring-primary/30 bg-primary/5"
                               : "border-border hover:border-primary/50"
                           }`}
                         >
-                          <div className="font-medium text-sm">{opt.label}</div>
+                          <div className="font-medium text-[10px] sm:text-xs">{opt.label}</div>
                           <div className="text-xs text-muted-foreground mt-1">{opt.desc}</div>
                         </button>
                       );
