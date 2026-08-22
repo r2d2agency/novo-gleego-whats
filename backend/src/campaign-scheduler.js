@@ -473,7 +473,7 @@ export async function executeCampaignMessages() {
               );
               // Also reset processing messages for this campaign to pending so they can be retried once fixed
               await query(
-                `UPDATE campaign_messages SET status = 'pending', updated_at = NOW() 
+                `UPDATE campaign_messages SET status = 'pending'
                  WHERE campaign_id = $1 AND status = 'processing'`,
                 [msg.campaign_id]
               );
@@ -686,7 +686,7 @@ export async function executeCampaignMessages() {
             );
             // Reset other processing messages
             await query(
-              `UPDATE campaign_messages SET status = 'pending', updated_at = NOW() 
+              `UPDATE campaign_messages SET status = 'pending'
                WHERE campaign_id = $1 AND status = 'processing'`,
               [msg.campaign_id]
             );
