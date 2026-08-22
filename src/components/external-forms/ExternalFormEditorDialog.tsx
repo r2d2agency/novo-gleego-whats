@@ -54,7 +54,7 @@ const FIELD_TYPES = [
 
 const DEFAULT_FIELDS: FormField[] = [
   { field_key: "name", field_label: "Qual é o seu nome?", field_type: "text", is_required: true },
-  { field_key: "phone", field_label: "Seu WhatsApp com DDD", field_type: "phone", is_required: true, placeholder: "(11) 99999-9999" },
+  { field_key: "phone", field_label: "Seu telefone com DDD", field_type: "phone", is_required: true, placeholder: "(11) 99999-9999" },
   { field_key: "city", field_label: "Em qual cidade você está?", field_type: "text", is_required: false },
   { field_key: "state", field_label: "E o estado?", field_type: "text", is_required: false },
 ];
