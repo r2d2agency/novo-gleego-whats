@@ -1019,7 +1019,7 @@ app.get('/api/health/db', async (req, res) => {
   } catch { /* ignore */ }
 
   try {
-    const r = await query('SELECT NOW() as now, current_database() as db');
+    const r = await dbQuery('SELECT NOW() as now, current_database() as db');
     return res.json({
       status: 'ok',
       host,
