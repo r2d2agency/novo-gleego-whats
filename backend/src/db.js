@@ -59,23 +59,25 @@ function paramTypes(params) {
   });
 }
 
-const dbUrl = process.env.DATABASE_URL || "postgres://postgres:bc3hptmj5wgnowz62nf0@127.0.0.1:5432/whats-bd";
+const dbUrl = process.env.DATABASE_URL || "postgres://postgres:bc3hptmj5wgnowz62nf0@127.0.0.1:5432/whats-bd?sslmode=disable";
 
-// Helper to check if it's a local address or explicitly disabled SSL
-const isLocal = dbUrl.includes('127.0.0.1') || dbUrl.includes('localhost') || dbUrl.includes('sslmode=disable');
-
-const dbConfig = {
-  connectionString: dbUrl,
-  ssl: isLocal ? false : { rejectUnauthorized: false },
-  max: Number(process.env.PG_POOL_MAX || 20),
-  idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
-  connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 90000),
-  statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 300000),
-  query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 300000),
-  keepAlive: true,
+// Internal fallback if the environment variable fails to resolve
+const getResilientConfig = () => {
+  const isLocal = (url) => url.includes('127.0.0.1') || url.includes('localhost') || url.includes('sslmode=disable');
+  
+  return {
+    connectionString: dbUrl,
+    ssl: isLocal(dbUrl) ? false : { rejectUnauthorized: false },
+    max: Number(process.env.PG_POOL_MAX || 20),
+    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
+    connectionTimeoutMillis: Number(process.env.PG_CONNECTION_TIMEOUT_MS || 90000),
+    statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS || 300000),
+    query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 300000),
+    keepAlive: true,
+  };
 };
 
-export const pool = new Pool(dbConfig);
+export const pool = new Pool(getResilientConfig());
 
 pool.on('error', (err) => {
   logError('db.pool_error', err);
@@ -102,6 +104,12 @@ export async function query(text, params) {
     return res;
   } catch (error) {
     const durationMs = Date.now() - startedAt;
+    
+    // If DNS fails for the internal host, alert but don't crash
+    if (error.code === 'ENOTFOUND') {
+      console.error(`❌ [DB] Host não encontrado: ${error.message}. Verifique a rede interna do Easypanel.`);
+    }
+
     logError('db.query_failed', error, {
       duration_ms: durationMs,
       sql: summarizeSql(text),
