@@ -61,9 +61,10 @@ function paramTypes(params) {
 
 // Hardcoded fallback for the local database connection in Easypanel environment
 const FALLBACK_URL = "postgres://postgres:bc3hptmj5wgnowz62nf0@127.0.0.1:5432/whats-bd?sslmode=disable";
-const dbUrl = process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('gleego_whats-bd') 
-  ? process.env.DATABASE_URL 
-  : FALLBACK_URL;
+
+// If DATABASE_URL is not set, or it points to a known failing internal host, use fallback
+const rawUrl = process.env.DATABASE_URL || FALLBACK_URL;
+const dbUrl = rawUrl.includes('gleego_whats-bd') ? FALLBACK_URL : rawUrl;
 
 // Internal fallback if the environment variable fails to resolve
 const getResilientConfig = () => {
