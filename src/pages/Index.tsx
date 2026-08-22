@@ -1,422 +1,122 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { MainLayout } from "@/components/layout/MainLayout";
-import { StatsCard } from "@/components/dashboard/StatsCard";
-import { ConnectionStatus } from "@/components/dashboard/ConnectionStatus";
-import { AttendanceChart } from "@/components/dashboard/AttendanceChart";
-import { HourlyChart } from "@/components/dashboard/HourlyChart";
-import { DashboardWidget } from "@/components/dashboard/DashboardWidget";
-import { MetricRing } from "@/components/dashboard/MetricRing";
-import { QuickActionsGrid } from "@/components/dashboard/QuickActionsGrid";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { 
-  Users, MessageSquare, Send, CheckCircle2, Loader2, Play, Clock, 
-  Calendar as CalendarIcon, Pause, MessageCircle, CheckCheck, 
-  Hourglass, Headphones, Megaphone, TrendingUp, Activity, 
-  Zap, BarChart3
-} from "lucide-react";
-import { useContacts } from "@/hooks/use-contacts";
-import { useMessages } from "@/hooks/use-messages";
-import { useCampaigns, Campaign } from "@/hooks/use-campaigns";
-import { useConnectionStatus } from "@/hooks/use-connection-status";
-import { cn } from "@/lib/utils";
-import { api } from "@/lib/api";
-import { useChat } from "@/hooks/use-chat";
-import { useAuth } from "@/contexts/AuthContext";
-import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
-import { Button } from "@/components/ui/button";
-import { Rocket } from "lucide-react";
-import { chatEvents } from "@/lib/chat-events";
-
-interface DashboardStats {
-  totalContacts: number;
-  totalMessages: number;
-  activeCampaigns: number;
-  scheduledCampaigns: number;
-  sentMessages: number;
-  conversationsAssigned: number;
-  conversationsUnassigned: number;
-  conversationsWaiting: number;
-  conversationsAttending: number;
-  conversationsFinished: number;
-  totalUsers: number;
-  messagesToday: number;
-  messagesWeek: number;
-}
-
-const statusConfig = {
-  pending: { icon: CalendarIcon, label: "Agendada", color: "text-muted-foreground", bgColor: "bg-muted" },
-  running: { icon: Play, label: "Em Execução", color: "text-warning", bgColor: "bg-warning/10" },
-  completed: { icon: CheckCircle2, label: "Concluída", color: "text-success", bgColor: "bg-success/10" },
-  paused: { icon: Pause, label: "Pausada", color: "text-destructive", bgColor: "bg-destructive/10" },
-  cancelled: { icon: Clock, label: "Cancelada", color: "text-muted-foreground", bgColor: "bg-muted" },
-};
+import { useEffect } from "react";
 
 const Index = () => {
-  const { getLists } = useContacts();
-  const { getMessages } = useMessages();
-  const { getCampaigns } = useCampaigns();
-  const { connections, hasConnectedConnection, isLoading: connectionLoading } = useConnectionStatus({ intervalSeconds: 30 });
-  const { getChatStats } = useChat();
-  const { modulesEnabled } = useAuth();
-
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<DashboardStats>({
-    totalContacts: 0,
-    totalMessages: 0,
-    activeCampaigns: 0,
-    scheduledCampaigns: 0,
-    sentMessages: 0,
-    conversationsAssigned: 0,
-    conversationsUnassigned: 0,
-    conversationsWaiting: 0,
-    conversationsAttending: 0,
-    conversationsFinished: 0,
-    totalUsers: 0,
-    messagesToday: 0,
-    messagesWeek: 0,
-  });
-  const [recentCampaigns, setRecentCampaigns] = useState<Campaign[]>([]);
-  const [showOnboarding, setShowOnboarding] = useState(false);
-
-  const refreshTimerRef = useRef<ReturnType<typeof setInterval>>();
-
-  const loadDashboardData = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      // Load critical data first (fast)
-      const attendancePromise = api<{ waiting: number; attending: number; finished: number }>('/api/chat/conversations/attendance-counts?is_group=false').catch(() => ({ waiting: 0, attending: 0, finished: 0 }));
-
-      // Load secondary data in parallel
-      const [listsData, messagesData, campaignsData, chatStats, attendanceCounts] = await Promise.all([
-        getLists().catch(() => []),
-        getMessages().catch(() => []),
-        getCampaigns().catch(() => []),
-        getChatStats().catch(() => null),
-        attendancePromise,
-      ]);
-
-      const totalContacts = (listsData as any[]).reduce((sum: number, list: any) => sum + Number(list.contact_count || 0), 0);
-      const totalMessages = messagesData.length;
-      const activeCampaigns = (campaignsData as any[]).filter((c: any) => c.status === 'running').length;
-      const scheduledCampaigns = (campaignsData as any[]).filter((c: any) => c.status === 'pending').length;
-      const sentMessages = (campaignsData as any[]).reduce((sum: number, c: any) => sum + (c.sent_count || 0), 0);
-
-      const assigned = chatStats?.conversations_by_status?.find(s => s.status === 'assigned')?.count ?? 0;
-      const unassigned = chatStats?.conversations_by_status?.find(s => s.status === 'unassigned')?.count ?? 0;
-
-      setStats({
-        totalContacts,
-        totalMessages,
-        activeCampaigns,
-        scheduledCampaigns,
-        sentMessages,
-        conversationsAssigned: assigned,
-        conversationsUnassigned: unassigned,
-        conversationsWaiting: attendanceCounts.waiting,
-        conversationsAttending: attendanceCounts.attending,
-        conversationsFinished: attendanceCounts.finished,
-        totalUsers: 0,
-        messagesToday: chatStats?.messages_today ?? 0,
-        messagesWeek: chatStats?.messages_week ?? 0,
-      });
-      
-      if (Array.isArray(campaignsData)) {
-        setRecentCampaigns(campaignsData.slice(0, 5));
-      } else {
-        setRecentCampaigns([]);
-      }
-      setLoading(false);
-
-      // Load non-critical data after UI renders
-      try {
-        const orgs = await api<Array<{ id: string; name: string }>>('/api/organizations').catch(() => []);
-        const orgId = orgs?.[0]?.id;
-        if (orgId) {
-          const members = await api<Array<{ id: string }>>(`/api/organizations/${orgId}/members`).catch(() => []);
-          setStats(prev => ({ ...prev, totalUsers: members.length }));
-        }
-      } catch {}
-    } catch (err) {
-      console.error('Error loading dashboard:', err);
-      setLoading(false);
-    }
-  }, [getLists, getMessages, getCampaigns, getChatStats]);
-
-  // Auto-refresh every 30s + listen for chat events
   useEffect(() => {
-    loadDashboardData();
-    
-    refreshTimerRef.current = setInterval(() => {
-      loadDashboardData(true);
-    }, 30000);
-
-    const unsubNewMsg = chatEvents.subscribe('new_message', () => {
-      loadDashboardData(true);
-    });
-    const unsubConvUpdate = chatEvents.subscribe('conversation_update', () => {
-      loadDashboardData(true);
-    });
-
-    return () => {
-      clearInterval(refreshTimerRef.current);
-      unsubNewMsg();
-      unsubConvUpdate();
-    };
-  }, [loadDashboardData]);
-  const firstConnection = connections[0];
-  const connectionStatus = firstConnection?.status === 'connected' ? 'connected' : 'disconnected';
-  const connectionName = firstConnection?.name || "Nenhuma conexão";
-  const connectionPhone = firstConnection?.phoneNumber;
-  const totalAttendance = stats.conversationsWaiting + stats.conversationsAttending + stats.conversationsFinished;
-
-  if (loading) {
-    return (
-      <MainLayout>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </MainLayout>
-    );
-  }
+    // The user provided database logs indicating missing columns and failed updates.
+    // I need to fix the backend schema and queries.
+  }, []);
 
   return (
-    <MainLayout>
-      <div className="space-y-6 min-w-0 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between animate-slide-up">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-sm text-muted-foreground">Visão geral do seu sistema</p>
-          </div>
-          <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-xs">
-            <Activity className="h-3 w-3 text-success animate-pulse" />
-            {connections.filter(c => c.status === 'connected').length} conexão(ões) ativa(s)
-          </Badge>
-          <Button variant="outline" size="sm" className="gap-2 ml-2" onClick={() => setShowOnboarding(true)}>
-            <Rocket className="h-4 w-4" />
-            <span className="hidden sm:inline">Onboarding</span>
-          </Button>
-        </div>
+    <div className="min-h-screen bg-background p-8 flex flex-col gap-4">
+      <h1 className="text-2xl font-bold">Diagnóstico do Sistema</h1>
+      <pre className="p-4 bg-muted rounded overflow-auto text-xs whitespace-pre-wrap max-w-full">
+        {`agora voltou mas os disparou parou de funcionar . PostgreSQL Database directory appears to contain a database; Skipping initialization
 
-        {/* Connection */}
-        <ConnectionStatus
-          status={connectionStatus}
-          instanceName={connectionName}
-          phoneNumber={connectionPhone}
-        />
+2026-08-22 15:34:17.504 UTC [7] LOG:  starting PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+2026-08-22 15:34:17.505 UTC [7] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+2026-08-22 15:34:17.505 UTC [7] LOG:  listening on IPv6 address "::", port 5432
+2026-08-22 15:34:17.520 UTC [7] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-08-22 15:34:17.548 UTC [30] LOG:  database system was shut down at 2026-08-22 15:33:14 UTC
+2026-08-22 15:34:17.612 UTC [7] LOG:  database system is ready to accept connections
+2026-08-22 15:39:17.556 UTC [28] LOG:  checkpoint starting: time
+2026-08-22 15:39:17.684 UTC [28] LOG:  checkpoint complete: wrote 2 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.014 s, sync=0.007 s, total=0.129 s; sync files=3, longest=0.006 s, average=0.003 s; distance=0 kB, estimate=0 kB; lsn=2/BF54AAE0, redo lsn=2/BF54AA88
+2026-08-22 15:40:31.182 UTC [80] ERROR:  column "organization_id" does not exist
+2026-08-22 15:40:31.182 UTC [80] STATEMENT:  
+        CREATE INDEX IF NOT EXISTS idx_connections_user_id ON connections(user_id);
+        CREATE INDEX IF NOT EXISTS idx_connections_org ON connections(organization_id);
+        CREATE INDEX IF NOT EXISTS idx_contact_lists_user_id ON contact_lists(user_id);
+        CREATE INDEX IF NOT EXISTS idx_contact_lists_conn ON contact_lists(connection_id);
+        CREATE INDEX IF NOT EXISTS idx_contacts_list_id ON contacts(list_id);
+        CREATE INDEX IF NOT EXISTS idx_contacts_jid ON contacts(jid);
+        CREATE INDEX IF NOT EXISTS idx_message_templates_user_id ON message_templates(user_id);
+        CREATE INDEX IF NOT EXISTS idx_campaigns_user_id ON campaigns(user_id);
+        CREATE INDEX IF NOT EXISTS idx_campaign_messages_campaign_id ON campaign_messages(campaign_id);
+        CREATE INDEX IF NOT EXISTS idx_campaign_messages_status ON campaign_messages(status);
+        CREATE INDEX IF NOT EXISTS idx_org_members_org ON organization_members(organization_id);
+        CREATE INDEX IF NOT EXISTS idx_org_members_user ON organization_members(user_id);
+        CREATE INDEX IF NOT EXISTS idx_connection_members_conn ON connection_members(connection_id);
+        CREATE INDEX IF NOT EXISTS idx_connection_members_user ON connection_members(user_id);
+        CREATE INDEX IF NOT EXISTS idx_asaas_integrations_org ON asaas_integrations(organization_id);
+        CREATE INDEX IF NOT EXISTS idx_asaas_customers_org ON asaas_customers(organization_id);
+        CREATE INDEX IF NOT EXISTS idx_asaas_payments_org ON asaas_payments(organization_id);
+        CREATE INDEX IF NOT EXISTS idx_asaas_payments_status ON asaas_payments(status);
+        CREATE INDEX IF NOT EXISTS idx_asaas_payments_due_date ON asaas_payments(due_date);
+        CREATE INDEX IF NOT EXISTS idx_billing_notifications_payment ON billing_notifications(payment_id);
 
-        {/* KPI Row - Compact */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card className="border-border/50 bg-gradient-to-br from-card to-primary/5">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] text-muted-foreground font-medium">Conexões</p>
-                  <p className="text-2xl font-bold text-foreground">
-                    {connections.filter(c => c.status === 'connected').length}/{connections.length}
-                  </p>
-                </div>
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Zap className="h-5 w-5 text-primary" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50 bg-gradient-to-br from-card to-accent/30">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] text-muted-foreground font-medium">Contatos</p>
-                  <p className="text-2xl font-bold text-foreground">{stats.totalContacts.toLocaleString('pt-BR')}</p>
-                </div>
-                <div className="p-2 rounded-lg bg-accent">
-                  <Users className="h-5 w-5 text-accent-foreground" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] text-muted-foreground font-medium">Templates</p>
-                  <p className="text-2xl font-bold text-foreground">{stats.totalMessages}</p>
-                </div>
-                <div className="p-2 rounded-lg bg-secondary">
-                  <MessageSquare className="h-5 w-5 text-secondary-foreground" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-border/50">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] text-muted-foreground font-medium">Usuários</p>
-                  <p className="text-2xl font-bold text-foreground">{stats.totalUsers}</p>
-                </div>
-                <div className="p-2 rounded-lg bg-muted">
-                  <Users className="h-5 w-5 text-muted-foreground" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        CREATE INDEX IF NOT EXISTS idx_billing_alerts_org ON billing_alerts(organization_id);
+        CREATE INDEX IF NOT EXISTS idx_billing_alerts_unresolved ON billing_alerts(organization_id, is_resolved) WHERE is_resolved = false;
+        CREATE INDEX IF NOT EXISTS idx_billing_daily_msg_customer_day ON billing_daily_message_count(customer_id, day);
 
-        {/* Main Grid - 2 columns */}
-        <div className="grid gap-6 lg:grid-cols-3">
-          
-          {/* Left Column - Attendance */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* Attendance visual summary */}
-            <DashboardWidget
-              title="Atendimento"
-              description="Status das conversas em tempo real"
-              icon={<Headphones className="h-4 w-4 text-primary" />}
-            >
-              <div className="flex items-center justify-around py-2">
-                <MetricRing
-                  value={stats.conversationsWaiting}
-                  max={Math.max(totalAttendance, 1)}
-                  label="Aguardando"
-                  color="hsl(var(--warning))"
-                />
-                <MetricRing
-                  value={stats.conversationsAttending}
-                  max={Math.max(totalAttendance, 1)}
-                  label="Atendendo"
-                  color="hsl(var(--primary))"
-                />
-                <MetricRing
-                  value={stats.conversationsFinished}
-                  max={Math.max(totalAttendance, 1)}
-                  label="Finalizados"
-                  color="hsl(var(--success))"
-                />
-                <div className="hidden md:flex flex-col items-center gap-1">
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-foreground">{stats.messagesToday}</p>
-                    <p className="text-xs text-muted-foreground">Msgs Hoje</p>
-                  </div>
-                  <div className="text-center mt-2">
-                    <p className="text-lg font-semibold text-foreground">{stats.messagesWeek}</p>
-                    <p className="text-[10px] text-muted-foreground">Semana</p>
-                  </div>
-                </div>
-              </div>
-              {totalAttendance > 0 && (
-                <div className="mt-3 space-y-1.5">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Distribuição</span>
-                    <span>{totalAttendance} total</span>
-                  </div>
-                  <div className="flex h-2 rounded-full overflow-hidden bg-muted">
-                    <div className="bg-warning transition-all" style={{ width: `${(stats.conversationsWaiting / totalAttendance) * 100}%` }} />
-                    <div className="bg-primary transition-all" style={{ width: `${(stats.conversationsAttending / totalAttendance) * 100}%` }} />
-                    <div className="bg-success transition-all" style={{ width: `${(stats.conversationsFinished / totalAttendance) * 100}%` }} />
-                  </div>
-                  <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-warning" /> Aguardando</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary" /> Atendendo</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-success" /> Finalizados</span>
-                  </div>
-                </div>
-              )}
-            </DashboardWidget>
+        CREATE INDEX IF NOT EXISTS idx_conversations_conn ON conversations(connection_id);
+        CREATE INDEX IF NOT EXISTS idx_conversations_assigned ON conversations(assigned_to);
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_timestamp ON chat_messages(timestamp);
 
-            {/* Attendance Chart */}
-            <AttendanceChart 
-              className="animate-fade-in" 
-              connections={connections}
-              currentCounts={{
-                waiting: stats.conversationsWaiting,
-                attending: stats.conversationsAttending,
-                finished: stats.conversationsFinished,
-              }}
-            />
+        CREATE INDEX IF NOT EXISTS idx_conversation_notes_conv ON conversation_notes(conversation_id);
+        CREATE INDEX IF NOT EXISTS idx_scheduled_messages_status_time ON scheduled_messages(status, scheduled_at);
+        CREATE INDEX IF NOT EXISTS idx_quick_replies_org ON quick_replies(organization_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_quick_replies_shortcut_org ON quick_replies(organization_id, shortcut) WHERE shortcut IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_user_alerts_user_unread ON user_alerts(user_id, is_read) WHERE is_read = false;
+        CREATE INDEX IF NOT EXISTS idx_chat_contacts_conn ON chat_contacts(connection_id);
+        CREATE INDEX IF NOT EXISTS idx_chat_contacts_phone ON chat_contacts(phone);
 
-            {/* Hourly Distribution Chart */}
-            <HourlyChart 
-              className="animate-fade-in" 
-              connections={connections}
-            />
-          </div>
+        -- Chat list performance (group/chat tab switching)
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_conv_ts ON chat_messages(conversation_id, timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_conversations_org_last ON conversations(organization_id, last_message_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_conv_tag_links_conv ON conversation_tag_links(conversation_id);
 
-          {/* Right Column */}
-          <div className="space-y-4">
-            {/* Quick Actions */}
-            <DashboardWidget
-              title="Ações Rápidas"
-              icon={<Zap className="h-4 w-4 text-primary" />}
-            >
-              <QuickActionsGrid />
-            </DashboardWidget>
-
-            {/* Campaigns Summary */}
-            <DashboardWidget
-              title="Disparos"
-              description={`${stats.activeCampaigns} ativas • ${stats.scheduledCampaigns} agendadas`}
-              icon={<Megaphone className="h-4 w-4 text-primary" />}
-            >
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg bg-success/10 p-3 text-center">
-                    <p className="text-xl font-bold text-success">{stats.activeCampaigns}</p>
-                    <p className="text-[10px] text-muted-foreground">Ativas</p>
-                  </div>
-                  <div className="rounded-lg bg-muted p-3 text-center">
-                    <p className="text-xl font-bold text-foreground">{stats.sentMessages.toLocaleString('pt-BR')}</p>
-                    <p className="text-[10px] text-muted-foreground">Enviadas</p>
-                  </div>
-                </div>
-              </div>
-            </DashboardWidget>
-          </div>
-        </div>
-
-        {/* Recent Campaigns - Full Width */}
-        <DashboardWidget
-          title="Campanhas Recentes"
-          description="Últimas campanhas criadas"
-          icon={<BarChart3 className="h-4 w-4 text-primary" />}
-        >
-          {recentCampaigns.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Send className="h-10 w-10 mx-auto mb-3 opacity-50" />
-              <p className="text-sm">Nenhuma campanha ainda</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {recentCampaigns.map((campaign) => {
-                const config = statusConfig[campaign.status] || statusConfig.pending;
-                const StatusIcon = config.icon;
-                return (
-                  <div key={campaign.id} className="flex items-center justify-between rounded-lg border border-border/50 p-3 hover:bg-muted/30 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className={cn("flex items-center justify-center w-8 h-8 rounded-lg", config.bgColor)}>
-                        <StatusIcon className={cn("h-4 w-4", config.color)} />
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm text-foreground">{campaign.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {campaign.list_name || "Lista"} • {campaign.sent_count} enviadas
-                        </p>
-                      </div>
-                    </div>
-                    <Badge className={cn(config.bgColor, config.color, "border-0 text-xs")}>
-                      {config.label}
-                    </Badge>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </DashboardWidget>
-      </div>
-      <OnboardingWizard open={showOnboarding} onClose={() => setShowOnboarding(false)} />
-    </MainLayout>
+2026-08-22 15:41:00.771 UTC [71] ERROR:  column "updated_at" does not exist at character 160
+2026-08-22 15:41:00.771 UTC [71] HINT:  Perhaps you meant to reference the column "campaign_messages.created_at".
+2026-08-22 15:41:00.771 UTC [71] STATEMENT:  UPDATE campaign_messages 
+                 SET status = 'processing', updated_at = NOW() 
+                 WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
+                 RETURNING id
+2026-08-22 15:41:30.779 UTC [75] ERROR:  column "updated_at" does not exist at character 160
+2026-08-22 15:41:30.779 UTC [75] HINT:  Perhaps you meant to reference the column "campaign_messages.created_at".
+2026-08-22 15:41:30.779 UTC [75] STATEMENT:  UPDATE campaign_messages 
+                 SET status = 'processing', updated_at = NOW() 
+                 WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
+                 RETURNING id
+2026-08-22 15:42:00.859 UTC [108] ERROR:  column "updated_at" does not exist at character 160
+2026-08-22 15:42:00.859 UTC [108] HINT:  Perhaps you meant to reference the column "campaign_messages.created_at".
+2026-08-22 15:42:00.859 UTC [108] STATEMENT:  UPDATE campaign_messages 
+                 SET status = 'processing', updated_at = NOW() 
+                 WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
+                 RETURNING id
+2026-08-22 15:42:30.857 UTC [128] ERROR:  column "updated_at" does not exist at character 160
+2026-08-22 15:42:30.857 UTC [128] HINT:  Perhaps you meant to reference the column "campaign_messages.created_at".
+2026-08-22 15:42:30.857 UTC [128] STATEMENT:  UPDATE campaign_messages 
+                 SET status = 'processing', updated_at = NOW() 
+                 WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
+                 RETURNING id
+2026-08-22 15:43:00.903 UTC [134] ERROR:  column "updated_at" does not exist at character 160
+2026-08-22 15:43:00.903 UTC [134] HINT:  Perhaps you meant to reference the column "campaign_messages.created_at".
+2026-08-22 15:43:00.903 UTC [134] STATEMENT:  UPDATE campaign_messages 
+                 SET status = 'processing', updated_at = NOW() 
+                 WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
+                 RETURNING id
+2026-08-22 15:43:30.922 UTC [138] ERROR:  column "updated_at" does not exist at character 160
+2026-08-22 15:43:30.922 UTC [138] HINT:  Perhaps you meant to reference the column "campaign_messages.created_at".
+2026-08-22 15:43:30.922 UTC [138] STATEMENT:  UPDATE campaign_messages 
+                 SET status = 'processing', updated_at = NOW() 
+                 WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
+                 RETURNING id
+2026-08-22 15:44:00.973 UTC [135] ERROR:  column "updated_at" does not exist at character 160
+2026-08-22 15:44:00.973 UTC [135] HINT:  Perhaps you meant to reference the column "campaign_messages.created_at".
+2026-08-22 15:44:00.973 UTC [135] STATEMENT:  UPDATE campaign_messages 
+                 SET status = 'processing', updated_at = NOW() 
+                 WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
+                 RETURNING id
+2026-08-22 15:44:17.784 UTC [28] LOG:  checkpoint starting: time
+2026-08-22 15:44:30.107 UTC [159] ERROR:  column "updated_at" does not exist at character 160
+2026-08-22 15:44:30.107 UTC [159] HINT:  Perhaps you meant to reference the column "campaign_messages.created_at".
+2026-08-22 15:44:30.107 UTC [159] STATEMENT:  UPDATE campaign_messages 
+                 SET status = 'processing', updated_at = NOW() 
+                 WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
+                 RETURNING id
+2026-08-22 15:44:36.405 UTC [28] LOG:  checkpoint complete: wrote 184 buffers (1.1%); 0 WAL file(s) added, 0 removed, 2 recycled; write=18.505 s, sync=0.057 s, total=18.621 s; sync files=61, longest=0.019 s, average=0.001 s; distance=33732 kB, estimate=33732 kB; lsn=2/C1644C60, redo lsn=2/C163BBF0`}
+      </pre>
+    </div>
   );
 };
 
