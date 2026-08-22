@@ -233,8 +233,8 @@ router.put('/:id', authenticate, async (req, res) => {
         redirect_url = $11,
         trigger_flow_id = $12,
         connection_id = $13,
-        display_mode = $16,
-        transition_type = $18,
+        display_mode = COALESCE($16, 'typeform'),
+        transition_type = COALESCE($18, 'slide-right'),
         updated_at = NOW()
        WHERE id = $14 AND organization_id = $15`,
       [
