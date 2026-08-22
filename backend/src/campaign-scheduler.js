@@ -342,8 +342,8 @@ export async function executeCampaignMessages() {
       // If it has been 'processing' for more than 15 minutes, it's considered stuck and we retry it.
       const lockResult = await query(
         `UPDATE campaign_messages 
-         SET status = 'processing', updated_at = NOW() 
-         WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
+         SET status = 'processing'
+         WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND created_at < NOW() - INTERVAL '15 minutes'))
          RETURNING id`,
         [msg.id]
       );
@@ -365,7 +365,7 @@ export async function executeCampaignMessages() {
       if (alreadySent.rows.length > 0) {
         console.log(`  ⚠ [${msg.phone}] Contact already received a message for this campaign, marking duplicate as cancelled.`);
         await query(
-          `UPDATE campaign_messages SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+          `UPDATE campaign_messages SET status = 'cancelled' WHERE id = $1`,
           [msg.id]
         );
         continue;
@@ -473,7 +473,7 @@ export async function executeCampaignMessages() {
               );
               // Also reset processing messages for this campaign to pending so they can be retried once fixed
               await query(
-                `UPDATE campaign_messages SET status = 'pending', updated_at = NOW() 
+                `UPDATE campaign_messages SET status = 'pending'
                  WHERE campaign_id = $1 AND status = 'processing'`,
                 [msg.campaign_id]
               );
@@ -686,7 +686,7 @@ export async function executeCampaignMessages() {
             );
             // Reset other processing messages
             await query(
-              `UPDATE campaign_messages SET status = 'pending', updated_at = NOW() 
+              `UPDATE campaign_messages SET status = 'pending'
                WHERE campaign_id = $1 AND status = 'processing'`,
               [msg.campaign_id]
             );
@@ -720,7 +720,7 @@ export async function executeCampaignMessages() {
     // Check if any campaigns are now complete
     await query(`
       UPDATE campaigns 
-      SET status = 'completed', updated_at = NOW()
+      SET status = 'completed'
       WHERE status = 'running'
         AND id IN (
           SELECT campaign_id 
