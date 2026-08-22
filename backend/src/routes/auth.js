@@ -310,7 +310,15 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Erro ao fazer login' });
+    const dbCodes = ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNRESET', '28P01', '3D000'];
+    if (dbCodes.includes(error?.code) || /SSL|does not support SSL|timeout expired/i.test(error?.message || '')) {
+      return res.status(503).json({
+        error: 'Banco de dados indisponível',
+        details: `${error.code || 'DB_ERROR'}: ${error.message}`,
+      });
+    }
+    res.status(500).json({ error: 'Erro ao fazer login', details: error?.message });
+
   }
 });
 
