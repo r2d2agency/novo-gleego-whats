@@ -188,7 +188,8 @@ const Index = () => {
         <div className="flex items-center justify-between animate-slide-up">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">OST https://gleego-whats-back.ckilhl.easypanel.host/api/auth/login 500 (Internal Server Error)
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+              {`OST https://gleego-whats-back.ckilhl.easypanel.host/api/auth/login 500 (Internal Server Error)
 vh @ index-UI5R2vHy.js:323
 ko @ index-UI5R2vHy.js:323
 login @ index-UI5R2vHy.js:323
@@ -205,7 +206,8 @@ dg @ index-UI5R2vHy.js:38
 uu @ index-UI5R2vHy.js:38
 kd @ index-UI5R2vHy.js:38
 Vw @ index-UI5R2vHy.js:38
-index-UI5R2vHy.js:323 [api] request failed {url: 'https://gleego-whats-back.ckilhl.easypanel.host/api/auth/login', status: 500, contentType: 'application/json; charset=utf-8', body: {…}, response: {…}}</p>
+index-UI5R2vHy.js:323 [api] request failed {url: 'https://gleego-whats-back.ckilhl.easypanel.host/api/auth/login', status: 500, contentType: 'application/json; charset=utf-8', body: {…}, response: {…}}`}
+            </p>
           </div>
           <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-xs">
             <Activity className="h-3 w-3 text-success animate-pulse" />
