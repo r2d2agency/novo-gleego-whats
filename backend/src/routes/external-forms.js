@@ -242,7 +242,7 @@ router.put('/:id', authenticate, async (req, res) => {
         background_color, text_color, button_text, welcome_message,
         thank_you_message, redirect_url, trigger_flow_id || null,
         connection_id || null, req.params.id, org.organization_id,
-        display_mode || 'typeform',
+        ['chat', 'typeform', 'standard'].includes(display_mode) ? display_mode : 'typeform',
         logo_size,
         transition_type || 'slide-right'
       ]
