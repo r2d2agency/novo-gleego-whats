@@ -70,8 +70,9 @@ const sslDisabled =
   /sslmode=disable/i.test(rawUrl) ||
   String(process.env.PGSSL || '').toLowerCase() === 'disable';
 
+// Use connectionString directly if it's the only way to avoid 127.0.0.1 fallback in some environments
 const dbConfig = {
-  ...parsed,
+  connectionString: rawUrl,
   ssl: sslDisabled ? false : { rejectUnauthorized: false },
   max: Number(process.env.PG_POOL_MAX || 20),
   idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
@@ -80,6 +81,7 @@ const dbConfig = {
   query_timeout: Number(process.env.PG_QUERY_TIMEOUT_MS || 300000),
   keepAlive: true,
 };
+
 
 logInfo('db.config_resolved', {
   host: parsed.host || 'from_connection_string',
