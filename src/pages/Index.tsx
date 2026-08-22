@@ -189,7 +189,73 @@ const Index = () => {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
             <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap max-w-full overflow-hidden bg-muted/30 p-2 rounded mt-2 border border-border/50">
-{`mas e o formato de uma pergunta em tipo slide por vez funciona ?`}
+{`age must call beforeinstallpromptevent.prompt() to show the banner.
+use-external-forms-rCDMctlI.js:1  GET https://whats.gleego.com.br/api/external-forms/public/aabv 404 (Not Found)
+h @ use-external-forms-rCDMctlI.js:1
+O @ PublicFormPage-BTTA3PCk.js:1
+(anonymous) @ PublicFormPage-BTTA3PCk.js:1
+wl @ index-Bx_u_g8y.js:41
+xs @ index-Bx_u_g8y.js:41
+(anonymous) @ index-Bx_u_g8y.js:41
+k @ index-Bx_u_g8y.js:26
+$ @ index-Bx_u_g8y.js:26
+postMessage
+ne @ index-Bx_u_g8y.js:26
+$ @ index-Bx_u_g8y.js:26
+postMessage
+ne @ index-Bx_u_g8y.js:26
+Q @ index-Bx_u_g8y.js:26
+e.unstable_scheduleCallback @ index-Bx_u_g8y.js:26
+Bv @ index-Bx_u_g8y.js:41
+it @ index-Bx_u_g8y.js:41
+$v @ index-Bx_u_g8y.js:41
+ab @ index-Bx_u_g8y.js:41
+Promise.then
+(anonymous) @ index-Bx_u_g8y.js:41
+Hp @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+Pt @ index-Bx_u_g8y.js:41
+Ov @ index-Bx_u_g8y.js:41
+rb @ index-Bx_u_g8y.js:41
+_r @ index-Bx_u_g8y.js:41
+Iv @ index-Bx_u_g8y.js:41
+k @ index-Bx_u_g8y.js:26
+$ @ index-Bx_u_g8y.js:26
+postMessage
+ne @ index-Bx_u_g8y.js:26
+Q @ index-Bx_u_g8y.js:26
+e.unstable_scheduleCallback @ index-Bx_u_g8y.js:26
+Bv @ index-Bx_u_g8y.js:41
+it @ index-Bx_u_g8y.js:41
+Ft @ index-Bx_u_g8y.js:41
+kl @ index-Bx_u_g8y.js:41
+El.render.tf.render @ index-Bx_u_g8y.js:41
+(anonymous) @ index-Bx_u_g8y.js:386
+https://whats.gleego.com.br/f/aabv`}
             </pre>
           </div>
           <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-xs">
