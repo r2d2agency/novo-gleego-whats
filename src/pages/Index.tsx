@@ -188,9 +188,6 @@ const Index = () => {
         <div className="flex items-center justify-between animate-slide-up">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-            <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap max-w-full overflow-hidden bg-muted/30 p-2 rounded mt-2 border border-border/50">
-{`pq vc quer colocar no dashboard ? so o fofmulrio externo que nao funciona`}
-            </pre>
           </div>
           <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-xs">
             <Activity className="h-3 w-3 text-success animate-pulse" />
