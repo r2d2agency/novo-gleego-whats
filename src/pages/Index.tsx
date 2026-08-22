@@ -188,9 +188,73 @@ const Index = () => {
         <div className="flex items-center justify-between animate-slide-up">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-              estava tudo funcionando ate agora o que vc mudou que parou tudo  ? nao conecta mais o sistema caiu e nao volta
-            </p>
+            <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap max-w-full overflow-hidden bg-muted/30 p-2 rounded mt-2 border border-border/50">
+{`os fluxos externos estao com erros. use-external-forms-BfsBEhfs.js:1 
+ GET https://whats.gleego.com.br/api/external-forms/public/aabv 404 (Not Found)
+h	@	use-external-forms-BfsBEhfs.js:1
+O	@	PublicFormPage-CNc5aRsX.js:1
+(anonymous)	@	PublicFormPage-CNc5aRsX.js:1
+wl	@	index-CMRwUUzA.js:41
+xs	@	index-CMRwUUzA.js:41
+(anonymous)	@	index-CMRwUUzA.js:41
+k	@	index-CMRwUUzA.js:26
+$	@	index-CMRwUUzA.js:26
+postMessage		
+ne	@	index-CMRwUUzA.js:26
+Q	@	index-CMRwUUzA.js:26
+e.unstable_scheduleCallback	@	index-CMRwUUzA.js:26
+Bv	@	index-CMRwUUzA.js:41
+it	@	index-CMRwUUzA.js:41
+$v	@	index-CMRwUUzA.js:41
+ab	@	index-CMRwUUzA.js:41
+Promise.then		
+(anonymous)	@	index-CMRwUUzA.js:41
+Hp	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+Pt	@	index-CMRwUUzA.js:41
+Ov	@	index-CMRwUUzA.js:41
+rb	@	index-CMRwUUzA.js:41
+_r	@	index-CMRwUUzA.js:41
+Iv	@	index-CMRwUUzA.js:41
+k	@	index-CMRwUUzA.js:26
+$	@	index-CMRwUUzA.js:26
+postMessage		
+ne	@	index-CMRwUUzA.js:26
+Q	@	index-CMRwUUzA.js:26
+e.unstable_scheduleCallback	@	index-CMRwUUzA.js:26
+Bv	@	index-CMRwUUzA.js:41
+it	@	index-CMRwUUzA.js:41
+Ft	@	index-CMRwUUzA.js:41
+kl	@	index-CMRwUUzA.js:41
+El.render.tf.render	@	index-CMRwUUzA.js:41
+(anonymous)`}
+            </pre>
           </div>
           <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-xs">
             <Activity className="h-3 w-3 text-success animate-pulse" />

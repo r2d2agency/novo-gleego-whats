@@ -370,7 +370,7 @@ router.get('/public/:slug', async (req, res) => {
         o.name as organization_name
        FROM external_forms f
        JOIN organizations o ON o.id = f.organization_id
-       WHERE f.slug = $1 AND f.is_active = true`,
+       WHERE (f.slug = $1 OR f.id::text = $1) AND f.is_active = true`,
       [req.params.slug]
     );
 
@@ -412,7 +412,7 @@ router.post('/public/:slug/submit', async (req, res) => {
       `SELECT f.*, c.instance_id, c.wapi_token
        FROM external_forms f
        LEFT JOIN connections c ON c.id = f.connection_id
-       WHERE f.slug = $1 AND f.is_active = true`,
+       WHERE (f.slug = $1 OR f.id::text = $1) AND f.is_active = true`,
       [req.params.slug]
     );
 

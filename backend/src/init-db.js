@@ -215,12 +215,14 @@ CREATE TABLE IF NOT EXISTS connections (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Add organization_id column if not exists (for existing databases)
-DO $$ BEGIN
-    ALTER TABLE connections ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
-EXCEPTION
-    WHEN others THEN null;
+-- Fix: Check if organization_id exists, if not add it
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='connections' AND column_name='organization_id') THEN
+        ALTER TABLE connections ADD COLUMN organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
+    END IF;
 END $$;
+
 
 
 -- Add webhook_url column if not exists
