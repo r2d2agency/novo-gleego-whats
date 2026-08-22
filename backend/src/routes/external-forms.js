@@ -363,6 +363,15 @@ router.get('/:id/submissions', authenticate, async (req, res) => {
 // Get public form by slug (for rendering)
 router.get('/public/:slug', async (req, res) => {
   try {
+    const requestedSlug = String(req.params.slug || '').trim().toLowerCase();
+    
+    if (!requestedSlug) {
+      logInfo('Public form requested with empty slug', { ip: req.ip });
+      return res.status(404).json({ error: 'Formulário não encontrado' });
+    }
+
+    logInfo('Public form lookup', { slug: requestedSlug });
+
     const formResult = await query(
       `SELECT f.id, f.name, f.slug, f.description, f.logo_url, f.logo_size,
         f.primary_color, f.background_color, f.text_color,
@@ -370,11 +379,21 @@ router.get('/public/:slug', async (req, res) => {
         o.name as organization_name
        FROM external_forms f
        JOIN organizations o ON o.id = f.organization_id
-       WHERE (f.slug = $1 OR f.id::text = $1) AND f.is_active = true`,
-      [req.params.slug]
+       WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1) AND f.is_active = true`,
+      [requestedSlug]
     );
 
     if (!formResult.rows[0]) {
+      // Diagnostic: check if form exists but is inactive or has different slug
+      const diagnostic = await query(
+        `SELECT slug, is_active FROM external_forms WHERE LOWER(slug) = LOWER($1) OR id::text = $1`,
+        [requestedSlug]
+      );
+      logInfo('Public form not found', { 
+        slug: requestedSlug, 
+        matches: diagnostic.rows.length,
+        inactive: diagnostic.rows.some(r => !r.is_active)
+      });
       return res.status(404).json({ error: 'Formulário não encontrado' });
     }
 
@@ -392,10 +411,16 @@ router.get('/public/:slug', async (req, res) => {
       [formResult.rows[0].id]
     );
 
-    res.json({
+    const response = {
       ...formResult.rows[0],
+      // Ensure typeform is the default when display_mode is missing or invalid
+      display_mode: ['chat', 'typeform', 'standard'].includes(formResult.rows[0].display_mode)
+        ? formResult.rows[0].display_mode
+        : 'typeform',
       fields: fieldsResult.rows
-    });
+    };
+
+    res.json(response);
   } catch (error) {
     logError('Error fetching public form:', error);
     res.status(500).json({ error: error.message });
