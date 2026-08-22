@@ -60,7 +60,7 @@ function paramTypes(params) {
 }
 
 const dbConfig = {
-  connectionString: process.env.DATABASE_URL || "postgres://postgres:bc3hptmj5wgnowz62nf0@localhost:5432/whats-bd",
+  connectionString: process.env.DATABASE_URL || "postgres://postgres:bc3hptmj5wgnowz62nf0@127.0.0.1:5432/whats-bd",
   ssl: { rejectUnauthorized: false },
   max: Number(process.env.PG_POOL_MAX || 20),
   idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
