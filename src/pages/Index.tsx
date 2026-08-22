@@ -188,7 +188,24 @@ const Index = () => {
         <div className="flex items-center justify-between animate-slide-up">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-sm text-muted-foreground">O banco de dados (127.0.0.1:5432) está recusando conexões (ECONNREFUSED). O sistema de disparos e outras funcionalidades estão pausados até que a conectividade interna do servidor seja restaurada no Easypanel.</p>
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap">OST https://gleego-whats-back.ckilhl.easypanel.host/api/auth/login 500 (Internal Server Error)
+vh @ index-UI5R2vHy.js:323
+ko @ index-UI5R2vHy.js:323
+login @ index-UI5R2vHy.js:323
+l @ index-UI5R2vHy.js:323
+w @ index-UI5R2vHy.js:386
+_w @ index-UI5R2vHy.js:38
+Ew @ index-UI5R2vHy.js:38
+Cw @ index-UI5R2vHy.js:38
+xp @ index-UI5R2vHy.js:38
+Vg @ index-UI5R2vHy.js:38
+(anonymous) @ index-UI5R2vHy.js:38
+Zd @ index-UI5R2vHy.js:41
+dg @ index-UI5R2vHy.js:38
+uu @ index-UI5R2vHy.js:38
+kd @ index-UI5R2vHy.js:38
+Vw @ index-UI5R2vHy.js:38
+index-UI5R2vHy.js:323 [api] request failed {url: 'https://gleego-whats-back.ckilhl.easypanel.host/api/auth/login', status: 500, contentType: 'application/json; charset=utf-8', body: {…}, response: {…}}</p>
           </div>
           <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-xs">
             <Activity className="h-3 w-3 text-success animate-pulse" />
