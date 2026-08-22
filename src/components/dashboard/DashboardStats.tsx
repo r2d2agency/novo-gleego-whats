@@ -7,27 +7,28 @@ export function DashboardStats() {
       <StatsCard
         title="Contatos Totais"
         value="0"
-        icon={Users}
+        icon={<Users className="h-6 w-6 text-primary" />}
         description="Contatos na base"
       />
       <StatsCard
         title="Mensagens Recebidas"
         value="0"
-        icon={MessageSquare}
+        icon={<MessageSquare className="h-6 w-6 text-primary" />}
         description="Últimos 30 dias"
       />
       <StatsCard
         title="Campanhas Ativas"
         value="0"
-        icon={Send}
+        icon={<Send className="h-6 w-6 text-primary" />}
         description="Em execução no momento"
       />
       <StatsCard
         title="Conversas Concluídas"
         value="0"
-        icon={CheckCircle2}
+        icon={<CheckCircle2 className="h-6 w-6 text-primary" />}
         description="Finalizadas hoje"
       />
     </div>
   );
 }
+
