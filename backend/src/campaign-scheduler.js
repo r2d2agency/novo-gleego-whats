@@ -365,7 +365,7 @@ export async function executeCampaignMessages() {
       if (alreadySent.rows.length > 0) {
         console.log(`  ⚠ [${msg.phone}] Contact already received a message for this campaign, marking duplicate as cancelled.`);
         await query(
-          `UPDATE campaign_messages SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+          `UPDATE campaign_messages SET status = 'cancelled' WHERE id = $1`,
           [msg.id]
         );
         continue;
@@ -720,7 +720,7 @@ export async function executeCampaignMessages() {
     // Check if any campaigns are now complete
     await query(`
       UPDATE campaigns 
-      SET status = 'completed', updated_at = NOW()
+      SET status = 'completed'
       WHERE status = 'running'
         AND id IN (
           SELECT campaign_id 
