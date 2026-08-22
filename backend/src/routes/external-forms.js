@@ -437,9 +437,9 @@ router.post('/public/:slug/submit', async (req, res) => {
     // Get form
     const formResult = await query(
       `SELECT f.*, c.instance_id, c.wapi_token
-       FROM external_forms f
-       LEFT JOIN connections c ON c.id = f.connection_id
-       WHERE (f.slug = $1 OR f.id::text = $1) AND f.is_active = true`,
+        FROM external_forms f
+        LEFT JOIN connections c ON c.id = f.connection_id
+        WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1 OR f.id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END)) AND f.is_active = true`,
       [req.params.slug]
     );
 
