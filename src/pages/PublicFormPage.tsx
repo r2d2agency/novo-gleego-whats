@@ -76,17 +76,15 @@ export default function PublicFormPage() {
     setForm(result);
     setLoading(false);
 
-    const mode = result.display_mode || "typeform";
-    if (mode === "chat") {
-      setTimeout(() => {
-        addBotMessage(result.welcome_message || "Olá! Vamos começar?");
-        setTimeout(() => {
-          askNextQuestion(0, result.fields || []);
-        }, 800);
-      }, 500);
-    } else if (mode === "typeform") {
-      // For Typeform mode, we don't start with chat messages, 
+    // Normalize display mode: default to typeform, ignore invalid/legacy modes
+    const rawMode = (result.display_mode || "typeform").trim().toLowerCase();
+    const mode = ['typeform', 'standard'].includes(rawMode) ? rawMode : 'typeform';
+    
+    if (mode === "typeform") {
+      // For Typeform mode, we don't start with chat messages,
       // the view handles the current question index
+      setMessages([]);
+    } else if (mode === "standard") {
       setMessages([]);
     }
   };
