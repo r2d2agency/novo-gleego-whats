@@ -188,6 +188,71 @@ const Index = () => {
         <div className="flex items-center justify-between animate-slide-up">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+            <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap max-w-full overflow-hidden bg-muted/30 p-2 rounded mt-2 border border-border/50">
+{`ainda nao deu certo continua com erro. Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner.
+use-external-forms-BwlxbDI2.js:1  GET https://whats.gleego.com.br/api/external-forms/public/aabv 404 (Not Found)
+E @ use-external-forms-BwlxbDI2.js:1
+I @ PublicFormPage-C8JPp6Di.js:1
+(anonymous) @ PublicFormPage-C8JPp6Di.js:1
+wl @ index-DPxyeETt.js:41
+xs @ index-DPxyeETt.js:41
+(anonymous) @ index-DPxyeETt.js:41
+k @ index-DPxyeETt.js:26
+$ @ index-DPxyeETt.js:26
+postMessage
+ne @ index-DPxyeETt.js:26
+Q @ index-DPxyeETt.js:26
+e.unstable_scheduleCallback @ index-DPxyeETt.js:26
+Bv @ index-DPxyeETt.js:41
+it @ index-DPxyeETt.js:41
+$v @ index-DPxyeETt.js:41
+ab @ index-DPxyeETt.js:41
+Promise.then
+(anonymous) @ index-DPxyeETt.js:41
+Hp @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+Pt @ index-DPxyeETt.js:41
+Ov @ index-DPxyeETt.js:41
+rb @ index-DPxyeETt.js:41
+_r @ index-DPxyeETt.js:41
+Iv @ index-DPxyeETt.js:41
+k @ index-DPxyeETt.js:26
+$ @ index-DPxyeETt.js:26
+postMessage
+ne @ index-DPxyeETt.js:26
+Q @ index-DPxyeETt.js:26
+e.unstable_scheduleCallback @ index-DPxyeETt.js:26
+Bv @ index-DPxyeETt.js:41
+it @ index-DPxyeETt.js:41
+Ft @ index-DPxyeETt.js:41
+kl @ index-DPxyeETt.js:41
+El.render.tf.render @ index-DPxyeETt.js:41
+(anonymous) @ index-DPxyeETt.js:386`}
+            </pre>
           </div>
           <Badge variant="outline" className="gap-1.5 px-3 py-1.5 text-xs">
             <Activity className="h-3 w-3 text-success animate-pulse" />

@@ -379,19 +379,21 @@ router.get('/public/:slug', async (req, res) => {
         o.name as organization_name
        FROM external_forms f
        JOIN organizations o ON o.id = f.organization_id
-       WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1) AND f.is_active = true`,
+       WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1 OR f.id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END)) AND f.is_active = true`,
       [requestedSlug]
     );
 
     if (!formResult.rows[0]) {
       // Diagnostic: check if form exists but is inactive or has different slug
       const diagnostic = await query(
-        `SELECT slug, is_active FROM external_forms WHERE LOWER(slug) = LOWER($1) OR id::text = $1`,
+        `SELECT id, slug, is_active FROM external_forms WHERE LOWER(slug) = LOWER($1) OR id::text = $1 OR id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END)`,
         [requestedSlug]
       );
+      
       logInfo('Public form not found', { 
         slug: requestedSlug, 
         matches: diagnostic.rows.length,
+        found_ids: diagnostic.rows.map(r => r.id),
         inactive: diagnostic.rows.some(r => !r.is_active)
       });
       return res.status(404).json({ error: 'Formulário não encontrado' });
@@ -435,9 +437,9 @@ router.post('/public/:slug/submit', async (req, res) => {
     // Get form
     const formResult = await query(
       `SELECT f.*, c.instance_id, c.wapi_token
-       FROM external_forms f
-       LEFT JOIN connections c ON c.id = f.connection_id
-       WHERE (f.slug = $1 OR f.id::text = $1) AND f.is_active = true`,
+        FROM external_forms f
+        LEFT JOIN connections c ON c.id = f.connection_id
+        WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1 OR f.id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END)) AND f.is_active = true`,
       [req.params.slug]
     );
 
