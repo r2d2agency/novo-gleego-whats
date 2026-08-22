@@ -203,15 +203,13 @@ router.post('/', async (req, res) => {
       let flowCheck;
       if (org) {
         flowCheck = await query(
-          `SELECT id FROM flows WHERE id = $1 AND organization_id = $2 AND is_active = true`,
-          [flow_id, org.organization_id]
+          `SELECT id FROM flows WHERE id = $1 AND (organization_id = $2 OR user_id = $3) AND is_active = true`,
+          [flow_id, org.organization_id, req.userId]
         );
       } else {
-        // For users without org, check if they have access to the flow
+        // For users without org, check if they own the flow
         flowCheck = await query(
-          `SELECT f.id FROM flows f
-           JOIN organization_members om ON om.organization_id = f.organization_id
-           WHERE f.id = $1 AND om.user_id = $2 AND f.is_active = true`,
+          `SELECT id FROM flows WHERE id = $1 AND user_id = $2 AND is_active = true`,
           [flow_id, req.userId]
         );
       }
