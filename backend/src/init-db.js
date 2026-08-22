@@ -219,8 +219,9 @@ CREATE TABLE IF NOT EXISTS connections (
 DO $$ BEGIN
     ALTER TABLE connections ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
 EXCEPTION
-    WHEN duplicate_column THEN null;
+    WHEN others THEN null;
 END $$;
+
 
 -- Add webhook_url column if not exists
 DO $$ BEGIN
@@ -4264,6 +4265,14 @@ export async function initDatabase() {
     console.log('  ✅ Meta SaaS (OAuth centralizado) schema ready');
   } catch (e) {
     console.error('  ⚠️ Failed meta-saas schema:', e.message);
+  }
+  // Fix missing campaign recovery columns
+  try {
+    await pool.query(`
+      ALTER TABLE campaign_messages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+    `);
+  } catch (e) {
+    console.error('  ⚠️ Failed recovery schema:', e.message);
   }
 
   return true;
