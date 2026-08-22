@@ -219,8 +219,9 @@ CREATE TABLE IF NOT EXISTS connections (
 DO $$ BEGIN
     ALTER TABLE connections ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
 EXCEPTION
-    WHEN duplicate_column THEN null;
+    WHEN others THEN null;
 END $$;
+
 
 -- Add webhook_url column if not exists
 DO $$ BEGIN
