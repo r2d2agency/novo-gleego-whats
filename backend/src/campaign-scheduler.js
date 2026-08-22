@@ -343,7 +343,7 @@ export async function executeCampaignMessages() {
       const lockResult = await query(
         `UPDATE campaign_messages 
          SET status = 'processing', updated_at = NOW() 
-         WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND updated_at < NOW() - INTERVAL '15 minutes'))
+         WHERE id = $1 AND (status = 'pending' OR (status = 'processing' AND COALESCE(updated_at, created_at) < NOW() - INTERVAL '15 minutes'))
          RETURNING id`,
         [msg.id]
       );
