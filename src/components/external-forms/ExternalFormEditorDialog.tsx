@@ -411,10 +411,9 @@ export function ExternalFormEditorDialog({
               <div className="pr-4 space-y-4">
                 <div className="grid gap-2">
                   <Label>Layout do Formulário</Label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {[
                       { value: "typeform", label: "Typeform", desc: "1 pergunta por vez" },
-                      { value: "chat", label: "Chat", desc: "Formato conversacional" },
                       { value: "standard", label: "Padrão", desc: "Formulário clássico" },
                     ].map((opt) => {
                       const active = formData.display_mode === opt.value;
