@@ -1,4 +1,4 @@
-import { Users, MessageSquare, Send, Headphones, BarChart3, Settings, Bot, Briefcase } from "lucide-react";
+import { Users, MessageSquare, Send, Headphones, BarChart3, Settings, Bot, Briefcase, Star } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
