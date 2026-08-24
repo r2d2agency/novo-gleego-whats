@@ -75,6 +75,7 @@ const WorkspaceHome = lazy(() => import("./pages/workspace/WorkspaceHome"));
 const WorkspaceProject = lazy(() => import("./pages/workspace/WorkspaceProject"));
 const ClientPortal = lazy(() => import("./pages/workspace/ClientPortal"));
 const WorkspaceKanban = lazy(() => import("./pages/workspace/WorkspaceKanban"));
+const PesquisasSatisfacao = lazy(() => import("./pages/PesquisasSatisfacao"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
