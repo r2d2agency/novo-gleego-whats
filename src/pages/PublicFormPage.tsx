@@ -650,6 +650,13 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
             <div className="space-y-2">
               {opts.map((opt) => {
                 const selected = values[current.field_key] === opt;
+                // For surveys, check if it's a numeric rating 0-10
+                const isRating = isSurvey && opts.every(o => !isNaN(Number(o)) && Number(o) >= 0 && Number(o) <= 10);
+                
+                if (isRating) {
+                  return null; // Handle separately below
+                }
+
                 return (
                   <button
                     key={opt}
@@ -666,6 +673,33 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
                   </button>
                 );
               })}
+              
+              {isSurvey && opts.every(o => !isNaN(Number(o)) && Number(o) >= 0 && Number(o) <= 10) && (
+                <div className="flex flex-wrap justify-center gap-2 py-4">
+                  {opts.map((opt) => {
+                    const selected = values[current.field_key] === opt;
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => { setVal(opt); setTimeout(goNext, 200); }}
+                        className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-full border-2 transition-all hover:scale-110"
+                        style={{
+                          borderColor: selected ? primaryColor : `${primaryColor}30`,
+                          backgroundColor: selected ? primaryColor : "transparent",
+                          color: selected ? "#fff" : textColor,
+                        }}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                  <div className="w-full flex justify-between px-2 mt-2 text-xs opacity-60">
+                    <span>Pouco Provável</span>
+                    <span>Muito Provável</span>
+                  </div>
+                </div>
+              )}
             </div>
           ) : current?.field_type === "textarea" ? (
             <Textarea
