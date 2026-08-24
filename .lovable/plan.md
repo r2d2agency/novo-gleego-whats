@@ -1,26 +1,36 @@
-# Plano de Correção: Erro 404 em Links de Pesquisa
+# Plan - Fix Survey 404 and Implement Wizard/Gallery
 
-O problema ocorre porque os links de pesquisa gerados pelo novo módulo utilizam o prefixo `/f/`, que é roteado para o endpoint público `/api/external-forms/public/:slug`. No entanto, o backend separa as rotas de pesquisas em `/api/surveys`, mas não implementou o endpoint público correspondente, e a tabela `external_forms` pode não estar retornando as pesquisas corretamente no lookup genérico.
+The user is experiencing a 404 error when accessing public survey links (e.g., `/api/external-forms/public/pesquisa-ud3lb7`). Although some fixes were applied to the allowed `display_mode`, the existing surveys in the database might still be failing due to missing `is_active` status or slug mismatches. Additionally, the user wants a Wizard for creating surveys and a template gallery.
 
-## Alterações Propostas
+## Proposed Changes
 
-### 1. Backend
+### 1. Fix Survey 404 (High Priority)
+- **Database Diagnostic & Repair**: Check for surveys with `display_mode = 'survey'` and ensure they have `is_active = true` and `slug` correctly set.
+- **Backend (`backend/src/routes/external-forms.js`)**: Add more logging to the `public/:slug` route to identify why a specific slug fails (e.g., if the lowercase comparison is failing or if the UUID fallback is interfering).
+- **Backend (`backend/src/routes/surveys.js`)**: Ensure all new surveys are explicitly created with `is_active = true`.
 
-#### `backend/src/routes/external-forms.js`
-- Ajustar a consulta SQL no endpoint público `GET /public/:slug` para garantir que registros com `display_mode = 'survey'` também sejam encontrados.
-- Adicionar suporte a `survey` no array de modos permitidos.
+### 2. Survey Creation Wizard
+- **Frontend (`src/components/surveys/SurveyWizard.tsx`)**: Create a multi-step modal for survey creation.
+    - Step 1: Basic Info (Name, Description, Logo).
+    - Step 2: Questions (Add/Edit fields).
+    - Step 3: Design (Colors, Transition Type).
+- **Frontend (`src/pages/PesquisasSatisfacao.tsx`)**: Connect the "Nova Pesquisa" button to this new Wizard.
 
-#### `backend/src/routes/surveys.js`
-- Adicionar um endpoint público `GET /public/:slug` (ou delegar para o `external-forms.js`) para permitir o carregamento da pesquisa sem autenticação.
-- Corrigir a geração de slugs para garantir unicidade global na tabela `external_forms`.
+### 3. Template Gallery
+- **Frontend (`src/components/surveys/TemplateGallery.tsx`)**: Create a gallery of pre-defined survey templates.
+    - NPS (Net Promoter Score).
+    - CSAT (Customer Satisfaction Score).
+    - Event Feedback.
+- **Action**: Add a "Clonar" (Clone) button to each template that seeds the Wizard with pre-filled data.
 
-### 2. Frontend
+## Verification Plan
 
-#### `src/pages/PesquisasSatisfacao.tsx`
-- Corrigir a geração de links no componente para garantir que o slug gerado seja compatível com a rota pública.
+### Automated Tests
+- Test public route `/api/external-forms/public/:slug` with a survey slug to ensure 200 OK.
 
-## Passos de Verificação
-1. Criar uma nova pesquisa via interface (ou com IA).
-2. Tentar acessar o link gerado (`/f/slug`) no navegador.
-3. Verificar se o erro 404 persiste no console.
-4. Validar se os dados da pesquisa (perguntas NPS) carregam corretamente na `PublicFormPage`.
+### Manual Verification
+1. Create a survey via "Criar com IA".
+2. Click "Copiar Link" and open in a new tab.
+3. Verify the survey loads correctly without 404.
+4. Open the new "Nova Pesquisa" Wizard and complete all steps.
+5. Clone a template from the gallery and verify it populates the editor.
