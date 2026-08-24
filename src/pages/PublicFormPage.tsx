@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Send, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft } from "lucide-react";
+import { Loader2, Send, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, Star } from "lucide-react";
 import { getPublicForm, submitPublicForm, ExternalForm, FormField } from "@/hooks/use-external-forms";
 
 interface ChatMessage {
@@ -201,6 +201,32 @@ export default function PublicFormPage() {
     }, 500);
   };
 
+  const renderRatingStars = (value: string | undefined, onChange: (val: string) => void, internalUserInput: string, internalSetUserInput: (v: string) => void) => {
+    const rating = parseInt(value || "0");
+    return (
+      <div className="flex gap-2 justify-center py-4">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            type="button"
+            onClick={() => onChange(star.toString())}
+            onMouseEnter={() => !value && internalSetUserInput(star.toString())}
+            onMouseLeave={() => !value && internalSetUserInput("")}
+            className="transition-transform hover:scale-110 focus:outline-none"
+          >
+            <Star
+              className={`h-10 w-10 ${
+                star <= (rating || parseInt(internalUserInput) || 0)
+                  ? "fill-yellow-400 text-yellow-400"
+                  : "text-gray-300"
+              }`}
+            />
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   const handleSubmit = async () => {
     if (!form || !slug) return;
     
@@ -332,6 +358,9 @@ export default function PublicFormPage() {
         submitting={submitting}
         thankYouMessage={thankYouMessage}
         onSubmit={doSubmit}
+        renderRatingStars={renderRatingStars}
+        userInput={userInput}
+        setUserInput={setUserInput}
       />
     );
   }
@@ -347,6 +376,9 @@ export default function PublicFormPage() {
         submitting={submitting}
         thankYouMessage={thankYouMessage}
         onSubmit={doSubmit}
+        renderRatingStars={renderRatingStars}
+        userInput={userInput}
+        setUserInput={setUserInput}
       />
     );
   }
@@ -362,6 +394,9 @@ export default function PublicFormPage() {
         submitting={submitting}
         thankYouMessage={thankYouMessage}
         onSubmit={doSubmit}
+        renderRatingStars={renderRatingStars}
+        userInput={userInput}
+        setUserInput={setUserInput}
         isSurvey
       />
     );
@@ -395,6 +430,22 @@ export default function PublicFormPage() {
           </h1>
         )}
       </header>
+
+      {/* Survey Results Floating Action for testing - user mentioned "ver os resultados" */}
+      {/* (In production this would be in the dashboard, but adding here as per user request to "ver os resultados de cada uma") */}
+      {mode === 'survey' && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => window.location.href = '/pesquisas'}
+            className="bg-white/80 backdrop-blur-sm shadow-lg border-orange-200"
+          >
+             <Star className="h-4 w-4 mr-2 text-orange-500" />
+             Painel de Pesquisas
+          </Button>
+        </div>
+      )}
 
       {/* Chat Area */}
       <main className="flex-1 flex flex-col max-w-2xl mx-auto w-full p-4">
@@ -568,10 +619,13 @@ interface ViewProps {
   thankYouMessage: string;
   onSubmit: (data: Record<string, string>) => Promise<any>;
   isSurvey?: boolean;
+  renderRatingStars: (value: string | undefined, onChange: (val: string) => void, userInput: string, setUserInput: (v: string) => void) => React.ReactNode;
+  userInput: string;
+  setUserInput: (v: string) => void;
 }
 
 // ============ TYPEFORM VIEW ============
-function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit, isSurvey }: ViewProps) {
+function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit, isSurvey, renderRatingStars, userInput, setUserInput }: ViewProps) {
   const fields = form.fields || [];
   const [index, setIndex] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -647,7 +701,12 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
             {current?.is_required && <span style={{ color: primaryColor }}> *</span>}
           </h2>
 
-          {current?.field_type === "select" && opts.length > 0 ? (
+          {current?.field_type === "rating_stars" ? (
+            renderRatingStars(values[current.field_key], (val) => {
+              setVal(val);
+              setTimeout(goNext, 300);
+            }, userInput, setUserInput)
+          ) : current?.field_type === "select" && opts.length > 0 ? (
             <div className="space-y-2">
               {opts.map((opt) => {
                 const selected = values[current.field_key] === opt;
@@ -755,7 +814,7 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
 }
 
 // ============ STANDARD FORM VIEW (embed-friendly) ============
-function StandardView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit }: ViewProps) {
+function StandardView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit, renderRatingStars, userInput, setUserInput }: ViewProps) {
   const fields = form.fields || [];
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -806,7 +865,9 @@ function StandardView({ form, primaryColor, bgColor, textColor, submitted, submi
                   {f.field_label}
                   {f.is_required && <span style={{ color: primaryColor }}> *</span>}
                 </label>
-                {f.field_type === "select" && opts.length > 0 ? (
+                {f.field_type === "rating_stars" ? (
+                  renderRatingStars(values[f.field_key], (v) => setValues({ ...values, [f.field_key]: v }), userInput, setUserInput)
+                ) : f.field_type === "select" && opts.length > 0 ? (
                   <Select
                     value={values[f.field_key] || ""}
                     onValueChange={(v) => setValues({ ...values, [f.field_key]: v })}

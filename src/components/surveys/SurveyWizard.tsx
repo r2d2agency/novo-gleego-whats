@@ -154,7 +154,8 @@ export function SurveyWizard({ onClose, onSave, isSubmitting }: SurveyWizardProp
                         >
                           <option value="text">Texto Curto</option>
                           <option value="textarea">Texto Longo</option>
-                          <option value="select">Seleção (0-10)</option>
+                          <option value="rating_stars">Avaliação (Estrelas)</option>
+                          <option value="select">NPS (0-10)</option>
                           <option value="phone">Telefone</option>
                           <option value="email">E-mail</option>
                         </select>
