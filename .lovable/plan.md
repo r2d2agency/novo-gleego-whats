@@ -10,7 +10,7 @@ O erro 404 ocorre porque o backend não está aceitando o `display_mode: 'survey
     - Melhorar o log de diagnóstico para identificar slugs inativos.
 - **Backend (`backend/src/routes/surveys.js`)**:
     - Forçar `is_active = true` na criação de novas pesquisas.
-    - Implementar um script de reparo automático para ativar pesquisas existentes.
+    - Implementar um script de reparo automático para ativar pesquisas existentes no banco de dados local.
 - **Frontend (`src/hooks/use-external-forms.ts`)**:
     - Garantir que a normalização de URL lide corretamente com o ambiente do Easypanel.
 
