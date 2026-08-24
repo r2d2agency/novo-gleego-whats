@@ -570,7 +570,7 @@ interface ViewProps {
 }
 
 // ============ TYPEFORM VIEW ============
-function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit }: ViewProps) {
+function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit, isSurvey }: ViewProps) {
   const fields = form.fields || [];
   const [index, setIndex] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
