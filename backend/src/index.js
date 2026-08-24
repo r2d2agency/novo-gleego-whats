@@ -948,6 +948,7 @@ app.use('/api/connections', connectionsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/contacts', contactsRoutes);
 app.use('/api/campaigns', campaignsRoutes);
+app.use('/api/surveys', surveyRoutes);
 app.use('/api/organizations', organizationsRoutes);
 app.use('/api/asaas', asaasRoutes);
 app.use('/api/admin', adminRoutes);
