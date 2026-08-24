@@ -422,6 +422,22 @@ export default function PublicFormPage() {
         )}
       </header>
 
+      {/* Survey Results Floating Action for testing - user mentioned "ver os resultados" */}
+      {/* (In production this would be in the dashboard, but adding here as per user request to "ver os resultados de cada uma") */}
+      {mode === 'survey' && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => window.location.href = '/pesquisas'}
+            className="bg-white/80 backdrop-blur-sm shadow-lg border-orange-200"
+          >
+             <Star className="h-4 w-4 mr-2 text-orange-500" />
+             Painel de Pesquisas
+          </Button>
+        </div>
+      )}
+
       {/* Chat Area */}
       <main className="flex-1 flex flex-col max-w-2xl mx-auto w-full p-4">
         <div className="flex-1 overflow-y-auto space-y-4 pb-4">
@@ -673,7 +689,12 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
             {current?.is_required && <span style={{ color: primaryColor }}> *</span>}
           </h2>
 
-          {current?.field_type === "select" && opts.length > 0 ? (
+          {current?.field_type === "rating_stars" ? (
+            renderRatingStars(values[current.field_key], (val) => {
+              setVal(val);
+              setTimeout(goNext, 300);
+            })
+          ) : current?.field_type === "select" && opts.length > 0 ? (
             <div className="space-y-2">
               {opts.map((opt) => {
                 const selected = values[current.field_key] === opt;

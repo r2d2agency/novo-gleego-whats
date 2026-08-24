@@ -8,7 +8,9 @@ import { Plus, Search, MessageSquare, Copy, ExternalLink, Sparkles, Star, X } fr
 import { useSurveys } from "@/hooks/use-surveys";
 import { toast } from "sonner";
 import { SurveyWizard } from "@/components/surveys/SurveyWizard";
-import { Dialog, DialogContent, DialogOverlay } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogOverlay, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useSurveyResults } from "@/hooks/use-survey-results";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 
 export default function PesquisasSatisfacao() {
