@@ -379,7 +379,7 @@ router.get('/public/:slug', async (req, res) => {
         o.name as organization_name
        FROM external_forms f
        JOIN organizations o ON o.id = f.organization_id
-       WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1 OR f.id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END)) AND f.is_active = true`,
+       WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1 OR f.id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END)) `,
       [requestedSlug]
     );
 
@@ -439,7 +439,7 @@ router.post('/public/:slug/submit', async (req, res) => {
       `SELECT f.*, c.instance_id, c.wapi_token
         FROM external_forms f
         LEFT JOIN connections c ON c.id = f.connection_id
-        WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1 OR f.id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END)) AND f.is_active = true`,
+        WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1 OR f.id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END)) `,
       [req.params.slug]
     );
 
