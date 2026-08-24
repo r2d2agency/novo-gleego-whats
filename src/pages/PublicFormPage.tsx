@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Send, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft } from "lucide-react";
+import { Loader2, Send, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, Star } from "lucide-react";
 import { getPublicForm, submitPublicForm, ExternalForm, FormField } from "@/hooks/use-external-forms";
 
 interface ChatMessage {
@@ -199,6 +199,32 @@ export default function PublicFormPage() {
     setTimeout(() => {
       askNextQuestion(currentFieldIndex + 1, form.fields || []);
     }, 500);
+  };
+
+  const renderRatingStars = (value: string | undefined, onChange: (val: string) => void) => {
+    const rating = parseInt(value || "0");
+    return (
+      <div className="flex gap-2 justify-center py-4">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            type="button"
+            onClick={() => onChange(star.toString())}
+            onMouseEnter={() => !value && setUserInput(star.toString())}
+            onMouseLeave={() => !value && setUserInput("")}
+            className="transition-transform hover:scale-110 focus:outline-none"
+          >
+            <Star
+              className={`h-10 w-10 ${
+                star <= (rating || parseInt(userInput) || 0)
+                  ? "fill-yellow-400 text-yellow-400"
+                  : "text-gray-300"
+              }`}
+            />
+          </button>
+        ))}
+      </div>
+    );
   };
 
   const handleSubmit = async () => {

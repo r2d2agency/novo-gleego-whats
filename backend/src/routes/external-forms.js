@@ -221,7 +221,7 @@ router.put('/:id', authenticate, async (req, res) => {
       `UPDATE external_forms SET
         name = COALESCE($1, name),
         description = $2,
-        is_active = COALESCE($3, is_active),
+        is_active = COALESCE($3, is_active), name = COALESCE($1, name), description = $2, logo_url = $4, primary_color = COALESCE($5, primary_color),
         logo_url = $4,
         logo_size = COALESCE($17, logo_size),
         primary_color = COALESCE($5, primary_color),

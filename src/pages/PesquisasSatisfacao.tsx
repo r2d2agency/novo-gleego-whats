@@ -149,6 +149,9 @@ export default function PesquisasSatisfacao() {
                       <Copy className="h-3.5 w-3.5" />
                       Copiar Link
                     </Button>
+                    <Button variant="outline" size="sm" className="h-9 w-9 p-0" onClick={() => setIsWizardOpen(true)}>
+                       <Plus className="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="sm" className="h-9 w-9 p-0" onClick={() => window.open(`/f/${survey.slug}`, '_blank')}>
                       <ExternalLink className="h-4 w-4" />
                     </Button>

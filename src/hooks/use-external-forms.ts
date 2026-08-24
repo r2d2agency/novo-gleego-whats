@@ -6,7 +6,7 @@ export interface FormField {
   id?: string;
   field_key: string;
   field_label: string;
-  field_type: "text" | "phone" | "email" | "select" | "textarea";
+  field_type: "text" | "phone" | "email" | "select" | "textarea" | "rating_stars";
   placeholder?: string;
   is_required: boolean;
   validation_regex?: string;
