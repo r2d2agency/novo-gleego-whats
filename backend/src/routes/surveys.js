@@ -58,14 +58,25 @@ router.post('/', authenticate, async (req, res) => {
       fields
     } = req.body;
 
-    const slug = `pesquisa-${Math.random().toString(36).substring(2, 8)}`;
+    // Generate unique slug
+    let slug = `pesquisa-${Math.random().toString(36).substring(2, 8)}`;
+    let counter = 1;
+    while (true) {
+      const existing = await query(
+        `SELECT id FROM external_forms WHERE slug = $1`,
+        [slug]
+      );
+      if (existing.rows.length === 0) break;
+      slug = `pesquisa-${Math.random().toString(36).substring(2, 8)}`;
+      if (counter++ > 10) break; // Safety break
+    }
 
     const formResult = await query(
       `INSERT INTO external_forms (
         organization_id, name, slug, description, logo_url,
         primary_color, background_color, text_color,
-        welcome_message, thank_you_message, display_mode, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'survey', $11)
+        welcome_message, thank_you_message, display_mode, created_by, is_active
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'survey', $11, true)
       RETURNING *`,
       [
         org.organization_id, name, slug, description, logo_url,

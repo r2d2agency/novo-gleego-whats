@@ -144,7 +144,7 @@ router.post('/', authenticate, async (req, res) => {
         welcome_message || 'Olá! Vamos começar?',
         thank_you_message || 'Obrigado pelo contato! Em breve entraremos em contato.',
         redirect_url, trigger_flow_id || null, connection_id || null, req.userId,
-        ['chat', 'typeform', 'standard'].includes(display_mode) ? display_mode : 'typeform',
+        ['chat', 'typeform', 'standard', 'survey'].includes(display_mode) ? display_mode : 'typeform',
         transition_type || 'slide-right'
       ]
     );
@@ -242,7 +242,7 @@ router.put('/:id', authenticate, async (req, res) => {
         background_color, text_color, button_text, welcome_message,
         thank_you_message, redirect_url, trigger_flow_id || null,
         connection_id || null, req.params.id, org.organization_id,
-        ['chat', 'typeform', 'standard'].includes(display_mode) ? display_mode : 'typeform',
+        ['chat', 'typeform', 'standard', 'survey'].includes(display_mode) ? display_mode : 'typeform',
         logo_size,
         transition_type || 'slide-right'
       ]
@@ -416,7 +416,7 @@ router.get('/public/:slug', async (req, res) => {
     const response = {
       ...formResult.rows[0],
       // Ensure typeform is the default when display_mode is missing or invalid
-      display_mode: ['chat', 'typeform', 'standard'].includes(formResult.rows[0].display_mode)
+      display_mode: ['chat', 'typeform', 'standard', 'survey'].includes(formResult.rows[0].display_mode)
         ? formResult.rows[0].display_mode
         : 'typeform',
       fields: fieldsResult.rows

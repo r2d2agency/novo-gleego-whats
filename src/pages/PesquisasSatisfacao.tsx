@@ -56,7 +56,7 @@ export default function PesquisasSatisfacao() {
               <Sparkles className="h-4 w-4 text-orange-500" />
               Criar com IA
             </Button>
-            <Button className="gap-2">
+            <Button className="gap-2" onClick={() => toast.info("Em breve: Wizard de criação passo a passo")}>
               <Plus className="h-4 w-4" />
               Nova Pesquisa
             </Button>
