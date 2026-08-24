@@ -379,7 +379,7 @@ router.get('/public/:slug', async (req, res) => {
         o.name as organization_name
        FROM external_forms f
        JOIN organizations o ON o.id = f.organization_id
-       WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1 OR f.id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END)) `,
+       WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1 OR f.id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END) OR f.slug ILIKE '%' || $1 || '%') `,
       [requestedSlug]
     );
 

@@ -59,17 +59,20 @@ router.post('/', authenticate, async (req, res) => {
     } = req.body;
 
     // Generate unique slug
-    let slug = `pesquisa-${Math.random().toString(36).substring(2, 8)}`;
-    let counter = 1;
-    while (true) {
+    // Generate unique slug
+    const generateSafeSlug = () => `pesquisa-${Math.random().toString(36).substring(2, 9)}`;
+    let slug = generateSafeSlug();
+    let counter = 0;
+    while (counter < 20) {
       const existing = await query(
         `SELECT id FROM external_forms WHERE LOWER(slug) = LOWER($1)`,
         [slug]
       );
       if (existing.rows.length === 0) break;
-      slug = `pesquisa-${Math.random().toString(36).substring(2, 8)}`;
-      if (counter++ > 15) break; // Safety break
+      slug = generateSafeSlug();
+      counter++;
     }
+
 
     const formResult = await query(
       `INSERT INTO external_forms (

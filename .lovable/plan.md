@@ -1,40 +1,28 @@
-# Plano de Correção 404 de Pesquisas e Implementação de Wizard/Galeria
+# Plano de Correção e Melhoria das Pesquisas de Satisfação
 
-O erro 404 nas pesquisas ocorre devido a uma restrição na normalização de formulários públicos que não reconhece o `display_mode: 'survey'` e a possíveis registros com `is_active: false`. Implementaremos correções no backend, um Wizard de criação passo a passo e uma galeria de modelos.
+O usuário relatou que os links públicos das pesquisas continuam retornando erro 404 e solicitou melhorias na criação das pesquisas, incluindo um assistente (wizard), galeria de modelos e controle de transições.
 
-## Alterações Propostas
+## 1. Correção do Erro 404 nos Links Públicos
+O erro 404 ocorre porque o backend não está localizando a pesquisa pelo `slug` fornecido (`pesquisa-ud3lb7`).
+- **Causa Provável:** Inconsistência entre a tabela `external_forms` usada pelo backend e a estrutura de dados atual, ou o formulário não estar marcado como ativo na query de busca pública.
+- **Ação:** Ajustar a rota pública em `backend/src/routes/external-forms.js` para ser mais resiliente na busca e garantir que as tabelas estejam sincronizadas.
 
-### 1. Correção do Erro 404 e Estabilidade (Alta Prioridade)
-- **Backend (`backend/src/routes/external-forms.js`)**:
-    - Garantir que a rota pública `/api/external-forms/public/:slug` aceite e retorne corretamente o modo `survey`.
-    - Adicionar fallback para `survey` na normalização de resposta caso o campo esteja nulo.
-- **Backend (`backend/src/routes/surveys.js`)**:
-    - Garantir que toda nova pesquisa seja criada com `is_active = true`.
-    - Melhorar a geração de slug para evitar colisões e garantir unicidade.
-- **Backend (`backend/src/routes/health.js`)**:
-    - Adicionar script de auto-reparo para ativar todas as pesquisas (`display_mode = 'survey'`) que estiverem inativas.
+## 2. Implementação do Assistente de Criação (Wizard)
+Criar um fluxo passo a passo para facilitar a criação de pesquisas de satisfação.
+- **Local:** Novo componente `src/components/surveys/SurveyWizard.tsx`.
+- **Etapas:** Configurações básicas -> Seleção de modelo/Perguntas -> Identidade visual -> Finalização.
 
-### 2. Wizard de Criação de Pesquisas
-- **Novo Componente (`src/components/surveys/SurveyWizard.tsx`)**:
-    - Modal interativo com 3 etapas:
-        1. **Identidade**: Nome, descrição e upload de logo.
-        2. **Perguntas**: Adição dinâmica de campos (NPS, Multi-seleção, Texto).
-        3. **Finalização**: Mensagem de agradecimento e link de redirecionamento.
-- **Integração (`src/pages/PesquisasSatisfacao.tsx`)**:
-    - Substituir o botão "Nova Pesquisa" pela abertura do Wizard.
+## 3. Galeria de Modelos
+Oferecer modelos pré-definidos (NPS, CSAT, Feedback de Produto, etc.) que podem ser clonados e editados.
+- **Local:** Integrado ao Wizard ou em `src/components/surveys/TemplateGallery.tsx`.
 
-### 3. Galeria de Modelos
-- **Novo Componente (`src/components/surveys/TemplateGallery.tsx`)**:
-    - Lista de cartões com modelos pré-definidos:
-        - **NPS Clássico**: Pergunta 0-10 + motivo.
-        - **CSAT (Satisfação)**: Pergunta de satisfação + melhoria.
-        - **Feedback de Evento**: Conjunto completo de perguntas.
-    - Função "Clonar Modelo" que injeta os dados no Wizard.
+## 4. Melhorias Visuais e de Controle
+- Permitir a escolha do tipo de transição (`slide-left`, `slide-right`, `fade`) na edição da pesquisa.
+- Garantir que a logo respeite o `logo_size` configurado.
+- Adicionar validação de telefone aprimorada (DDD + número).
 
-## Plano de Verificação
+## 5. Ajustes no Backend
+- Atualizar `backend/src/routes/surveys.js` para suportar as novas configurações de transição e logo.
+- Garantir que a criação via IA ou manual gere slugs únicos e consistentes.
 
-### Testes Manuais
-1. Criar uma pesquisa via Wizard e validar se o link `/f/[slug]` carrega corretamente (sem 404).
-2. Verificar se a logo e cores personalizadas são aplicadas no link público.
-3. Clonar um modelo da galeria e editar uma pergunta antes de salvar.
-4. Validar se o contador de visualizações/respostas atualiza no dashboard de pesquisas.
+Deseja que eu prossiga com a implementação destas etapas?
