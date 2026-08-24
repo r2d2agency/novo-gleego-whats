@@ -63,12 +63,12 @@ router.post('/', authenticate, async (req, res) => {
     let counter = 1;
     while (true) {
       const existing = await query(
-        `SELECT id FROM external_forms WHERE slug = $1`,
+        `SELECT id FROM external_forms WHERE LOWER(slug) = LOWER($1)`,
         [slug]
       );
       if (existing.rows.length === 0) break;
       slug = `pesquisa-${Math.random().toString(36).substring(2, 8)}`;
-      if (counter++ > 10) break; // Safety break
+      if (counter++ > 15) break; // Safety break
     }
 
     const formResult = await query(
