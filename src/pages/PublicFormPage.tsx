@@ -350,6 +350,22 @@ export default function PublicFormPage() {
     );
   }
 
+  if (mode === "survey") {
+    return (
+      <TypeformView
+        form={form}
+        primaryColor={primaryColor}
+        bgColor={bgColor}
+        textColor={textColor}
+        submitted={submitted}
+        submitting={submitting}
+        thankYouMessage={thankYouMessage}
+        onSubmit={doSubmit}
+        isSurvey
+      />
+    );
+  }
+
   return (
     <div
       className="min-h-screen flex flex-col"
