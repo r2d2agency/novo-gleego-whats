@@ -97,7 +97,7 @@ export default function PesquisasSatisfacao() {
                     <CardTitle className="text-lg font-semibold truncate pr-2">
                       {survey.name}
                     </CardTitle>
-                    <Badge variant={survey.is_active ? "success" : "secondary"} className="text-[10px]">
+                    <Badge variant={survey.is_active ? "default" : "secondary"} className={survey.is_active ? "bg-success hover:bg-success/80 text-[10px]" : "text-[10px]"}>
                       {survey.is_active ? "Ativa" : "Inativa"}
                     </Badge>
                   </div>
