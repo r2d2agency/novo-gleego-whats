@@ -376,6 +376,9 @@ export default function PublicFormPage() {
         submitting={submitting}
         thankYouMessage={thankYouMessage}
         onSubmit={doSubmit}
+        renderRatingStars={renderRatingStars}
+        userInput={userInput}
+        setUserInput={setUserInput}
       />
     );
   }
@@ -811,7 +814,7 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
 }
 
 // ============ STANDARD FORM VIEW (embed-friendly) ============
-function StandardView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit }: ViewProps) {
+function StandardView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit, renderRatingStars, userInput, setUserInput }: ViewProps) {
   const fields = form.fields || [];
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -862,7 +865,9 @@ function StandardView({ form, primaryColor, bgColor, textColor, submitted, submi
                   {f.field_label}
                   {f.is_required && <span style={{ color: primaryColor }}> *</span>}
                 </label>
-                {f.field_type === "select" && opts.length > 0 ? (
+                {f.field_type === "rating_stars" ? (
+                  renderRatingStars(values[f.field_key], (v) => setValues({ ...values, [f.field_key]: v }), userInput, setUserInput)
+                ) : f.field_type === "select" && opts.length > 0 ? (
                   <Select
                     value={values[f.field_key] || ""}
                     onValueChange={(v) => setValues({ ...values, [f.field_key]: v })}

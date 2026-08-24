@@ -123,7 +123,8 @@ export default function PesquisasSatisfacao() {
             </Card>
           ) : (
             filteredSurveys.map((survey) => (
-              <Card key={survey.id} className="group hover:border-orange-500/50 transition-colors">
+              <SurveyItem key={survey.id} survey={survey} handleCopyLink={handleCopyLink} setIsWizardOpen={setIsWizardOpen} />
+            ))
                 <CardHeader className="pb-3">
                   <div className="flex justify-between items-start">
                     <CardTitle className="text-lg font-semibold truncate pr-2">
