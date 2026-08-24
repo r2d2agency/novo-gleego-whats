@@ -1,36 +1,37 @@
-# Plan - Fix Survey 404 and Implement Wizard/Gallery
+# Plano de Correção 404 de Pesquisas e Implementação de Wizard/Galeria
 
-The user is experiencing a 404 error when accessing public survey links (e.g., `/api/external-forms/public/pesquisa-ud3lb7`). Although some fixes were applied to the allowed `display_mode`, the existing surveys in the database might still be failing due to missing `is_active` status or slug mismatches. Additionally, the user wants a Wizard for creating surveys and a template gallery.
+O erro 404 ocorre porque o backend não está aceitando o `display_mode: 'survey'` na normalização de formulários públicos e os registros existentes no banco podem estar com o campo `is_active` como `false`. Além disso, implementaremos o Wizard de criação e a galeria de modelos.
 
-## Proposed Changes
+## Alterações Propostas
 
-### 1. Fix Survey 404 (High Priority)
-- **Database Diagnostic & Repair**: Check for surveys with `display_mode = 'survey'` and ensure they have `is_active = true` and `slug` correctly set.
-- **Backend (`backend/src/routes/external-forms.js`)**: Add more logging to the `public/:slug` route to identify why a specific slug fails (e.g., if the lowercase comparison is failing or if the UUID fallback is interfering).
-- **Backend (`backend/src/routes/surveys.js`)**: Ensure all new surveys are explicitly created with `is_active = true`.
+### 1. Correção do Erro 404 (Alta Prioridade)
+- **Backend (`backend/src/routes/external-forms.js`)**:
+    - Garantir que a rota pública `/api/external-forms/public/:slug` aceite o modo `survey`.
+    - Melhorar o log de diagnóstico para identificar slugs inativos.
+- **Backend (`backend/src/routes/surveys.js`)**:
+    - Forçar `is_active = true` na criação de novas pesquisas.
+    - Implementar um script de reparo automático para ativar pesquisas existentes.
+- **Frontend (`src/hooks/use-external-forms.ts`)**:
+    - Garantir que a normalização de URL lide corretamente com o ambiente do Easypanel.
 
-### 2. Survey Creation Wizard
-- **Frontend (`src/components/surveys/SurveyWizard.tsx`)**: Create a multi-step modal for survey creation.
-    - Step 1: Basic Info (Name, Description, Logo).
-    - Step 2: Questions (Add/Edit fields).
-    - Step 3: Design (Colors, Transition Type).
-- **Frontend (`src/pages/PesquisasSatisfacao.tsx`)**: Connect the "Nova Pesquisa" button to this new Wizard.
+### 2. Wizard de Criação de Pesquisas
+- **Novo Componente (`src/components/surveys/SurveyWizard.tsx`)**:
+    - Modal multi-etapas para facilitar a configuração.
+    - Passo 1: Informações Básicas e Identidade Visual.
+    - Passo 2: Editor de Perguntas (NPS, Múltipla Escolha, Texto).
+    - Passo 3: Configurações de Fluxo e Redirecionamento.
+- **Integração (`src/pages/PesquisasSatisfacao.tsx`)**:
+    - Substituir o botão de criação simples pelo Wizard.
 
-### 3. Template Gallery
-- **Frontend (`src/components/surveys/TemplateGallery.tsx`)**: Create a gallery of pre-defined survey templates.
-    - NPS (Net Promoter Score).
-    - CSAT (Customer Satisfaction Score).
-    - Event Feedback.
-- **Action**: Add a "Clonar" (Clone) button to each template that seeds the Wizard with pre-filled data.
+### 3. Galeria de Modelos
+- **Novo Componente (`src/components/surveys/TemplateGallery.tsx`)**:
+    - Galeria visual com modelos prontos (NPS, CSAT, Feedback de Evento).
+    - Função de clonagem para preencher o Wizard automaticamente.
 
-## Verification Plan
+## Plano de Verificação
 
-### Automated Tests
-- Test public route `/api/external-forms/public/:slug` with a survey slug to ensure 200 OK.
-
-### Manual Verification
-1. Create a survey via "Criar com IA".
-2. Click "Copiar Link" and open in a new tab.
-3. Verify the survey loads correctly without 404.
-4. Open the new "Nova Pesquisa" Wizard and complete all steps.
-5. Clone a template from the gallery and verify it populates the editor.
+### Testes Manuais
+1. Criar uma pesquisa e verificar se o link gerado abre sem erro 404.
+2. Validar se a ativação automática funcionou para pesquisas antigas.
+3. Testar o fluxo completo do Wizard, do nome à publicação.
+4. Clonar um modelo da galeria e verificar se os campos foram importados corretamente.
