@@ -566,6 +566,7 @@ interface ViewProps {
   submitting: boolean;
   thankYouMessage: string;
   onSubmit: (data: Record<string, string>) => Promise<any>;
+  isSurvey?: boolean;
 }
 
 // ============ TYPEFORM VIEW ============
