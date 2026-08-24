@@ -78,7 +78,7 @@ export default function PublicFormPage() {
 
     // Normalize display mode: default to typeform, ignore invalid/legacy modes
     const rawMode = (result.display_mode || "typeform").trim().toLowerCase();
-    const mode = ['typeform', 'standard'].includes(rawMode) ? rawMode : 'typeform';
+    const mode = ['typeform', 'standard', 'survey'].includes(rawMode) ? rawMode : 'typeform';
     
     if (mode === "typeform") {
       // For Typeform mode, we don't start with chat messages,
