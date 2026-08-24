@@ -14,8 +14,23 @@ export default function PesquisasSatisfacao() {
 
   const handleCopyLink = (slug: string) => {
     const url = `${window.location.origin}/f/${slug}`;
-    navigator.clipboard.writeText(url);
-    toast.success("Link da pesquisa copiado!");
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url);
+      toast.success("Link da pesquisa copiado!");
+    } else {
+      // Fallback for non-secure contexts or mobile
+      const textArea = document.createElement("textarea");
+      textArea.value = url;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        toast.success("Link da pesquisa copiado!");
+      } catch (err) {
+        toast.error("Não foi possível copiar o link.");
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   const handleCreateAI = () => {
