@@ -294,7 +294,7 @@ export default function PublicFormPage() {
   const textColor = form.text_color || "#1f2937";
 
   const rawMode = String(form.display_mode || "typeform").trim().toLowerCase();
-  const mode = ["typeform", "standard"].includes(rawMode) ? rawMode : "typeform";
+  const mode = ["typeform", "standard", "survey"].includes(rawMode) ? rawMode : "typeform";
 
   const doSubmit = async (data: Record<string, string>) => {
     if (!slug) return null;
