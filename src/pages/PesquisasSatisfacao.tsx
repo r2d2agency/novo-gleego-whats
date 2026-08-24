@@ -4,13 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, MessageSquare, Copy, ExternalLink, Sparkles, Star } from "lucide-react";
+import { Plus, Search, MessageSquare, Copy, ExternalLink, Sparkles, Star, X } from "lucide-react";
 import { useSurveys } from "@/hooks/use-surveys";
 import { toast } from "sonner";
+import { SurveyWizard } from "@/components/surveys/SurveyWizard";
+import { Dialog, DialogContent, DialogOverlay } from "@/components/ui/dialog";
+
 
 export default function PesquisasSatisfacao() {
   const [search, setSearch] = useState("");
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
   const { surveys, isLoading, createSurvey } = useSurveys();
+
 
   const handleCopyLink = (slug: string) => {
     const url = `${window.location.origin}/f/${slug}`;
@@ -49,6 +54,15 @@ export default function PesquisasSatisfacao() {
     });
   };
 
+  const handleSaveWizard = (data: any) => {
+    createSurvey.mutate(data, {
+      onSuccess: () => {
+        setIsWizardOpen(false);
+      }
+    });
+  };
+
+
   const filteredSurveys = surveys.filter(s => 
     s.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -71,10 +85,11 @@ export default function PesquisasSatisfacao() {
               <Sparkles className="h-4 w-4 text-orange-500" />
               Criar com IA
             </Button>
-            <Button className="gap-2" onClick={() => toast.info("Em breve: Wizard de criação passo a passo")}>
+            <Button className="gap-2" onClick={() => setIsWizardOpen(true)}>
               <Plus className="h-4 w-4" />
               Nova Pesquisa
             </Button>
+
           </div>
         </div>
 
@@ -143,7 +158,18 @@ export default function PesquisasSatisfacao() {
             ))
           )}
         </div>
+
+        <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
+          <DialogContent className="max-w-3xl p-0 overflow-hidden border-none bg-transparent shadow-none">
+            <SurveyWizard 
+              onClose={() => setIsWizardOpen(false)} 
+              onSave={handleSaveWizard}
+              isSubmitting={createSurvey.isPending}
+            />
+          </DialogContent>
+        </Dialog>
       </div>
     </MainLayout>
+
   );
 }
