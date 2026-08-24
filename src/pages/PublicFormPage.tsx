@@ -201,7 +201,7 @@ export default function PublicFormPage() {
     }, 500);
   };
 
-  const renderRatingStars = (value: string | undefined, onChange: (val: string) => void) => {
+  const renderRatingStars = (value: string | undefined, onChange: (val: string) => void, internalUserInput: string, internalSetUserInput: (v: string) => void) => {
     const rating = parseInt(value || "0");
     return (
       <div className="flex gap-2 justify-center py-4">
@@ -210,13 +210,13 @@ export default function PublicFormPage() {
             key={star}
             type="button"
             onClick={() => onChange(star.toString())}
-            onMouseEnter={() => !value && setUserInput(star.toString())}
-            onMouseLeave={() => !value && setUserInput("")}
+            onMouseEnter={() => !value && internalSetUserInput(star.toString())}
+            onMouseLeave={() => !value && internalSetUserInput("")}
             className="transition-transform hover:scale-110 focus:outline-none"
           >
             <Star
               className={`h-10 w-10 ${
-                star <= (rating || parseInt(userInput) || 0)
+                star <= (rating || parseInt(internalUserInput) || 0)
                   ? "fill-yellow-400 text-yellow-400"
                   : "text-gray-300"
               }`}
@@ -358,6 +358,9 @@ export default function PublicFormPage() {
         submitting={submitting}
         thankYouMessage={thankYouMessage}
         onSubmit={doSubmit}
+        renderRatingStars={renderRatingStars}
+        userInput={userInput}
+        setUserInput={setUserInput}
       />
     );
   }
@@ -388,6 +391,9 @@ export default function PublicFormPage() {
         submitting={submitting}
         thankYouMessage={thankYouMessage}
         onSubmit={doSubmit}
+        renderRatingStars={renderRatingStars}
+        userInput={userInput}
+        setUserInput={setUserInput}
         isSurvey
       />
     );
@@ -610,10 +616,13 @@ interface ViewProps {
   thankYouMessage: string;
   onSubmit: (data: Record<string, string>) => Promise<any>;
   isSurvey?: boolean;
+  renderRatingStars: (value: string | undefined, onChange: (val: string) => void, userInput: string, setUserInput: (v: string) => void) => React.ReactNode;
+  userInput: string;
+  setUserInput: (v: string) => void;
 }
 
 // ============ TYPEFORM VIEW ============
-function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit, isSurvey }: ViewProps) {
+function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit, isSurvey, renderRatingStars, userInput, setUserInput }: ViewProps) {
   const fields = form.fields || [];
   const [index, setIndex] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -693,7 +702,7 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
             renderRatingStars(values[current.field_key], (val) => {
               setVal(val);
               setTimeout(goNext, 300);
-            })
+            }, userInput, setUserInput)
           ) : current?.field_type === "select" && opts.length > 0 ? (
             <div className="space-y-2">
               {opts.map((opt) => {
