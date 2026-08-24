@@ -42,6 +42,7 @@ import {
   BarChart4,
   Video,
   Target as TargetIcon,
+  Star,
 } from "lucide-react";
 import { API_URL, getAuthToken } from "@/lib/api";
 import gleegoLogo from "@/assets/gleego-logo.png";
@@ -122,6 +123,7 @@ const getNavSections = (hasConnections: boolean): NavSection[] => [
       { name: "Campanhas", href: "/campanhas", icon: Send, pageKey: 'campanhas' },
       { name: "Sequências", href: "/sequencias", icon: RefreshCw, pageKey: 'sequencias', adminOnly: true },
       { name: "Fluxos Externos", href: "/fluxos-externos", icon: FileText, pageKey: 'fluxos_externos', adminOnly: true },
+      { name: "Pesquisas", href: "/pesquisas", icon: Star, pageKey: 'pesquisas' },
       { name: "Meta Lead Ads", href: "/meta-lead-ads", icon: Facebook, pageKey: 'meta_lead_ads', adminOnly: true },
       { name: "Webhooks", href: "/lead-webhooks", icon: Webhook, pageKey: 'webhooks', adminOnly: true },
       { name: "API Integração", href: "/api-docs", icon: Code, pageKey: 'api_docs', adminOnly: true },

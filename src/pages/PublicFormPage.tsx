@@ -78,7 +78,7 @@ export default function PublicFormPage() {
 
     // Normalize display mode: default to typeform, ignore invalid/legacy modes
     const rawMode = (result.display_mode || "typeform").trim().toLowerCase();
-    const mode = ['typeform', 'standard'].includes(rawMode) ? rawMode : 'typeform';
+    const mode = ['typeform', 'standard', 'survey'].includes(rawMode) ? rawMode : 'typeform';
     
     if (mode === "typeform") {
       // For Typeform mode, we don't start with chat messages,
@@ -294,7 +294,7 @@ export default function PublicFormPage() {
   const textColor = form.text_color || "#1f2937";
 
   const rawMode = String(form.display_mode || "typeform").trim().toLowerCase();
-  const mode = ["typeform", "standard"].includes(rawMode) ? rawMode : "typeform";
+  const mode = ["typeform", "standard", "survey"].includes(rawMode) ? rawMode : "typeform";
 
   const doSubmit = async (data: Record<string, string>) => {
     if (!slug) return null;
@@ -346,6 +346,22 @@ export default function PublicFormPage() {
         submitting={submitting}
         thankYouMessage={thankYouMessage}
         onSubmit={doSubmit}
+      />
+    );
+  }
+
+  if (mode === "survey") {
+    return (
+      <TypeformView
+        form={form}
+        primaryColor={primaryColor}
+        bgColor={bgColor}
+        textColor={textColor}
+        submitted={submitted}
+        submitting={submitting}
+        thankYouMessage={thankYouMessage}
+        onSubmit={doSubmit}
+        isSurvey
       />
     );
   }
@@ -550,10 +566,11 @@ interface ViewProps {
   submitting: boolean;
   thankYouMessage: string;
   onSubmit: (data: Record<string, string>) => Promise<any>;
+  isSurvey?: boolean;
 }
 
 // ============ TYPEFORM VIEW ============
-function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit }: ViewProps) {
+function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit, isSurvey }: ViewProps) {
   const fields = form.fields || [];
   const [index, setIndex] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -633,6 +650,13 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
             <div className="space-y-2">
               {opts.map((opt) => {
                 const selected = values[current.field_key] === opt;
+                // For surveys, check if it's a numeric rating 0-10
+                const isRating = isSurvey && opts.every(o => !isNaN(Number(o)) && Number(o) >= 0 && Number(o) <= 10);
+                
+                if (isRating) {
+                  return null; // Handle separately below
+                }
+
                 return (
                   <button
                     key={opt}
@@ -649,6 +673,33 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
                   </button>
                 );
               })}
+              
+              {isSurvey && opts.every(o => !isNaN(Number(o)) && Number(o) >= 0 && Number(o) <= 10) && (
+                <div className="flex flex-wrap justify-center gap-2 py-4">
+                  {opts.map((opt) => {
+                    const selected = values[current.field_key] === opt;
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => { setVal(opt); setTimeout(goNext, 200); }}
+                        className="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-full border-2 transition-all hover:scale-110"
+                        style={{
+                          borderColor: selected ? primaryColor : `${primaryColor}30`,
+                          backgroundColor: selected ? primaryColor : "transparent",
+                          color: selected ? "#fff" : textColor,
+                        }}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                  <div className="w-full flex justify-between px-2 mt-2 text-xs opacity-60">
+                    <span>Pouco Provável</span>
+                    <span>Muito Provável</span>
+                  </div>
+                </div>
+              )}
             </div>
           ) : current?.field_type === "textarea" ? (
             <Textarea

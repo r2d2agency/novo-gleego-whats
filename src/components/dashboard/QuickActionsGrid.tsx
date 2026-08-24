@@ -1,4 +1,4 @@
-import { Users, MessageSquare, Send, Headphones, BarChart3, Settings, Bot, Briefcase } from "lucide-react";
+import { Users, MessageSquare, Send, Headphones, BarChart3, Settings, Bot, Briefcase, Star } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -10,6 +10,7 @@ const allActions = [
   { key: "crm", label: "CRM", icon: Briefcase, path: "/crm/negociacoes", color: "text-purple-500", module: "crm" as const },
   { key: "ai", label: "Agentes IA", icon: Bot, path: "/agentes-ia", color: "text-amber-500", module: "ai_agents" as const },
   { key: "reports", label: "Relatórios", icon: BarChart3, path: "/crm/relatorios", color: "text-emerald-500", module: "crm" as const },
+  { key: "surveys", label: "Pesquisas", icon: Star, path: "/pesquisas", color: "text-orange-500", module: null },
   { key: "settings", label: "Configurações", icon: Settings, path: "/configuracoes", color: "text-muted-foreground", module: null },
 ];
 

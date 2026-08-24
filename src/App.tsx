@@ -75,6 +75,7 @@ const WorkspaceHome = lazy(() => import("./pages/workspace/WorkspaceHome"));
 const WorkspaceProject = lazy(() => import("./pages/workspace/WorkspaceProject"));
 const ClientPortal = lazy(() => import("./pages/workspace/ClientPortal"));
 const WorkspaceKanban = lazy(() => import("./pages/workspace/WorkspaceKanban"));
+const PesquisasSatisfacao = lazy(() => import("./pages/PesquisasSatisfacao"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -194,6 +195,7 @@ const App = () => (
             <Route path="/workspace/kanban" element={<ProtectedRoute><WorkspaceKanban /></ProtectedRoute>} />
             <Route path="/workspace/:id" element={<ProtectedRoute><WorkspaceProject /></ProtectedRoute>} />
             <Route path="/p/:token" element={<ClientPortal />} />
+            <Route path="/pesquisas" element={<ProtectedRoute><PesquisasSatisfacao /></ProtectedRoute>} />
             <Route path="/testbarber" element={<ProtectedRoute><MarinaTestChat /></ProtectedRoute>} />
 
             <Route path="/marina-test" element={<ProtectedRoute><MarinaTestChat /></ProtectedRoute>} />
