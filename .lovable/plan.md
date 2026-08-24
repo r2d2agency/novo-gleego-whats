@@ -1,37 +1,40 @@
 # Plano de Correção 404 de Pesquisas e Implementação de Wizard/Galeria
 
-O erro 404 ocorre porque o backend não está aceitando o `display_mode: 'survey'` na normalização de formulários públicos e os registros existentes no banco podem estar com o campo `is_active` como `false`. Além disso, implementaremos o Wizard de criação e a galeria de modelos.
+O erro 404 nas pesquisas ocorre devido a uma restrição na normalização de formulários públicos que não reconhece o `display_mode: 'survey'` e a possíveis registros com `is_active: false`. Implementaremos correções no backend, um Wizard de criação passo a passo e uma galeria de modelos.
 
 ## Alterações Propostas
 
-### 1. Correção do Erro 404 (Alta Prioridade)
+### 1. Correção do Erro 404 e Estabilidade (Alta Prioridade)
 - **Backend (`backend/src/routes/external-forms.js`)**:
-    - Garantir que a rota pública `/api/external-forms/public/:slug` aceite o modo `survey`.
-    - Melhorar o log de diagnóstico para identificar slugs inativos.
+    - Garantir que a rota pública `/api/external-forms/public/:slug` aceite e retorne corretamente o modo `survey`.
+    - Adicionar fallback para `survey` na normalização de resposta caso o campo esteja nulo.
 - **Backend (`backend/src/routes/surveys.js`)**:
-    - Forçar `is_active = true` na criação de novas pesquisas.
-    - Implementar um script de reparo automático para ativar pesquisas existentes no banco de dados local.
-- **Frontend (`src/hooks/use-external-forms.ts`)**:
-    - Garantir que a normalização de URL lide corretamente com o ambiente do Easypanel.
+    - Garantir que toda nova pesquisa seja criada com `is_active = true`.
+    - Melhorar a geração de slug para evitar colisões e garantir unicidade.
+- **Backend (`backend/src/routes/health.js`)**:
+    - Adicionar script de auto-reparo para ativar todas as pesquisas (`display_mode = 'survey'`) que estiverem inativas.
 
 ### 2. Wizard de Criação de Pesquisas
 - **Novo Componente (`src/components/surveys/SurveyWizard.tsx`)**:
-    - Modal multi-etapas para facilitar a configuração.
-    - Passo 1: Informações Básicas e Identidade Visual.
-    - Passo 2: Editor de Perguntas (NPS, Múltipla Escolha, Texto).
-    - Passo 3: Configurações de Fluxo e Redirecionamento.
+    - Modal interativo com 3 etapas:
+        1. **Identidade**: Nome, descrição e upload de logo.
+        2. **Perguntas**: Adição dinâmica de campos (NPS, Multi-seleção, Texto).
+        3. **Finalização**: Mensagem de agradecimento e link de redirecionamento.
 - **Integração (`src/pages/PesquisasSatisfacao.tsx`)**:
-    - Substituir o botão de criação simples pelo Wizard.
+    - Substituir o botão "Nova Pesquisa" pela abertura do Wizard.
 
 ### 3. Galeria de Modelos
 - **Novo Componente (`src/components/surveys/TemplateGallery.tsx`)**:
-    - Galeria visual com modelos prontos (NPS, CSAT, Feedback de Evento).
-    - Função de clonagem para preencher o Wizard automaticamente.
+    - Lista de cartões com modelos pré-definidos:
+        - **NPS Clássico**: Pergunta 0-10 + motivo.
+        - **CSAT (Satisfação)**: Pergunta de satisfação + melhoria.
+        - **Feedback de Evento**: Conjunto completo de perguntas.
+    - Função "Clonar Modelo" que injeta os dados no Wizard.
 
 ## Plano de Verificação
 
 ### Testes Manuais
-1. Criar uma pesquisa e verificar se o link gerado abre sem erro 404.
-2. Validar se a ativação automática funcionou para pesquisas antigas.
-3. Testar o fluxo completo do Wizard, do nome à publicação.
-4. Clonar um modelo da galeria e verificar se os campos foram importados corretamente.
+1. Criar uma pesquisa via Wizard e validar se o link `/f/[slug]` carrega corretamente (sem 404).
+2. Verificar se a logo e cores personalizadas são aplicadas no link público.
+3. Clonar um modelo da galeria e editar uma pergunta antes de salvar.
+4. Validar se o contador de visualizações/respostas atualiza no dashboard de pesquisas.
