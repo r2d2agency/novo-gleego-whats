@@ -195,6 +195,7 @@ const App = () => (
             <Route path="/workspace/kanban" element={<ProtectedRoute><WorkspaceKanban /></ProtectedRoute>} />
             <Route path="/workspace/:id" element={<ProtectedRoute><WorkspaceProject /></ProtectedRoute>} />
             <Route path="/p/:token" element={<ClientPortal />} />
+            <Route path="/pesquisas" element={<ProtectedRoute><PesquisasSatisfacao /></ProtectedRoute>} />
             <Route path="/testbarber" element={<ProtectedRoute><MarinaTestChat /></ProtectedRoute>} />
 
             <Route path="/marina-test" element={<ProtectedRoute><MarinaTestChat /></ProtectedRoute>} />
