@@ -357,43 +357,74 @@ router.get('/meta/:mediaId', async (req, res) => {
     let upstream = null;
     let resolvedMimeType = null;
     let resolvedFilename = null;
+    let lastError = null;
 
-    for (const metaToken of candidateTokens) {
-      const mediaInfoResponse = await fetch(`https://graph.facebook.com/${META_GRAPH_API_VERSION}/${mediaId}`, {
-        headers: { Accept: '*/*', Authorization: `Bearer ${metaToken}` },
-      });
+    // Tenta cada token/phone_number_id. O Graph responde 400 quando a mídia
+    // não pertence ao número daquele token, então seguimos para o próximo.
+    for (const { token: metaToken, phoneNumberId } of candidateTokens) {
+      const infoUrl = new URL(`https://graph.facebook.com/${META_GRAPH_API_VERSION}/${mediaId}`);
+      if (phoneNumberId) infoUrl.searchParams.set('phone_number_id', phoneNumberId);
 
-      if (!mediaInfoResponse.ok) {
-        if (![401, 403, 404].includes(mediaInfoResponse.status)) {
-          return res.status(mediaInfoResponse.status).json({ error: 'Falha ao consultar mídia' });
-        }
+      let mediaInfoResponse;
+      try {
+        mediaInfoResponse = await fetch(infoUrl.toString(), {
+          headers: { Accept: '*/*', Authorization: `Bearer ${metaToken}` },
+          signal: AbortSignal.timeout(15000),
+        });
+      } catch (err) {
+        lastError = { status: 502, message: err?.message || 'Falha de rede ao consultar mídia' };
         continue;
       }
 
-      const mediaInfo = await mediaInfoResponse.json();
-      resolvedMimeType = mediaInfo?.mime_type || null;
+      if (!mediaInfoResponse.ok) {
+        const bodyText = await mediaInfoResponse.text().catch(() => '');
+        lastError = { status: mediaInfoResponse.status, message: bodyText?.slice(0, 300) || 'Falha ao consultar mídia' };
+        console.warn('[meta-media] info failed', { mediaId, status: mediaInfoResponse.status, phoneNumberId });
+        continue;
+      }
+
+      const mediaInfo = await mediaInfoResponse.json().catch(() => null);
+      resolvedMimeType = mediaInfo?.mime_type || resolvedMimeType;
       resolvedFilename = mediaInfo?.id ? `meta_${mediaInfo.id}` : `meta_${mediaId}`;
 
-      if (!mediaInfo?.url) continue;
+      if (!mediaInfo?.url) {
+        lastError = { status: 404, message: 'Mídia sem URL de download' };
+        continue;
+      }
 
-      const downloadResponse = await fetch(mediaInfo.url, {
-        redirect: 'follow',
-        headers: { Accept: '*/*', Authorization: `Bearer ${metaToken}` },
-      });
+      let downloadResponse;
+      try {
+        downloadResponse = await fetch(mediaInfo.url, {
+          redirect: 'follow',
+          headers: {
+            Accept: '*/*',
+            Authorization: `Bearer ${metaToken}`,
+            // A CDN da Meta rejeita requisições sem User-Agent
+            'User-Agent': 'WhatsApp/2.23 CloudAPI-Media-Proxy',
+          },
+          signal: AbortSignal.timeout(30000),
+        });
+      } catch (err) {
+        lastError = { status: 502, message: err?.message || 'Falha de rede ao baixar mídia' };
+        continue;
+      }
 
       if (downloadResponse.ok) {
         upstream = downloadResponse;
         break;
       }
 
-      if (![401, 403, 404].includes(downloadResponse.status)) {
-        upstream = downloadResponse;
-        break;
-      }
+      lastError = { status: downloadResponse.status, message: 'Falha ao baixar mídia da CDN Meta' };
+      console.warn('[meta-media] download failed', { mediaId, status: downloadResponse.status });
     }
 
     if (!upstream?.ok) {
-      return res.status(upstream?.status || 404).json({ error: 'Mídia não encontrada' });
+      const status = lastError?.status && lastError.status >= 400 && lastError.status < 600 ? lastError.status : 404;
+      return res.status(status === 400 ? 404 : status).json({
+        error: 'Mídia Meta indisponível',
+        detail: lastError?.message || 'Nenhum token conseguiu acessar esta mídia',
+      });
+
     }
 
     const contentType = upstream.headers.get('content-type') || resolvedMimeType;
