@@ -28,13 +28,16 @@ function isProxyAllowedHost(hostname) {
 const META_GRAPH_API_VERSION = 'v21.0';
 
 async function getMetaCandidateTokens(req) {
-  const candidateTokens = [];
+  const candidates = [];
   const seenTokens = new Set();
 
-  const addToken = (token) => {
-    if (!token || seenTokens.has(token)) return;
-    seenTokens.add(token);
-    candidateTokens.push(token);
+  const addRow = (row) => {
+    const token = row?.meta_token;
+    if (!token) return;
+    const key = `${token}::${row?.meta_phone_number_id || ''}`;
+    if (seenTokens.has(key)) return;
+    seenTokens.add(key);
+    candidates.push({ token, phoneNumberId: row?.meta_phone_number_id || null });
   };
 
   const authHeader = req.headers.authorization;
@@ -45,12 +48,12 @@ async function getMetaCandidateTokens(req) {
       const decoded = jwtLib.verify(authHeader.replace('Bearer ', ''), process.env.JWT_SECRET);
       if (decoded?.userId) {
         const result = await query(
-          `SELECT DISTINCT c.meta_token FROM connections c
+          `SELECT DISTINCT c.meta_token, c.meta_phone_number_id FROM connections c
            JOIN organization_members om ON om.organization_id = c.organization_id
            WHERE om.user_id = $1 AND c.provider = 'meta' AND c.meta_token IS NOT NULL`,
           [decoded.userId]
         );
-        result.rows.forEach((row) => addToken(row.meta_token));
+        result.rows.forEach(addRow);
       }
     } catch {
       // ignore invalid JWT and continue with global fallback tokens
@@ -58,12 +61,13 @@ async function getMetaCandidateTokens(req) {
   }
 
   const fallbackTokens = await query(
-    `SELECT DISTINCT meta_token FROM connections WHERE provider = 'meta' AND meta_token IS NOT NULL`
+    `SELECT DISTINCT meta_token, meta_phone_number_id FROM connections WHERE provider = 'meta' AND meta_token IS NOT NULL`
   );
-  fallbackTokens.rows.forEach((row) => addToken(row.meta_token));
+  fallbackTokens.rows.forEach(addRow);
 
-  return candidateTokens;
+  return candidates;
 }
+
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(process.cwd(), 'uploads');
