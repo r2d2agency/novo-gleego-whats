@@ -496,11 +496,16 @@ router.get('/proxy', async (req, res) => {
       try {
         const candidateTokens = await getMetaCandidateTokens(req);
 
-        for (const metaToken of candidateTokens) {
+        for (const { token: metaToken } of candidateTokens) {
           const response = await fetch(targetUrl.toString(), {
             redirect: 'follow',
-            headers: { ...upstreamHeaders, Authorization: `Bearer ${metaToken}` },
+            headers: {
+              ...upstreamHeaders,
+              Authorization: `Bearer ${metaToken}`,
+              'User-Agent': 'WhatsApp/2.23 CloudAPI-Media-Proxy',
+            },
           });
+
 
           if (response.ok) {
             upstream = response;
