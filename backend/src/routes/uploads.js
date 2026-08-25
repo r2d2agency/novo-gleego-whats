@@ -28,13 +28,16 @@ function isProxyAllowedHost(hostname) {
 const META_GRAPH_API_VERSION = 'v21.0';
 
 async function getMetaCandidateTokens(req) {
-  const candidateTokens = [];
+  const candidates = [];
   const seenTokens = new Set();
 
-  const addToken = (token) => {
-    if (!token || seenTokens.has(token)) return;
-    seenTokens.add(token);
-    candidateTokens.push(token);
+  const addRow = (row) => {
+    const token = row?.meta_token;
+    if (!token) return;
+    const key = `${token}::${row?.meta_phone_number_id || ''}`;
+    if (seenTokens.has(key)) return;
+    seenTokens.add(key);
+    candidates.push({ token, phoneNumberId: row?.meta_phone_number_id || null });
   };
 
   const authHeader = req.headers.authorization;
@@ -45,12 +48,12 @@ async function getMetaCandidateTokens(req) {
       const decoded = jwtLib.verify(authHeader.replace('Bearer ', ''), process.env.JWT_SECRET);
       if (decoded?.userId) {
         const result = await query(
-          `SELECT DISTINCT c.meta_token FROM connections c
+          `SELECT DISTINCT c.meta_token, c.meta_phone_number_id FROM connections c
            JOIN organization_members om ON om.organization_id = c.organization_id
            WHERE om.user_id = $1 AND c.provider = 'meta' AND c.meta_token IS NOT NULL`,
           [decoded.userId]
         );
-        result.rows.forEach((row) => addToken(row.meta_token));
+        result.rows.forEach(addRow);
       }
     } catch {
       // ignore invalid JWT and continue with global fallback tokens
@@ -58,12 +61,13 @@ async function getMetaCandidateTokens(req) {
   }
 
   const fallbackTokens = await query(
-    `SELECT DISTINCT meta_token FROM connections WHERE provider = 'meta' AND meta_token IS NOT NULL`
+    `SELECT DISTINCT meta_token, meta_phone_number_id FROM connections WHERE provider = 'meta' AND meta_token IS NOT NULL`
   );
-  fallbackTokens.rows.forEach((row) => addToken(row.meta_token));
+  fallbackTokens.rows.forEach(addRow);
 
-  return candidateTokens;
+  return candidates;
 }
+
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(process.cwd(), 'uploads');
@@ -353,43 +357,74 @@ router.get('/meta/:mediaId', async (req, res) => {
     let upstream = null;
     let resolvedMimeType = null;
     let resolvedFilename = null;
+    let lastError = null;
 
-    for (const metaToken of candidateTokens) {
-      const mediaInfoResponse = await fetch(`https://graph.facebook.com/${META_GRAPH_API_VERSION}/${mediaId}`, {
-        headers: { Accept: '*/*', Authorization: `Bearer ${metaToken}` },
-      });
+    // Tenta cada token/phone_number_id. O Graph responde 400 quando a mídia
+    // não pertence ao número daquele token, então seguimos para o próximo.
+    for (const { token: metaToken, phoneNumberId } of candidateTokens) {
+      const infoUrl = new URL(`https://graph.facebook.com/${META_GRAPH_API_VERSION}/${mediaId}`);
+      if (phoneNumberId) infoUrl.searchParams.set('phone_number_id', phoneNumberId);
 
-      if (!mediaInfoResponse.ok) {
-        if (![401, 403, 404].includes(mediaInfoResponse.status)) {
-          return res.status(mediaInfoResponse.status).json({ error: 'Falha ao consultar mídia' });
-        }
+      let mediaInfoResponse;
+      try {
+        mediaInfoResponse = await fetch(infoUrl.toString(), {
+          headers: { Accept: '*/*', Authorization: `Bearer ${metaToken}` },
+          signal: AbortSignal.timeout(15000),
+        });
+      } catch (err) {
+        lastError = { status: 502, message: err?.message || 'Falha de rede ao consultar mídia' };
         continue;
       }
 
-      const mediaInfo = await mediaInfoResponse.json();
-      resolvedMimeType = mediaInfo?.mime_type || null;
+      if (!mediaInfoResponse.ok) {
+        const bodyText = await mediaInfoResponse.text().catch(() => '');
+        lastError = { status: mediaInfoResponse.status, message: bodyText?.slice(0, 300) || 'Falha ao consultar mídia' };
+        console.warn('[meta-media] info failed', { mediaId, status: mediaInfoResponse.status, phoneNumberId });
+        continue;
+      }
+
+      const mediaInfo = await mediaInfoResponse.json().catch(() => null);
+      resolvedMimeType = mediaInfo?.mime_type || resolvedMimeType;
       resolvedFilename = mediaInfo?.id ? `meta_${mediaInfo.id}` : `meta_${mediaId}`;
 
-      if (!mediaInfo?.url) continue;
+      if (!mediaInfo?.url) {
+        lastError = { status: 404, message: 'Mídia sem URL de download' };
+        continue;
+      }
 
-      const downloadResponse = await fetch(mediaInfo.url, {
-        redirect: 'follow',
-        headers: { Accept: '*/*', Authorization: `Bearer ${metaToken}` },
-      });
+      let downloadResponse;
+      try {
+        downloadResponse = await fetch(mediaInfo.url, {
+          redirect: 'follow',
+          headers: {
+            Accept: '*/*',
+            Authorization: `Bearer ${metaToken}`,
+            // A CDN da Meta rejeita requisições sem User-Agent
+            'User-Agent': 'WhatsApp/2.23 CloudAPI-Media-Proxy',
+          },
+          signal: AbortSignal.timeout(30000),
+        });
+      } catch (err) {
+        lastError = { status: 502, message: err?.message || 'Falha de rede ao baixar mídia' };
+        continue;
+      }
 
       if (downloadResponse.ok) {
         upstream = downloadResponse;
         break;
       }
 
-      if (![401, 403, 404].includes(downloadResponse.status)) {
-        upstream = downloadResponse;
-        break;
-      }
+      lastError = { status: downloadResponse.status, message: 'Falha ao baixar mídia da CDN Meta' };
+      console.warn('[meta-media] download failed', { mediaId, status: downloadResponse.status });
     }
 
     if (!upstream?.ok) {
-      return res.status(upstream?.status || 404).json({ error: 'Mídia não encontrada' });
+      const status = lastError?.status && lastError.status >= 400 && lastError.status < 600 ? lastError.status : 404;
+      return res.status(status === 400 ? 404 : status).json({
+        error: 'Mídia Meta indisponível',
+        detail: lastError?.message || 'Nenhum token conseguiu acessar esta mídia',
+      });
+
     }
 
     const contentType = upstream.headers.get('content-type') || resolvedMimeType;
@@ -461,11 +496,16 @@ router.get('/proxy', async (req, res) => {
       try {
         const candidateTokens = await getMetaCandidateTokens(req);
 
-        for (const metaToken of candidateTokens) {
+        for (const { token: metaToken } of candidateTokens) {
           const response = await fetch(targetUrl.toString(), {
             redirect: 'follow',
-            headers: { ...upstreamHeaders, Authorization: `Bearer ${metaToken}` },
+            headers: {
+              ...upstreamHeaders,
+              Authorization: `Bearer ${metaToken}`,
+              'User-Agent': 'WhatsApp/2.23 CloudAPI-Media-Proxy',
+            },
           });
+
 
           if (response.ok) {
             upstream = response;
