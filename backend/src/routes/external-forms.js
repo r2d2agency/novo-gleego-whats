@@ -81,6 +81,102 @@ function normalizeLeadTarget(value) {
   return value === 'crm' ? 'crm' : 'prospect';
 }
 
+function mapExternalFieldTypeToCrm(fieldType) {
+  switch (String(fieldType || '').toLowerCase()) {
+    case 'select':
+      return 'select';
+    case 'rating_stars':
+      return 'number';
+    default:
+      return 'text';
+  }
+}
+
+function normalizeFieldOptions(options) {
+  if (!options) return null;
+  if (Array.isArray(options)) {
+    const cleaned = options.map((option) => String(option || '').trim()).filter(Boolean);
+    return cleaned.length > 0 ? cleaned : null;
+  }
+  if (typeof options === 'string') {
+    try {
+      return normalizeFieldOptions(JSON.parse(options));
+    } catch {
+      const cleaned = options.split('\n').map((option) => option.trim()).filter(Boolean);
+      return cleaned.length > 0 ? cleaned : null;
+    }
+  }
+  return null;
+}
+
+async function ensureCrmDealCustomFieldsForExternalForm(organizationId, fields = []) {
+  const validFields = (Array.isArray(fields) ? fields : [])
+    .filter((field) => field?.field_key && field?.field_label)
+    .map((field, index) => ({
+      field_name: String(field.field_key),
+      field_label: String(field.field_label),
+      field_type: mapExternalFieldTypeToCrm(field.field_type),
+      options: normalizeFieldOptions(field.options),
+      position: Number.isFinite(Number(field.position)) ? Number(field.position) : index,
+      is_required: !!field.is_required,
+    }));
+
+  if (validFields.length === 0) return;
+
+  const existingResult = await query(
+    `SELECT id, field_name
+     FROM crm_custom_fields
+     WHERE organization_id = $1
+       AND entity_type = 'deal'
+       AND field_name = ANY($2)`,
+    [organizationId, validFields.map((field) => field.field_name)]
+  );
+
+  const existingByName = new Map(existingResult.rows.map((row) => [row.field_name, row.id]));
+
+  for (const field of validFields) {
+    const existingId = existingByName.get(field.field_name);
+
+    if (existingId) {
+      await query(
+        `UPDATE crm_custom_fields
+         SET field_label = $1,
+             field_type = $2,
+             options = $3,
+             is_required = $4,
+             is_active = true,
+             position = $5,
+             updated_at = NOW()
+         WHERE id = $6`,
+        [
+          field.field_label,
+          field.field_type,
+          field.options ? JSON.stringify(field.options) : null,
+          field.is_required,
+          field.position,
+          existingId,
+        ]
+      );
+      continue;
+    }
+
+    await query(
+      `INSERT INTO crm_custom_fields (
+        organization_id, entity_type, field_name, field_label, field_type, options, is_required, is_active, position
+      ) VALUES ($1, 'deal', $2, $3, $4, $5, $6, true, $7)`,
+      [
+        organizationId,
+        field.field_name,
+        field.field_label,
+        field.field_type,
+        field.options ? JSON.stringify(field.options) : null,
+        field.is_required,
+        field.position,
+      ]
+    );
+  }
+}
+
 function normalizeUuidArray(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -886,7 +982,7 @@ router.post('/public/:slug/submit', async (req, res) => {
 
     const form = formResult.rows[0];
     const fieldsResult = await query(
-      `SELECT field_key, field_label, field_type, is_required
+      `SELECT field_key, field_label, field_type, is_required, options, position
        FROM external_form_fields
        WHERE form_id = $1
        ORDER BY position`,
@@ -955,6 +1051,8 @@ router.post('/public/:slug/submit', async (req, res) => {
     if (shouldCreateCrmDeal || phone) {
       try {
         if (shouldCreateCrmDeal) {
+          await ensureCrmDealCustomFieldsForExternalForm(form.organization_id, formFields);
+
           const stageResult = await query(
             `SELECT id
              FROM crm_stages
