@@ -442,14 +442,18 @@ export default function AgentesIACliente() {
       const history = testMessages.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: m.content }));
       const personalization = buildPersonalizationPrompt();
       const fullPromptAdditions = [promptAdditions, personalization].filter(Boolean).join('\n\n');
+      const normalizedApiKey = clientAiApiKey.trim();
+      const keepingMaskedApiKey = normalizedApiKey === '***' || normalizedApiKey.startsWith('••');
       
       const result = await testAgent(agentData.id, {
         message: userMsg.content,
         history,
-        client_ai_api_key: clientAiApiKey || undefined,
+        client_ai_api_key: keepingMaskedApiKey ? undefined : (normalizedApiKey || undefined),
         custom_name: customName || undefined,
         prompt_additions: fullPromptAdditions || undefined,
         selected_model: selectedModel || undefined,
+        activation_id: selectedActivation?.id || undefined,
+        connection_id: selectedConnection || selectedActivation?.connection_id || undefined,
       });
       setTestMessages(prev => [...prev, {
         id: `a-${Date.now()}`,

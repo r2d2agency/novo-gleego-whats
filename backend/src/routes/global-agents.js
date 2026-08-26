@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { authenticate } from '../middleware/auth.js';
 import { callAI, callAIWithTools } from '../lib/ai-caller.js';
+import { cleanAIKey, inferProviderFromKey, normalizeProvider } from '../lib/ai-config.js';
 import { searchKnowledge } from '../lib/knowledge-processor.js';
 import { logInfo, logError } from '../logger.js';
 
@@ -786,16 +787,71 @@ router.post('/test/:id', async (req, res) => {
     const agent = agentResult.rows[0];
     if (!agent) return res.status(404).json({ error: 'Agente não encontrado' });
 
-    const { message, history, client_ai_api_key, custom_name, prompt_additions, selected_model } = req.body;
+    const {
+      message,
+      history,
+      client_ai_api_key,
+      custom_name,
+      prompt_additions,
+      selected_model,
+      activation_id,
+      connection_id,
+    } = req.body;
 
-    // Resolve API key: client provided > agent key > org key
-    let apiKey = client_ai_api_key || agent.ai_api_key;
-    let provider = agent.ai_provider;
+    let activation = null;
+    if (activation_id || connection_id) {
+      const activationResult = await query(
+        `SELECT id, connection_id, client_ai_api_key
+           FROM global_agent_activations
+          WHERE global_agent_id = $1
+            AND organization_id = $2
+            AND ($3::uuid IS NULL OR id = $3::uuid)
+            AND ($4::uuid IS NULL OR connection_id = $4::uuid)
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+          LIMIT 1`,
+        [req.params.id, org.organization_id, activation_id || null, connection_id || null]
+      );
+      activation = activationResult.rows[0] || null;
+    }
+
+    if (!activation) {
+      const activationResult = await query(
+        `SELECT id, connection_id, client_ai_api_key
+           FROM global_agent_activations
+          WHERE global_agent_id = $1
+            AND organization_id = $2
+          ORDER BY
+            CASE WHEN NULLIF(BTRIM(client_ai_api_key), '') IS NOT NULL THEN 0 ELSE 1 END,
+            updated_at DESC NULLS LAST,
+            created_at DESC NULLS LAST
+          LIMIT 1`,
+        [req.params.id, org.organization_id]
+      );
+      activation = activationResult.rows[0] || null;
+    }
+
+    const providedApiKey = cleanAIKey(client_ai_api_key);
+    const activationApiKey = cleanAIKey(activation?.client_ai_api_key);
+    const agentApiKey = cleanAIKey(agent.ai_api_key);
+
+    // Resolve API key: freshly provided > saved tenant activation key > agent key > org key
+    let apiKey = providedApiKey || activationApiKey || agentApiKey;
+    let provider =
+      normalizeProvider(agent.ai_provider) ||
+      inferProviderFromKey(providedApiKey) ||
+      inferProviderFromKey(activationApiKey) ||
+      inferProviderFromKey(agentApiKey);
+
     if (!apiKey) {
       const configResult = await query(`SELECT ai_api_key, ai_provider FROM organizations WHERE id = $1`, [org.organization_id]);
-      if (configResult.rows[0]?.ai_api_key) {
-        apiKey = configResult.rows[0].ai_api_key;
-        if (!provider || provider === 'none') provider = configResult.rows[0].ai_provider;
+      const orgApiKey = cleanAIKey(configResult.rows[0]?.ai_api_key);
+      if (orgApiKey) {
+        apiKey = orgApiKey;
+        if (!provider || provider === 'none') {
+          provider =
+            normalizeProvider(configResult.rows[0]?.ai_provider) ||
+            inferProviderFromKey(orgApiKey);
+        }
       }
     }
 
@@ -808,9 +864,15 @@ router.post('/test/:id', async (req, res) => {
     if (selected_model && selected_model !== '' && !selected_model.startsWith('_label_')) {
       modelToUse = selected_model;
       // Detect provider from model name
-      if (selected_model.startsWith('gpt-')) provider = 'openai';
+      if (selected_model.includes('/')) provider = 'openrouter';
+      else if (selected_model.startsWith('gpt-')) provider = 'openai';
       else if (selected_model.startsWith('gemini-')) provider = 'gemini';
     }
+
+    provider =
+      normalizeProvider(provider) ||
+      inferProviderFromKey(apiKey) ||
+      'openai';
 
     // Build system prompt
     let systemPrompt = agent.system_prompt || 'Você é um assistente virtual profissional.';
@@ -906,7 +968,14 @@ router.post('/test/:id', async (req, res) => {
     res.json({ response: result.content, tokens: result.tokensUsed, model: result.model });
   } catch (err) {
     console.error('Error client testing global agent:', err);
-    res.status(500).json({ error: err.message || 'Erro ao testar agente' });
+    const message = String(err?.message || 'Erro ao testar agente');
+    if (/api error 401|api error 403|invalid api key|api key/i.test(message)) {
+      return res.status(400).json({ error: message });
+    }
+    if (/api error 404|model.*not found|modelo/i.test(message)) {
+      return res.status(400).json({ error: message });
+    }
+    res.status(500).json({ error: message });
   }
 });
 
