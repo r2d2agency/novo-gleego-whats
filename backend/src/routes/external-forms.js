@@ -2,6 +2,8 @@ import express from 'express';
 import { query } from '../db.js';
 import { authenticate } from '../middleware/auth.js';
 import { logInfo, logError } from '../logger.js';
+import { onDealStageChanged } from '../crm-automation-scheduler.js';
+import { emitLeadEvent } from '../lib/event-bus.js';
 import { executeFlow } from '../lib/flow-executor.js';
 
 const router = express.Router();
@@ -949,9 +951,10 @@ router.post('/public/:slug/submit', async (req, res) => {
     }
 
     // Route lead to prospect or directly into CRM
-    if (phone) {
+    const shouldCreateCrmDeal = normalizeLeadTarget(form.lead_target) === 'crm' && !!form.crm_funnel_id;
+    if (shouldCreateCrmDeal || phone) {
       try {
-        if (normalizeLeadTarget(form.lead_target) === 'crm' && form.crm_funnel_id) {
+        if (shouldCreateCrmDeal) {
           const stageResult = await query(
             `SELECT id
              FROM crm_stages
@@ -968,7 +971,9 @@ router.post('/public/:slug/submit', async (req, res) => {
           const createdByUserId = form.created_by || await getFirstOrgUserId(form.organization_id);
           const ownerId = assignedUserId || createdByUserId;
           const companyId = await ensureDefaultCompanyId(form.organization_id, createdByUserId);
-          const contactId = await findOrCreateCrmContact(form.organization_id, createdByUserId, name, phone, city, state);
+          const contactId = phone
+            ? await findOrCreateCrmContact(form.organization_id, createdByUserId, name, phone, city, state)
+            : null;
 
           const maxPosResult = await query(
             `SELECT COALESCE(MAX(position), -1) + 1 AS new_position
@@ -998,12 +1003,34 @@ router.post('/public/:slug/submit', async (req, res) => {
             ]
           );
 
-          await query(
-            `INSERT INTO crm_deal_contacts (deal_id, contact_id, is_primary)
-             VALUES ($1, $2, true)
-             ON CONFLICT (deal_id, contact_id) DO NOTHING`,
-            [dealResult.rows[0].id, contactId]
-          );
+          if (contactId) {
+            await query(
+              `INSERT INTO crm_deal_contacts (deal_id, contact_id, is_primary)
+               VALUES ($1, $2, true)
+               ON CONFLICT (deal_id, contact_id) DO NOTHING`,
+              [dealResult.rows[0].id, contactId]
+            );
+          }
+
+          emitLeadEvent({
+            organizationId: form.organization_id,
+            dealId: dealResult.rows[0].id,
+            contactPhone: phone || null,
+            eventType: 'lead_created',
+            payload: {
+              source: 'external_form',
+              form_id: form.id,
+              form_name: form.name,
+              funnel_id: form.crm_funnel_id,
+              stage_id: stageResult.rows[0].id,
+            },
+            source: 'external_form',
+          }).catch((err) => logError('emit external form lead_created failed', err));
+
+          setTimeout(() => {
+            onDealStageChanged(dealResult.rows[0].id, stageResult.rows[0].id, form.organization_id)
+              .catch((err) => logError('initial onDealStageChanged from external form failed', err));
+          }, 1500);
         } else {
           const prospectResult = await query(
             `INSERT INTO crm_prospects (
@@ -1032,7 +1059,8 @@ router.post('/public/:slug/submit', async (req, res) => {
           }
         }
 
-        try {
+        if (phone) {
+          try {
           const chatConnection = await resolveDefaultConnectionForUser(
             form.organization_id,
             assignedUserId,
@@ -1049,8 +1077,9 @@ router.post('/public/:slug/submit', async (req, res) => {
               [chatConnection.id, phone, name]
             );
           }
-        } catch (chatContactError) {
-          logError('Error creating chat contact from external form:', chatContactError);
+          } catch (chatContactError) {
+            logError('Error creating chat contact from external form:', chatContactError);
+          }
         }
 
         // Create notification alert for the form creator
