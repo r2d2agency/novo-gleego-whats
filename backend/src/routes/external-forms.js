@@ -4,6 +4,32 @@ import { authenticate } from '../middleware/auth.js';
 import { logInfo, logError } from '../logger.js';
 
 const router = express.Router();
+const VALID_DISPLAY_MODES = ['chat', 'typeform', 'standard', 'survey'];
+const VALID_FIELD_TYPES = ['text', 'phone', 'whatsapp', 'email', 'select', 'textarea', 'rating_stars'];
+
+// Self-healing for newer external form features on partial deployments.
+(async () => {
+  const ddl = [
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS button_text_color VARCHAR(20) DEFAULT '#ffffff'`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS field_background_color VARCHAR(20) DEFAULT '#ffffff'`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS field_border_color VARCHAR(20) DEFAULT '#d1d5db'`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS field_text_color VARCHAR(20) DEFAULT '#111827'`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS label_color VARCHAR(20) DEFAULT '#374151'`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS lead_target VARCHAR(20) DEFAULT 'prospect'`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS crm_funnel_id UUID REFERENCES crm_funnels(id) ON DELETE SET NULL`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS use_round_robin BOOLEAN DEFAULT false`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS round_robin_user_ids UUID[] DEFAULT '{}'::uuid[]`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS round_robin_last_index INTEGER DEFAULT -1`,
+  ];
+
+  for (const statement of ddl) {
+    try {
+      await query(statement);
+    } catch (error) {
+      logError('external_forms.self_heal_failed', error, { statement });
+    }
+  }
+})();
 
 // Helper: Get user's organization
 async function getUserOrg(userId) {
@@ -38,6 +64,156 @@ async function generateSlug(orgId, baseName) {
   }
   
   return slug;
+}
+
+function normalizeFieldType(value) {
+  return VALID_FIELD_TYPES.includes(value) ? value : 'text';
+}
+
+function normalizeDisplayMode(value) {
+  return VALID_DISPLAY_MODES.includes(value) ? value : 'typeform';
+}
+
+function normalizeLeadTarget(value) {
+  return value === 'crm' ? 'crm' : 'prospect';
+}
+
+function normalizeUuidArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item || '').trim())
+    .filter((item) => /^[0-9a-fA-F-]{36}$/.test(item));
+}
+
+function isValidBrazilianPhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return false;
+  const national = digits.startsWith('55') && digits.length >= 12 ? digits.slice(2) : digits;
+  if (national.length < 10 || national.length > 11) return false;
+  const ddd = national.slice(0, 2);
+  return /^[1-9][1-9]$/.test(ddd);
+}
+
+function isValidBrazilianWhatsApp(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return false;
+  const national = digits.startsWith('55') && digits.length >= 12 ? digits.slice(2) : digits;
+  if (national.length !== 11) return false;
+  const ddd = national.slice(0, 2);
+  const ninthDigit = national.slice(2, 3);
+  return /^[1-9][1-9]$/.test(ddd) && ninthDigit === '9';
+}
+
+async function getFirstOrgUserId(organizationId) {
+  const result = await query(
+    `SELECT user_id
+     FROM organization_members
+     WHERE organization_id = $1
+     ORDER BY created_at ASC NULLS LAST
+     LIMIT 1`,
+    [organizationId]
+  );
+  return result.rows[0]?.user_id || null;
+}
+
+async function ensureDefaultCompanyId(organizationId, createdByUserId) {
+  const existing = await query(
+    `SELECT id
+     FROM crm_companies
+     WHERE organization_id = $1 AND name = 'Sem empresa'
+     ORDER BY created_at ASC
+     LIMIT 1`,
+    [organizationId]
+  );
+
+  if (existing.rows[0]?.id) return existing.rows[0].id;
+
+  const fallbackUserId = createdByUserId || await getFirstOrgUserId(organizationId);
+  const created = await query(
+    `INSERT INTO crm_companies (organization_id, name, created_by)
+     VALUES ($1, 'Sem empresa', $2)
+     RETURNING id`,
+    [organizationId, fallbackUserId]
+  );
+  return created.rows[0].id;
+}
+
+async function findOrCreateCrmContact(organizationId, createdByUserId, name, phone, city, state) {
+  const existingContact = await query(
+    `SELECT c.id
+     FROM contacts c
+     JOIN contact_lists cl ON cl.id = c.list_id
+     JOIN organization_members om ON om.user_id = cl.user_id AND om.organization_id = $2
+     WHERE c.phone = $1
+     LIMIT 1`,
+    [phone, organizationId]
+  );
+
+  if (existingContact.rows.length > 0) {
+    return existingContact.rows[0].id;
+  }
+
+  const listOwnerId = createdByUserId || await getFirstOrgUserId(organizationId);
+  let crmListResult = await query(
+    `SELECT cl.id
+     FROM contact_lists cl
+     JOIN organization_members om ON om.user_id = cl.user_id AND om.organization_id = $1
+     WHERE cl.name = 'CRM Contacts'
+     LIMIT 1`,
+    [organizationId]
+  );
+
+  if (crmListResult.rows.length === 0) {
+    crmListResult = await query(
+      `INSERT INTO contact_lists (user_id, name)
+       VALUES ($1, 'CRM Contacts')
+       RETURNING id`,
+      [listOwnerId]
+    );
+  }
+
+  const newContact = await query(
+    `INSERT INTO contacts (list_id, name, phone, city, state)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id`,
+    [crmListResult.rows[0].id, name || phone, phone, city || null, state || null]
+  );
+
+  return newContact.rows[0].id;
+}
+
+async function resolveRoundRobinOwnerId(form) {
+  const userIds = normalizeUuidArray(form.round_robin_user_ids);
+  if (!form.use_round_robin || userIds.length === 0) return form.created_by || null;
+
+  const availableUsers = await query(
+    `SELECT u.id
+     FROM users u
+     JOIN organization_members om ON om.user_id = u.id
+     WHERE om.organization_id = $1
+       AND u.id = ANY($2::uuid[])
+       AND COALESCE(om.is_active, true) = true
+     ORDER BY array_position($2::uuid[], u.id)`,
+    [form.organization_id, userIds]
+  );
+
+  if (availableUsers.rows.length === 0) {
+    return form.created_by || null;
+  }
+
+  const lastIndex = Number.isInteger(form.round_robin_last_index) ? form.round_robin_last_index : -1;
+  const nextIndex = (lastIndex + 1) % availableUsers.rows.length;
+  const selectedUserId = availableUsers.rows[nextIndex].id;
+
+  await query(
+    `UPDATE external_forms
+     SET round_robin_last_index = $1,
+         updated_at = NOW()
+     WHERE id = $2`,
+    [nextIndex, form.id]
+  );
+
+  return selectedUserId;
 }
 
 // ============================================
@@ -112,11 +288,20 @@ router.post('/', authenticate, async (req, res) => {
       background_color,
       text_color,
       button_text,
+      button_text_color,
+      field_background_color,
+      field_border_color,
+      field_text_color,
+      label_color,
       welcome_message,
       thank_you_message,
       redirect_url,
       trigger_flow_id,
       connection_id,
+      lead_target,
+      crm_funnel_id,
+      use_round_robin,
+      round_robin_user_ids,
       display_mode,
       transition_type,
       fields
@@ -132,20 +317,25 @@ router.post('/', authenticate, async (req, res) => {
     const formResult = await query(
       `INSERT INTO external_forms (
         organization_id, name, slug, description, logo_url, logo_size,
-        primary_color, background_color, text_color, button_text,
+        primary_color, background_color, text_color, button_text, button_text_color,
+        field_background_color, field_border_color, field_text_color, label_color,
         welcome_message, thank_you_message, redirect_url,
-        trigger_flow_id, connection_id, created_by, display_mode, transition_type
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        trigger_flow_id, connection_id, created_by, display_mode, transition_type,
+        lead_target, crm_funnel_id, use_round_robin, round_robin_user_ids
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
       RETURNING *`,
       [
         org.organization_id, name, slug, description, logo_url, logo_size || 48,
         primary_color || '#6366f1', background_color || '#ffffff',
-        text_color || '#1f2937', button_text || 'Enviar',
+        text_color || '#1f2937', button_text || 'Enviar', button_text_color || '#ffffff',
+        field_background_color || '#ffffff', field_border_color || '#d1d5db',
+        field_text_color || '#111827', label_color || (text_color || '#1f2937'),
         welcome_message || 'Olá! Vamos começar?',
         thank_you_message || 'Obrigado pelo contato! Em breve entraremos em contato.',
         redirect_url, trigger_flow_id || null, connection_id || null, req.userId,
-        ['chat', 'typeform', 'standard', 'survey'].includes(display_mode) ? display_mode : 'typeform',
-        transition_type || 'slide-right'
+        normalizeDisplayMode(display_mode), transition_type || 'slide-right',
+        normalizeLeadTarget(lead_target), crm_funnel_id || null,
+        !!use_round_robin, normalizeUuidArray(round_robin_user_ids)
       ]
     );
 
@@ -165,7 +355,7 @@ router.post('/', authenticate, async (req, res) => {
         `INSERT INTO external_form_fields (form_id, field_key, field_label, field_type, placeholder, is_required, validation_regex, options, position)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
-          form.id, field.field_key, field.field_label, field.field_type || 'text',
+          form.id, field.field_key, field.field_label, normalizeFieldType(field.field_type),
           field.placeholder, field.is_required || false, field.validation_regex,
           field.options ? JSON.stringify(field.options) : null, i
         ]
@@ -190,6 +380,119 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
+// Duplicate form
+router.post('/:id/duplicate', authenticate, async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+
+    const formResult = await query(
+      `SELECT *
+       FROM external_forms
+       WHERE id = $1 AND organization_id = $2`,
+      [req.params.id, org.organization_id]
+    );
+
+    const sourceForm = formResult.rows[0];
+    if (!sourceForm) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
+
+    const fieldsResult = await query(
+      `SELECT *
+       FROM external_form_fields
+       WHERE form_id = $1
+       ORDER BY position`,
+      [req.params.id]
+    );
+
+    const duplicateName = `${sourceForm.name} (Cópia)`;
+    const duplicateSlug = await generateSlug(org.organization_id, duplicateName);
+
+    const duplicatedFormResult = await query(
+      `INSERT INTO external_forms (
+        organization_id, name, slug, description, is_active, logo_url, logo_size,
+        primary_color, background_color, text_color, button_text, button_text_color,
+        field_background_color, field_border_color, field_text_color, label_color,
+        welcome_message, thank_you_message, redirect_url, trigger_flow_id, connection_id,
+        created_by, display_mode, transition_type, lead_target, crm_funnel_id,
+        use_round_robin, round_robin_user_ids, round_robin_last_index
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, -1)
+      RETURNING *`,
+      [
+        sourceForm.organization_id,
+        duplicateName,
+        duplicateSlug,
+        sourceForm.description,
+        sourceForm.is_active,
+        sourceForm.logo_url,
+        sourceForm.logo_size,
+        sourceForm.primary_color,
+        sourceForm.background_color,
+        sourceForm.text_color,
+        sourceForm.button_text,
+        sourceForm.button_text_color,
+        sourceForm.field_background_color,
+        sourceForm.field_border_color,
+        sourceForm.field_text_color,
+        sourceForm.label_color,
+        sourceForm.welcome_message,
+        sourceForm.thank_you_message,
+        sourceForm.redirect_url,
+        sourceForm.trigger_flow_id,
+        sourceForm.connection_id,
+        req.userId,
+        normalizeDisplayMode(sourceForm.display_mode),
+        sourceForm.transition_type || 'slide-right',
+        normalizeLeadTarget(sourceForm.lead_target),
+        sourceForm.crm_funnel_id,
+        !!sourceForm.use_round_robin,
+        normalizeUuidArray(sourceForm.round_robin_user_ids),
+      ]
+    );
+
+    const duplicatedForm = duplicatedFormResult.rows[0];
+
+    for (const field of fieldsResult.rows) {
+      await query(
+        `INSERT INTO external_form_fields (
+          form_id, field_key, field_label, field_type, placeholder,
+          is_required, validation_regex, options, position
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          duplicatedForm.id,
+          field.field_key,
+          field.field_label,
+          normalizeFieldType(field.field_type),
+          field.placeholder,
+          field.is_required,
+          field.validation_regex,
+          field.options,
+          field.position,
+        ]
+      );
+    }
+
+    const duplicatedFields = await query(
+      `SELECT *
+       FROM external_form_fields
+       WHERE form_id = $1
+       ORDER BY position`,
+      [duplicatedForm.id]
+    );
+
+    res.json({
+      ...duplicatedForm,
+      fields: duplicatedFields.rows,
+    });
+  } catch (error) {
+    logError('Error duplicating external form:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Update form
 router.put('/:id', authenticate, async (req, res) => {
   try {
@@ -206,47 +509,89 @@ router.put('/:id', authenticate, async (req, res) => {
       background_color,
       text_color,
       button_text,
+      button_text_color,
+      field_background_color,
+      field_border_color,
+      field_text_color,
+      label_color,
       welcome_message,
       thank_you_message,
       redirect_url,
       trigger_flow_id,
       connection_id,
+      lead_target,
+      crm_funnel_id,
+      use_round_robin,
+      round_robin_user_ids,
       display_mode,
       transition_type,
       fields
     } = req.body;
 
+    const normalizedDisplayMode = display_mode === undefined ? null : normalizeDisplayMode(display_mode);
+    const normalizedLeadTarget = lead_target === undefined ? null : normalizeLeadTarget(lead_target);
+    const normalizedRoundRobinUserIds = Array.isArray(round_robin_user_ids)
+      ? normalizeUuidArray(round_robin_user_ids)
+      : null;
+    const normalizedTransitionType = transition_type === undefined ? null : (transition_type || 'slide-right');
+    const normalizedCrmFunnelId = crm_funnel_id === undefined ? null : (crm_funnel_id || null);
+    const normalizedTriggerFlowId = trigger_flow_id === undefined ? null : (trigger_flow_id || null);
+    const normalizedConnectionId = connection_id === undefined ? null : (connection_id || null);
+
     // Update form
-    await query(
+    const updateResult = await query(
       `UPDATE external_forms SET
         name = COALESCE($1, name),
         description = $2,
-        is_active = COALESCE($3, is_active), name = COALESCE($1, name), description = $2, logo_url = $4, primary_color = COALESCE($5, primary_color),
+        is_active = COALESCE($3, is_active),
         logo_url = $4,
         logo_size = COALESCE($17, logo_size),
         primary_color = COALESCE($5, primary_color),
         background_color = COALESCE($6, background_color),
         text_color = COALESCE($7, text_color),
         button_text = COALESCE($8, button_text),
+        button_text_color = COALESCE($19, button_text_color),
+        field_background_color = COALESCE($20, field_background_color),
+        field_border_color = COALESCE($21, field_border_color),
+        field_text_color = COALESCE($22, field_text_color),
+        label_color = COALESCE($23, label_color),
         welcome_message = COALESCE($9, welcome_message),
         thank_you_message = COALESCE($10, thank_you_message),
         redirect_url = $11,
         trigger_flow_id = $12,
         connection_id = $13,
-        display_mode = COALESCE($16, 'typeform'),
-        transition_type = COALESCE($18, 'slide-right'),
+        display_mode = COALESCE($16, display_mode),
+        transition_type = COALESCE($18, transition_type),
+        lead_target = COALESCE($24, lead_target),
+        crm_funnel_id = COALESCE($25, crm_funnel_id),
+        use_round_robin = COALESCE($26, use_round_robin),
+        round_robin_user_ids = COALESCE($27, round_robin_user_ids),
         updated_at = NOW()
-       WHERE id = $14 AND organization_id = $15`,
+       WHERE id = $14 AND organization_id = $15
+       RETURNING *`,
       [
         name, description, is_active, logo_url, primary_color,
         background_color, text_color, button_text, welcome_message,
-        thank_you_message, redirect_url, trigger_flow_id || null,
-        connection_id || null, req.params.id, org.organization_id,
-        ['chat', 'typeform', 'standard', 'survey'].includes(display_mode) ? display_mode : 'typeform',
+        thank_you_message, redirect_url, normalizedTriggerFlowId,
+        normalizedConnectionId, req.params.id, org.organization_id,
+        normalizedDisplayMode,
         logo_size,
-        transition_type || 'slide-right'
+        normalizedTransitionType,
+        button_text_color ?? null,
+        field_background_color ?? null,
+        field_border_color ?? null,
+        field_text_color ?? null,
+        label_color ?? null,
+        normalizedLeadTarget,
+        normalizedCrmFunnelId,
+        typeof use_round_robin === 'boolean' ? use_round_robin : null,
+        normalizedRoundRobinUserIds,
       ]
     );
+
+    if (!updateResult.rows[0]) {
+      return res.status(404).json({ error: 'Form not found' });
+    }
 
     // Update fields if provided
     if (fields && Array.isArray(fields)) {
@@ -274,7 +619,7 @@ router.put('/:id', authenticate, async (req, res) => {
               is_required = $4, validation_regex = $5, options = $6, position = $7
              WHERE id = $8`,
             [
-              field.field_label, field.field_type, field.placeholder,
+              field.field_label, normalizeFieldType(field.field_type), field.placeholder,
               field.is_required, field.validation_regex,
               field.options ? JSON.stringify(field.options) : null, i, field.id
             ]
@@ -284,7 +629,7 @@ router.put('/:id', authenticate, async (req, res) => {
             `INSERT INTO external_form_fields (form_id, field_key, field_label, field_type, placeholder, is_required, validation_regex, options, position)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
-              req.params.id, field.field_key, field.field_label, field.field_type || 'text',
+              req.params.id, field.field_key, field.field_label, normalizeFieldType(field.field_type),
               field.placeholder, field.is_required || false, field.validation_regex,
               field.options ? JSON.stringify(field.options) : null, i
             ]
@@ -375,11 +720,13 @@ router.get('/public/:slug', async (req, res) => {
     const formResult = await query(
       `SELECT f.id, f.name, f.slug, f.description, f.logo_url, f.logo_size,
         f.primary_color, f.background_color, f.text_color,
-        f.button_text, f.welcome_message, f.is_active, f.display_mode, f.transition_type, f.redirect_url, f.thank_you_message,
+        f.button_text, f.button_text_color, f.field_background_color, f.field_border_color,
+        f.field_text_color, f.label_color, f.welcome_message, f.is_active, f.display_mode,
+        f.transition_type, f.redirect_url, f.thank_you_message,
         o.name as organization_name
        FROM external_forms f
        JOIN organizations o ON o.id = f.organization_id
-       WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1 OR f.id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END) OR f.slug ILIKE '%' || $1 || '%') `,
+       WHERE (LOWER(f.slug) = LOWER($1) OR f.id::text = $1 OR f.id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END)) `,
       [requestedSlug]
     );
 
@@ -443,15 +790,42 @@ router.post('/public/:slug/submit', async (req, res) => {
       [req.params.slug]
     );
 
-    if (!formResult.rows[0]) {
+    if (!formResult.rows[0] || !formResult.rows[0].is_active) {
       return res.status(404).json({ error: 'Formulário não encontrado' });
     }
 
     const form = formResult.rows[0];
+    const fieldsResult = await query(
+      `SELECT field_key, field_label, field_type, is_required
+       FROM external_form_fields
+       WHERE form_id = $1
+       ORDER BY position`,
+      [form.id]
+    );
+    const formFields = fieldsResult.rows;
+
+    for (const field of formFields) {
+      const rawValue = String(data?.[field.field_key] || '').trim();
+      if (field.field_type === 'whatsapp' && rawValue && !isValidBrazilianWhatsApp(rawValue)) {
+        return res.status(400).json({ error: `Informe um número de WhatsApp válido para "${field.field_label}".` });
+      }
+      if (field.field_type === 'phone' && rawValue && !isValidBrazilianPhone(rawValue)) {
+        return res.status(400).json({ error: `Informe um telefone válido para "${field.field_label}".` });
+      }
+    }
 
     // Extract standard fields
     const name = data.name || data.nome || '';
-    const phone = (data.phone || data.telefone || data.whatsapp || '').replace(/\D/g, '');
+    const phoneFieldKeys = formFields
+      .filter((field) => ['phone', 'whatsapp'].includes(field.field_type))
+      .map((field) => field.field_key);
+    const rawPhone = [
+      ...phoneFieldKeys.map((fieldKey) => data?.[fieldKey]),
+      data.phone,
+      data.telefone,
+      data.whatsapp,
+    ].find((value) => String(value || '').trim());
+    const phone = String(rawPhone || '').replace(/\D/g, '');
     const email = data.email || '';
     const city = data.city || data.cidade || '';
     const state = data.state || data.estado || data.uf || '';
@@ -476,33 +850,88 @@ router.post('/public/:slug/submit', async (req, res) => {
 
     const submission = submissionResult.rows[0];
 
-    // Create prospect
+    // Route lead to prospect or directly into CRM
     if (phone) {
       try {
-        const prospectResult = await query(
-          `INSERT INTO crm_prospects (
-            organization_id, name, phone, email, city, state, source, custom_fields
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          ON CONFLICT (organization_id, phone) DO UPDATE SET
-            name = COALESCE(NULLIF(EXCLUDED.name, ''), crm_prospects.name),
-            email = COALESCE(NULLIF(EXCLUDED.email, ''), crm_prospects.email),
-            city = COALESCE(NULLIF(EXCLUDED.city, ''), crm_prospects.city),
-            state = COALESCE(NULLIF(EXCLUDED.state, ''), crm_prospects.state),
-            custom_fields = crm_prospects.custom_fields || EXCLUDED.custom_fields
-          RETURNING id`,
-          [
-            form.organization_id, name, phone, email, city, state,
-            form.name, JSON.stringify(data)
-          ]
-        );
-
-        const prospectId = prospectResult.rows[0]?.id;
-        
-        if (prospectId) {
-          await query(
-            `UPDATE external_form_submissions SET prospect_id = $1 WHERE id = $2`,
-            [prospectId, submission.id]
+        if (normalizeLeadTarget(form.lead_target) === 'crm' && form.crm_funnel_id) {
+          const stageResult = await query(
+            `SELECT id
+             FROM crm_stages
+             WHERE funnel_id = $1
+             ORDER BY position ASC
+             LIMIT 1`,
+            [form.crm_funnel_id]
           );
+
+          if (stageResult.rows.length === 0) {
+            throw new Error('Funil do CRM sem etapa inicial configurada');
+          }
+
+          const ownerId = await resolveRoundRobinOwnerId(form);
+          const createdByUserId = form.created_by || await getFirstOrgUserId(form.organization_id);
+          const companyId = await ensureDefaultCompanyId(form.organization_id, createdByUserId);
+          const contactId = await findOrCreateCrmContact(form.organization_id, createdByUserId, name, phone, city, state);
+
+          const maxPosResult = await query(
+            `SELECT COALESCE(MAX(position), -1) + 1 AS new_position
+             FROM crm_deals
+             WHERE stage_id = $1 AND organization_id = $2`,
+            [stageResult.rows[0].id, form.organization_id]
+          );
+          const nextPosition = Number(maxPosResult.rows[0]?.new_position ?? 0);
+
+          const dealResult = await query(
+            `INSERT INTO crm_deals (
+              organization_id, funnel_id, stage_id, position, company_id, title,
+              description, owner_id, created_by, custom_fields
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id`,
+            [
+              form.organization_id,
+              form.crm_funnel_id,
+              stageResult.rows[0].id,
+              nextPosition,
+              companyId,
+              name || phone,
+              `Lead recebido pelo formulário "${form.name}"`,
+              ownerId,
+              createdByUserId,
+              JSON.stringify(data || {}),
+            ]
+          );
+
+          await query(
+            `INSERT INTO crm_deal_contacts (deal_id, contact_id, is_primary)
+             VALUES ($1, $2, true)
+             ON CONFLICT (deal_id, contact_id) DO NOTHING`,
+            [dealResult.rows[0].id, contactId]
+          );
+        } else {
+          const prospectResult = await query(
+            `INSERT INTO crm_prospects (
+              organization_id, name, phone, email, city, state, source, custom_fields
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (organization_id, phone) DO UPDATE SET
+              name = COALESCE(NULLIF(EXCLUDED.name, ''), crm_prospects.name),
+              email = COALESCE(NULLIF(EXCLUDED.email, ''), crm_prospects.email),
+              city = COALESCE(NULLIF(EXCLUDED.city, ''), crm_prospects.city),
+              state = COALESCE(NULLIF(EXCLUDED.state, ''), crm_prospects.state),
+              custom_fields = crm_prospects.custom_fields || EXCLUDED.custom_fields
+            RETURNING id`,
+            [
+              form.organization_id, name, phone, email, city, state,
+              form.name, JSON.stringify(data)
+            ]
+          );
+
+          const prospectId = prospectResult.rows[0]?.id;
+
+          if (prospectId) {
+            await query(
+              `UPDATE external_form_submissions SET prospect_id = $1 WHERE id = $2`,
+              [prospectId, submission.id]
+            );
+          }
         }
 
         // Create chat_contact for WhatsApp messaging
@@ -526,7 +955,7 @@ router.post('/public/:slug/submit', async (req, res) => {
         }
 
         // Create notification alert for the form creator
-        if (prospectId && form.created_by) {
+        if (form.created_by) {
           try {
             await query(
               `INSERT INTO user_alerts (user_id, type, title, message, metadata)
@@ -536,13 +965,13 @@ router.post('/public/:slug/submit', async (req, res) => {
                 '📝 Novo Lead via Formulário',
                 `${name || 'Novo lead'} preencheu o formulário "${form.name}"`,
                 JSON.stringify({
-                  prospect_id: prospectId,
                   source: 'form',
                   form_name: form.name,
                   form_slug: form.slug,
                   lead_name: name,
                   lead_phone: phone,
-                  lead_email: email
+                  lead_email: email,
+                  lead_target: normalizeLeadTarget(form.lead_target),
                 })
               ]
             );

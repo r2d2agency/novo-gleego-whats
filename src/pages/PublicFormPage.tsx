@@ -20,6 +20,22 @@ interface ChatMessage {
   field?: FormField;
 }
 
+function normalizeBrazilDigits(value: string) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.startsWith("55") && digits.length >= 12 ? digits.slice(2) : digits;
+}
+
+function isValidBrazilianPhone(value: string) {
+  const national = normalizeBrazilDigits(value);
+  if (national.length < 10 || national.length > 11) return false;
+  return /^[1-9][1-9]$/.test(national.slice(0, 2));
+}
+
+function isValidBrazilianWhatsApp(value: string) {
+  const national = normalizeBrazilDigits(value);
+  return national.length === 11 && /^[1-9][1-9]9/.test(national);
+}
+
 export default function PublicFormPage() {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams] = useSearchParams();
@@ -140,15 +156,15 @@ export default function PublicFormPage() {
     }
 
     if (field.field_type === "phone" && value.trim()) {
-      const phoneDigits = value.replace(/\D/g, "");
-      if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+      if (!isValidBrazilianPhone(value)) {
         addBotMessage("Por favor, informe um telefone válido com DDD (ex: 11 99999-9999).");
         return false;
       }
-      
-      const ddd = phoneDigits.substring(0, 2);
-      if (!/^[1-9][1-9]$/.test(ddd)) {
-        addBotMessage("DDD inválido. Verifique se informou o código de área corretamente.");
+    }
+
+    if (field.field_type === "whatsapp" && value.trim()) {
+      if (!isValidBrazilianWhatsApp(value)) {
+        addBotMessage("Por favor, informe um número de WhatsApp válido com DDD e celular (ex: 11 99999-9999).");
         return false;
       }
     }
@@ -319,6 +335,11 @@ export default function PublicFormPage() {
   const primaryColor = form.primary_color || "#6366f1";
   const bgColor = form.background_color || "#ffffff";
   const textColor = form.text_color || "#1f2937";
+  const buttonTextColor = form.button_text_color || "#ffffff";
+  const fieldBackgroundColor = form.field_background_color || "#ffffff";
+  const fieldBorderColor = form.field_border_color || primaryColor;
+  const fieldTextColor = form.field_text_color || textColor;
+  const labelColor = form.label_color || textColor;
 
   const rawMode = String(form.display_mode || "typeform").trim().toLowerCase();
   const mode = ["typeform", "standard", "survey"].includes(rawMode) ? rawMode : "typeform";
@@ -354,6 +375,11 @@ export default function PublicFormPage() {
         primaryColor={primaryColor}
         bgColor={bgColor}
         textColor={textColor}
+        buttonTextColor={buttonTextColor}
+        fieldBackgroundColor={fieldBackgroundColor}
+        fieldBorderColor={fieldBorderColor}
+        fieldTextColor={fieldTextColor}
+        labelColor={labelColor}
         submitted={submitted}
         submitting={submitting}
         thankYouMessage={thankYouMessage}
@@ -372,6 +398,11 @@ export default function PublicFormPage() {
         primaryColor={primaryColor}
         bgColor={bgColor}
         textColor={textColor}
+        buttonTextColor={buttonTextColor}
+        fieldBackgroundColor={fieldBackgroundColor}
+        fieldBorderColor={fieldBorderColor}
+        fieldTextColor={fieldTextColor}
+        labelColor={labelColor}
         submitted={submitted}
         submitting={submitting}
         thankYouMessage={thankYouMessage}
@@ -390,6 +421,11 @@ export default function PublicFormPage() {
         primaryColor={primaryColor}
         bgColor={bgColor}
         textColor={textColor}
+        buttonTextColor={buttonTextColor}
+        fieldBackgroundColor={fieldBackgroundColor}
+        fieldBorderColor={fieldBorderColor}
+        fieldTextColor={fieldTextColor}
+        labelColor={labelColor}
         submitted={submitted}
         submitting={submitting}
         thankYouMessage={thankYouMessage}
@@ -511,12 +547,12 @@ export default function PublicFormPage() {
                   onChange={(e) => setUserInput(e.target.value)}
                   placeholder={currentField.placeholder || "Digite sua resposta..."}
                   className="flex-1 min-h-[80px]"
-                  style={{ borderColor: primaryColor }}
+                  style={{ borderColor: fieldBorderColor, backgroundColor: fieldBackgroundColor, color: fieldTextColor }}
                 />
                 <Button
                   onClick={handleUserResponse}
                   disabled={submitting}
-                  style={{ backgroundColor: primaryColor }}
+                  style={{ backgroundColor: primaryColor, color: buttonTextColor }}
                   className="self-end"
                 >
                   <Send className="h-4 w-4" />
@@ -526,19 +562,19 @@ export default function PublicFormPage() {
               <div className="flex gap-2">
                 <Input
                   ref={inputRef}
-                  type={currentField.field_type === "email" ? "email" : "text"}
+                  type={currentField.field_type === "email" ? "email" : currentField.field_type === "phone" || currentField.field_type === "whatsapp" ? "tel" : "text"}
                   value={userInput}
                   onChange={(e) => setUserInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder={currentField.placeholder || "Digite sua resposta..."}
                   className="flex-1"
-                  style={{ borderColor: primaryColor }}
+                  style={{ borderColor: fieldBorderColor, backgroundColor: fieldBackgroundColor, color: fieldTextColor }}
                   disabled={submitting}
                 />
                 <Button
                   onClick={handleUserResponse}
                   disabled={submitting}
-                  style={{ backgroundColor: primaryColor }}
+                  style={{ backgroundColor: primaryColor, color: buttonTextColor }}
                 >
                   {submitting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -600,11 +636,10 @@ function validateField(value: string, field: FormField): string | null {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "E-mail inválido.";
   }
   if (field.field_type === "phone" && value.trim()) {
-    const digits = value.replace(/\D/g, "");
-    if (digits.length < 10 || digits.length > 15) return "Informe um telefone válido com DDD (ex: 11 99999-9999).";
-    // Ensure DDD is present (first digit should be between 1 and 9, second 1-9)
-    const ddd = digits.substring(0, 2);
-    if (!/^[1-9][1-9]$/.test(ddd)) return "DDD inválido.";
+    if (!isValidBrazilianPhone(value)) return "Informe um telefone válido com DDD (ex: 11 99999-9999).";
+  }
+  if (field.field_type === "whatsapp" && value.trim()) {
+    if (!isValidBrazilianWhatsApp(value)) return "Informe um WhatsApp válido com DDD e celular (ex: 11 99999-9999).";
   }
   return null;
 }
@@ -614,6 +649,11 @@ interface ViewProps {
   primaryColor: string;
   bgColor: string;
   textColor: string;
+  buttonTextColor: string;
+  fieldBackgroundColor: string;
+  fieldBorderColor: string;
+  fieldTextColor: string;
+  labelColor: string;
   submitted: boolean;
   submitting: boolean;
   thankYouMessage: string;
@@ -625,7 +665,7 @@ interface ViewProps {
 }
 
 // ============ TYPEFORM VIEW ============
-function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit, isSurvey, renderRatingStars, userInput, setUserInput }: ViewProps) {
+function TypeformView({ form, primaryColor, bgColor, textColor, buttonTextColor, fieldBackgroundColor, fieldBorderColor, fieldTextColor, labelColor, submitted, submitting, thankYouMessage, onSubmit, isSurvey, renderRatingStars, userInput, setUserInput }: ViewProps) {
   const fields = form.fields || [];
   const [index, setIndex] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -696,7 +736,7 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
           `}
         >
           <div className="mb-4 text-sm opacity-60">{index + 1} / {total}</div>
-          <h2 className="text-2xl sm:text-3xl font-medium mb-6" style={{ color: textColor }}>
+          <h2 className="text-2xl sm:text-3xl font-medium mb-6" style={{ color: labelColor }}>
             {current?.field_label}
             {current?.is_required && <span style={{ color: primaryColor }}> *</span>}
           </h2>
@@ -767,18 +807,18 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
               onChange={(e) => setVal(e.target.value)}
               placeholder={current.placeholder || "Digite sua resposta..."}
               className="min-h-[120px] text-lg"
-              style={{ borderColor: primaryColor }}
+              style={{ borderColor: fieldBorderColor, backgroundColor: fieldBackgroundColor, color: fieldTextColor }}
               autoFocus
             />
           ) : current ? (
             <Input
-              type={current.field_type === "email" ? "email" : current.field_type === "phone" ? "tel" : "text"}
+              type={current.field_type === "email" ? "email" : current.field_type === "phone" || current.field_type === "whatsapp" ? "tel" : "text"}
               value={values[current.field_key] || ""}
               onChange={(e) => setVal(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); goNext(); } }}
               placeholder={current.placeholder || "Digite sua resposta..."}
               className="text-lg py-6"
-              style={{ borderColor: primaryColor }}
+              style={{ borderColor: fieldBorderColor, backgroundColor: fieldBackgroundColor, color: fieldTextColor }}
               autoFocus
             />
           ) : null}
@@ -792,8 +832,8 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
             <Button
               onClick={goNext}
               disabled={submitting}
-              style={{ backgroundColor: primaryColor }}
-              className="text-white gap-2"
+              style={{ backgroundColor: primaryColor, color: buttonTextColor }}
+              className="gap-2"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (
                 <>
@@ -814,7 +854,7 @@ function TypeformView({ form, primaryColor, bgColor, textColor, submitted, submi
 }
 
 // ============ STANDARD FORM VIEW (embed-friendly) ============
-function StandardView({ form, primaryColor, bgColor, textColor, submitted, submitting, thankYouMessage, onSubmit, renderRatingStars, userInput, setUserInput }: ViewProps) {
+function StandardView({ form, primaryColor, bgColor, textColor, buttonTextColor, fieldBackgroundColor, fieldBorderColor, fieldTextColor, labelColor, submitted, submitting, thankYouMessage, onSubmit, renderRatingStars, userInput, setUserInput }: ViewProps) {
   const fields = form.fields || [];
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -861,7 +901,7 @@ function StandardView({ form, primaryColor, bgColor, textColor, submitted, submi
             const err = errors[f.field_key];
             return (
               <div key={f.field_key} className="space-y-1">
-                <label className="text-sm font-medium" style={{ color: textColor }}>
+                <label className="text-sm font-medium" style={{ color: labelColor }}>
                   {f.field_label}
                   {f.is_required && <span style={{ color: primaryColor }}> *</span>}
                 </label>
@@ -872,7 +912,7 @@ function StandardView({ form, primaryColor, bgColor, textColor, submitted, submi
                     value={values[f.field_key] || ""}
                     onValueChange={(v) => setValues({ ...values, [f.field_key]: v })}
                   >
-                    <SelectTrigger style={{ borderColor: primaryColor }}>
+                    <SelectTrigger style={{ borderColor: fieldBorderColor, backgroundColor: fieldBackgroundColor, color: fieldTextColor }}>
                       <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -884,15 +924,15 @@ function StandardView({ form, primaryColor, bgColor, textColor, submitted, submi
                     value={values[f.field_key] || ""}
                     onChange={(e) => setValues({ ...values, [f.field_key]: e.target.value })}
                     placeholder={f.placeholder}
-                    style={{ borderColor: primaryColor }}
+                    style={{ borderColor: fieldBorderColor, backgroundColor: fieldBackgroundColor, color: fieldTextColor }}
                   />
                 ) : (
                   <Input
-                    type={f.field_type === "email" ? "email" : f.field_type === "phone" ? "tel" : "text"}
+                    type={f.field_type === "email" ? "email" : f.field_type === "phone" || f.field_type === "whatsapp" ? "tel" : "text"}
                     value={values[f.field_key] || ""}
                     onChange={(e) => setValues({ ...values, [f.field_key]: e.target.value })}
                     placeholder={f.placeholder}
-                    style={{ borderColor: primaryColor }}
+                    style={{ borderColor: fieldBorderColor, backgroundColor: fieldBackgroundColor, color: fieldTextColor }}
                   />
                 )}
                 {err && <p className="text-xs text-destructive">{err}</p>}
@@ -903,8 +943,8 @@ function StandardView({ form, primaryColor, bgColor, textColor, submitted, submi
           <Button
             type="submit"
             disabled={submitting}
-            className="w-full text-white"
-            style={{ backgroundColor: primaryColor }}
+            className="w-full"
+            style={{ backgroundColor: primaryColor, color: buttonTextColor }}
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (form.button_text || "Enviar")}
           </Button>

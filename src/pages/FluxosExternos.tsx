@@ -30,6 +30,7 @@ import {
   Link2,
   MoreHorizontal,
   Plus,
+  CopyPlus,
   Search,
   Trash2,
   Users,
@@ -44,7 +45,7 @@ export default function FluxosExternos() {
   const [showEditor, setShowEditor] = useState(false);
   const [viewingSubmissions, setViewingSubmissions] = useState<ExternalForm | null>(null);
 
-  const { forms, isLoading, updateForm, deleteForm } = useExternalForms();
+  const { forms, isLoading, updateForm, deleteForm, duplicateForm } = useExternalForms();
 
   const filteredForms = useMemo(() => {
     if (!search.trim()) return forms;
@@ -58,9 +59,13 @@ export default function FluxosExternos() {
 
   const handleToggleActive = async (form: ExternalForm) => {
     await updateForm.mutateAsync({
-      id: form.id,
+      ...form,
       is_active: !form.is_active,
     });
+  };
+
+  const handleDuplicate = async (form: ExternalForm) => {
+    await duplicateForm.mutateAsync(form.id);
   };
 
   const handleDelete = async (form: ExternalForm) => {
@@ -292,6 +297,10 @@ export default function FluxosExternos() {
                             <DropdownMenuItem onClick={() => setViewingSubmissions(form)}>
                               <Users className="h-4 w-4 mr-2" />
                               Ver Leads
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDuplicate(form)}>
+                              <CopyPlus className="h-4 w-4 mr-2" />
+                              Duplicar
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem

@@ -6,7 +6,7 @@ export interface FormField {
   id?: string;
   field_key: string;
   field_label: string;
-  field_type: "text" | "phone" | "email" | "select" | "textarea" | "rating_stars";
+  field_type: "text" | "phone" | "whatsapp" | "email" | "select" | "textarea" | "rating_stars";
   placeholder?: string;
   is_required: boolean;
   validation_regex?: string;
@@ -28,6 +28,11 @@ export interface ExternalForm {
   background_color: string;
   text_color: string;
   button_text: string;
+  button_text_color?: string;
+  field_background_color?: string;
+  field_border_color?: string;
+  field_text_color?: string;
+  label_color?: string;
   logo_size?: number;
   welcome_message: string;
   
@@ -36,7 +41,11 @@ export interface ExternalForm {
   redirect_url?: string;
   trigger_flow_id?: string;
   connection_id?: string;
-  display_mode?: "chat" | "typeform" | "standard";
+  lead_target?: "prospect" | "crm";
+  crm_funnel_id?: string;
+  use_round_robin?: boolean;
+  round_robin_user_ids?: string[];
+  display_mode?: "chat" | "typeform" | "standard" | "survey";
   transition_type?: "slide-right" | "slide-left";
   
   // Stats
@@ -119,6 +128,18 @@ export function useExternalForms() {
     },
   });
 
+  const duplicateForm = useMutation({
+    mutationFn: (id: string) =>
+      api<ExternalForm>(`/api/external-forms/${id}/duplicate`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["external-forms"] });
+      toast.success("Formulário duplicado com sucesso!");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
   const getSubmissions = async (formId: string): Promise<FormSubmission[]> => {
     try {
       return await api<FormSubmission[]>(`/api/external-forms/${formId}/submissions`);
@@ -135,6 +156,7 @@ export function useExternalForms() {
     createForm,
     updateForm,
     deleteForm,
+    duplicateForm,
     getSubmissions,
   };
 }

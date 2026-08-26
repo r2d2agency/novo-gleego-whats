@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -37,6 +38,8 @@ import {
 import { useExternalForms, ExternalForm, FormField } from "@/hooks/use-external-forms";
 import { useFlows } from "@/hooks/use-flows";
 import { useConnectionStatus } from "@/hooks/use-connection-status";
+import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/lib/api";
 
 interface ExternalFormEditorDialogProps {
   open: boolean;
@@ -44,9 +47,23 @@ interface ExternalFormEditorDialogProps {
   form?: ExternalForm | null;
 }
 
+interface OrgMemberOption {
+  user_id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+interface FunnelOption {
+  id: string;
+  name: string;
+  color?: string;
+}
+
 const FIELD_TYPES = [
   { value: "text", label: "Texto" },
   { value: "phone", label: "Telefone" },
+  { value: "whatsapp", label: "WhatsApp" },
   { value: "email", label: "E-mail" },
   { value: "textarea", label: "Texto longo" },
   { value: "select", label: "Seleção" },
@@ -64,6 +81,7 @@ export function ExternalFormEditorDialog({
   onClose,
   form,
 }: ExternalFormEditorDialogProps) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("fields");
   
@@ -76,11 +94,20 @@ export function ExternalFormEditorDialog({
     background_color: "#ffffff",
     text_color: "#1f2937",
     button_text: "Enviar",
+    button_text_color: "#ffffff",
+    field_background_color: "#ffffff",
+    field_border_color: "#d1d5db",
+    field_text_color: "#111827",
+    label_color: "#1f2937",
     welcome_message: "Olá! Vamos começar?",
     thank_you_message: "Obrigado pelo contato! Em breve entraremos em contato.",
     redirect_url: "",
     trigger_flow_id: "",
     connection_id: "",
+    lead_target: "prospect" as "prospect" | "crm",
+    crm_funnel_id: "",
+    use_round_robin: false,
+    round_robin_user_ids: [] as string[],
     display_mode: "typeform" as "chat" | "typeform" | "standard",
     transition_type: "slide-right" as "slide-right" | "slide-left",
   });
@@ -91,21 +118,47 @@ export function ExternalFormEditorDialog({
   const { getFlows } = useFlows();
   const { connections } = useConnectionStatus({ autoStart: true });
   const [flows, setFlows] = useState<Array<{ id: string; name: string }>>([]);
+  const [funnels, setFunnels] = useState<FunnelOption[]>([]);
+  const [members, setMembers] = useState<OrgMemberOption[]>([]);
 
   useEffect(() => {
     if (open) {
       loadFlows();
+      loadFunnels();
+      loadMembers();
       if (form) {
         loadFormDetails();
       } else {
         resetForm();
       }
     }
-  }, [open, form?.id]);
+  }, [open, form?.id, user?.organization_id]);
 
   const loadFlows = async () => {
     const result = await getFlows();
     setFlows(result.filter((f) => f.is_active));
+  };
+
+  const loadFunnels = async () => {
+    if (!user?.organization_id) return;
+    try {
+      const result = await api<FunnelOption[]>("/api/crm/funnels");
+      setFunnels(result || []);
+    } catch (error) {
+      console.error("Error loading funnels:", error);
+      setFunnels([]);
+    }
+  };
+
+  const loadMembers = async () => {
+    if (!user?.organization_id) return;
+    try {
+      const result = await api<OrgMemberOption[]>(`/api/organizations/${user.organization_id}/members`);
+      setMembers((result || []).filter((member) => ["owner", "admin", "manager", "agent"].includes(member.role)));
+    } catch (error) {
+      console.error("Error loading organization members:", error);
+      setMembers([]);
+    }
   };
 
   const loadFormDetails = async () => {
@@ -122,11 +175,20 @@ export function ExternalFormEditorDialog({
         background_color: fullForm.background_color || "#ffffff",
         text_color: fullForm.text_color || "#1f2937",
         button_text: fullForm.button_text || "Enviar",
+        button_text_color: fullForm.button_text_color || "#ffffff",
+        field_background_color: fullForm.field_background_color || "#ffffff",
+        field_border_color: fullForm.field_border_color || "#d1d5db",
+        field_text_color: fullForm.field_text_color || "#111827",
+        label_color: fullForm.label_color || fullForm.text_color || "#1f2937",
         welcome_message: fullForm.welcome_message || "Olá! Vamos começar?",
         thank_you_message: fullForm.thank_you_message || "Obrigado pelo contato!",
         redirect_url: fullForm.redirect_url || "",
         trigger_flow_id: fullForm.trigger_flow_id || "",
         connection_id: fullForm.connection_id || "",
+        lead_target: fullForm.lead_target || "prospect",
+        crm_funnel_id: fullForm.crm_funnel_id || "",
+        use_round_robin: !!fullForm.use_round_robin,
+        round_robin_user_ids: fullForm.round_robin_user_ids || [],
         display_mode: (fullForm.display_mode as "chat" | "typeform" | "standard") || "typeform",
         transition_type: (fullForm.transition_type as "slide-right" | "slide-left") || "slide-right",
       });
@@ -144,11 +206,20 @@ export function ExternalFormEditorDialog({
       background_color: "#ffffff",
       text_color: "#1f2937",
       button_text: "Enviar",
+      button_text_color: "#ffffff",
+      field_background_color: "#ffffff",
+      field_border_color: "#d1d5db",
+      field_text_color: "#111827",
+      label_color: "#1f2937",
       welcome_message: "Olá! Vamos começar?",
       thank_you_message: "Obrigado pelo contato! Em breve entraremos em contato.",
       redirect_url: "",
       trigger_flow_id: "",
       connection_id: "",
+      lead_target: "prospect",
+      crm_funnel_id: "",
+      use_round_robin: false,
+      round_robin_user_ids: [],
       display_mode: "typeform",
       transition_type: "slide-right",
     });
@@ -167,6 +238,16 @@ export function ExternalFormEditorDialog({
       return;
     }
 
+    if (formData.lead_target === "crm" && !formData.crm_funnel_id) {
+      toast.error("Selecione um funil do CRM para enviar os leads");
+      return;
+    }
+
+    if (formData.lead_target === "crm" && formData.use_round_robin && formData.round_robin_user_ids.length === 0) {
+      toast.error("Selecione ao menos um vendedor para o round robin");
+      return;
+    }
+
     setLoading(true);
     
     try {
@@ -175,6 +256,7 @@ export function ExternalFormEditorDialog({
         display_mode: formData.display_mode, // Explicitly ensure it's included
         trigger_flow_id: formData.trigger_flow_id || undefined,
         connection_id: formData.connection_id || undefined,
+        crm_funnel_id: formData.crm_funnel_id || undefined,
         fields: fields.map((f, idx) => ({ ...f, position: idx })),
       };
 
@@ -218,6 +300,15 @@ export function ExternalFormEditorDialog({
     const [removed] = newFields.splice(from, 1);
     newFields.splice(to, 0, removed);
     setFields(newFields);
+  };
+
+  const toggleRoundRobinUser = (userId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      round_robin_user_ids: prev.round_robin_user_ids.includes(userId)
+        ? prev.round_robin_user_ids.filter((id) => id !== userId)
+        : [...prev.round_robin_user_ids, userId],
+    }));
   };
 
   return (
@@ -548,6 +639,92 @@ export function ExternalFormEditorDialog({
                   />
                 </div>
 
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label>Cor do Texto do Botão</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="color"
+                        value={formData.button_text_color}
+                        onChange={(e) => setFormData({ ...formData, button_text_color: e.target.value })}
+                        className="w-12 h-10 p-1"
+                      />
+                      <Input
+                        value={formData.button_text_color}
+                        onChange={(e) => setFormData({ ...formData, button_text_color: e.target.value })}
+                        className="flex-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Cor dos Rótulos</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="color"
+                        value={formData.label_color}
+                        onChange={(e) => setFormData({ ...formData, label_color: e.target.value })}
+                        className="w-12 h-10 p-1"
+                      />
+                      <Input
+                        value={formData.label_color}
+                        onChange={(e) => setFormData({ ...formData, label_color: e.target.value })}
+                        className="flex-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-3 gap-4">
+                  <div className="grid gap-2">
+                    <Label>Fundo dos Campos</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="color"
+                        value={formData.field_background_color}
+                        onChange={(e) => setFormData({ ...formData, field_background_color: e.target.value })}
+                        className="w-12 h-10 p-1"
+                      />
+                      <Input
+                        value={formData.field_background_color}
+                        onChange={(e) => setFormData({ ...formData, field_background_color: e.target.value })}
+                        className="flex-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Borda dos Campos</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="color"
+                        value={formData.field_border_color}
+                        onChange={(e) => setFormData({ ...formData, field_border_color: e.target.value })}
+                        className="w-12 h-10 p-1"
+                      />
+                      <Input
+                        value={formData.field_border_color}
+                        onChange={(e) => setFormData({ ...formData, field_border_color: e.target.value })}
+                        className="flex-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Texto dos Campos</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="color"
+                        value={formData.field_text_color}
+                        onChange={(e) => setFormData({ ...formData, field_text_color: e.target.value })}
+                        className="w-12 h-10 p-1"
+                      />
+                      <Input
+                        value={formData.field_text_color}
+                        onChange={(e) => setFormData({ ...formData, field_text_color: e.target.value })}
+                        className="flex-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Preview */}
                 <div className="border rounded-lg p-4 mt-4">
                   <Label className="text-xs text-muted-foreground mb-2 block">Preview</Label>
@@ -568,11 +745,24 @@ export function ExternalFormEditorDialog({
                       {formData.welcome_message || "Olá! Vamos começar?"}
                     </p>
                     <button
-                      className="px-6 py-2 rounded-full text-white font-medium"
-                      style={{ backgroundColor: formData.primary_color }}
+                      className="px-6 py-2 rounded-full font-medium"
+                      style={{ backgroundColor: formData.primary_color, color: formData.button_text_color }}
                     >
                       {formData.button_text || "Enviar"}
                     </button>
+                    <div
+                      className="w-full max-w-sm rounded-lg border p-3"
+                      style={{
+                        backgroundColor: formData.field_background_color,
+                        borderColor: formData.field_border_color,
+                        color: formData.field_text_color,
+                      }}
+                    >
+                      <p className="text-sm mb-2" style={{ color: formData.label_color }}>
+                        Exemplo de campo
+                      </p>
+                      <p className="text-sm opacity-80">Texto digitado no formulário</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -684,6 +874,120 @@ export function ExternalFormEditorDialog({
                     </p>
                   </div>
                 )}
+
+                <div className="border rounded-lg p-4 space-y-4">
+                  <div className="space-y-2">
+                    <Label>Destino do Lead</Label>
+                    <Select
+                      value={formData.lead_target}
+                      onValueChange={(value) =>
+                        setFormData({
+                          ...formData,
+                          lead_target: value as "prospect" | "crm",
+                          crm_funnel_id: value === "crm" ? formData.crm_funnel_id : "",
+                          use_round_robin: value === "crm" ? formData.use_round_robin : false,
+                          round_robin_user_ids: value === "crm" ? formData.round_robin_user_ids : [],
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o destino..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="prospect">Salvar como Prospect</SelectItem>
+                        <SelectItem value="crm">Criar direto no CRM</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Escolha se o lead entra como prospect ou já cai no kanban do CRM.
+                    </p>
+                  </div>
+
+                  {formData.lead_target === "crm" && (
+                    <div className="space-y-4">
+                      <div className="grid gap-2">
+                        <Label>Funil do CRM</Label>
+                        <Select
+                          value={formData.crm_funnel_id || "__none__"}
+                          onValueChange={(value) =>
+                            setFormData({
+                              ...formData,
+                              crm_funnel_id: value === "__none__" ? "" : value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione um funil..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Selecione</SelectItem>
+                            {funnels.map((funnel) => (
+                              <SelectItem key={funnel.id} value={funnel.id}>
+                                {funnel.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          O lead será criado na primeira etapa desse funil.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-md border p-3">
+                        <div className="space-y-1">
+                          <Label>Round Robin</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Distribui os leads entre os vendedores selecionados.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={formData.use_round_robin}
+                          onCheckedChange={(checked) =>
+                            setFormData({
+                              ...formData,
+                              use_round_robin: checked,
+                              round_robin_user_ids: checked ? formData.round_robin_user_ids : [],
+                            })
+                          }
+                        />
+                      </div>
+
+                      {formData.use_round_robin && (
+                        <div className="space-y-2">
+                          <Label>Vendedores que receberão os leads</Label>
+                          <div className="border rounded-md max-h-48 overflow-y-auto divide-y">
+                            {members.length === 0 ? (
+                              <div className="p-3 text-sm text-muted-foreground">
+                                Nenhum membro disponível para distribuição.
+                              </div>
+                            ) : (
+                              members.map((member) => (
+                                <label
+                                  key={member.user_id}
+                                  className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/50"
+                                >
+                                  <Checkbox
+                                    checked={formData.round_robin_user_ids.includes(member.user_id)}
+                                    onCheckedChange={() => toggleRoundRobinUser(member.user_id)}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium truncate">{member.name}</p>
+                                    <p className="text-xs text-muted-foreground truncate">
+                                      {member.email} • {member.role}
+                                    </p>
+                                  </div>
+                                </label>
+                              ))
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Se o round robin estiver ligado, selecione pelo menos um vendedor.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 <div className="border rounded-lg p-4 bg-muted/50">
                   <h4 className="font-medium mb-2">Variáveis Disponíveis</h4>
