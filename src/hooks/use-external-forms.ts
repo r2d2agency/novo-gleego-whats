@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, API_URL } from "@/lib/api";
 import { toast } from "sonner";
 
 export interface FormField {
@@ -142,7 +142,7 @@ export function useExternalForms() {
 // Public API (no auth). Tries configured API URL first, then falls back to current origin
 // for deployments where the backend is served from the same domain via proxy.
 export async function getPublicForm(slug: string): Promise<ExternalForm | null> {
-  const baseUrls = [import.meta.env.VITE_API_URL || "", window.location.origin].filter(Boolean);
+  const baseUrls = [API_URL, window.location.origin].filter(Boolean);
   const uniqueUrls = Array.from(new Set(baseUrls));
 
   for (const base of uniqueUrls) {
@@ -164,7 +164,7 @@ export async function submitPublicForm(
   data: Record<string, string>,
   meta?: { utm_source?: string; utm_medium?: string; utm_campaign?: string; referrer?: string }
 ): Promise<{ success: boolean; thank_you_message?: string; redirect_url?: string }> {
-  const baseUrls = [import.meta.env.VITE_API_URL || "", window.location.origin].filter(Boolean);
+  const baseUrls = [API_URL, window.location.origin].filter(Boolean);
   const uniqueUrls = Array.from(new Set(baseUrls));
   let lastError: Error | null = null;
 
