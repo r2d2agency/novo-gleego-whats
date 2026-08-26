@@ -2,6 +2,7 @@ import express from 'express';
 import { query } from '../db.js';
 import { authenticate } from '../middleware/auth.js';
 import { logInfo, logError } from '../logger.js';
+import { executeFlow } from '../lib/flow-executor.js';
 
 const router = express.Router();
 const VALID_DISPLAY_MODES = ['chat', 'typeform', 'standard', 'survey'];
@@ -214,6 +215,93 @@ async function resolveRoundRobinOwnerId(form) {
   );
 
   return selectedUserId;
+}
+
+async function resolveDefaultConnectionForUser(organizationId, userId, fallbackConnectionId = null) {
+  if (userId) {
+    const sellerConnection = await query(
+      `SELECT c.*, cm.is_default
+         FROM connections c
+         JOIN connection_members cm ON cm.connection_id = c.id
+        WHERE c.organization_id = $1
+          AND cm.user_id = $2
+          AND cm.can_send = true
+          AND c.status = 'connected'
+        ORDER BY cm.is_default DESC, (c.id = $3) DESC, cm.created_at ASC
+        LIMIT 1`,
+      [organizationId, userId, fallbackConnectionId]
+    );
+
+    if (sellerConnection.rows[0]) {
+      return sellerConnection.rows[0];
+    }
+  }
+
+  if (fallbackConnectionId) {
+    const fallbackConnection = await query(
+      `SELECT *
+         FROM connections
+        WHERE id = $1
+          AND organization_id = $2
+          AND status = 'connected'
+        LIMIT 1`,
+      [fallbackConnectionId, organizationId]
+    );
+
+    if (fallbackConnection.rows[0]) {
+      return fallbackConnection.rows[0];
+    }
+  }
+
+  const orgConnection = await query(
+    `SELECT *
+       FROM connections
+      WHERE organization_id = $1
+        AND status = 'connected'
+      ORDER BY created_at ASC
+      LIMIT 1`,
+    [organizationId]
+  );
+
+  return orgConnection.rows[0] || null;
+}
+
+async function ensureConversationForConnection(connectionId, phone, name) {
+  const cleanPhone = String(phone || '').replace(/\D/g, '');
+  const remoteJid = `${cleanPhone}@s.whatsapp.net`;
+
+  await query(
+    `INSERT INTO chat_contacts (connection_id, phone, name, created_at, updated_at)
+     VALUES ($1, $2, $3, NOW(), NOW())
+     ON CONFLICT (connection_id, phone) DO UPDATE SET
+       name = COALESCE(NULLIF(EXCLUDED.name, ''), chat_contacts.name),
+       updated_at = NOW()`,
+    [connectionId, cleanPhone, name || cleanPhone]
+  );
+
+  const existingConversation = await query(
+    `SELECT id
+       FROM conversations
+      WHERE connection_id = $1
+        AND remote_jid = $2
+      LIMIT 1`,
+    [connectionId, remoteJid]
+  );
+
+  if (existingConversation.rows[0]?.id) {
+    return existingConversation.rows[0].id;
+  }
+
+  const createdConversation = await query(
+    `INSERT INTO conversations (
+      connection_id, remote_jid, contact_name, contact_phone,
+      last_message_at, updated_at, attendance_status
+    ) VALUES ($1, $2, $3, $4, NOW(), NOW(), 'waiting')
+    RETURNING id`,
+    [connectionId, remoteJid, name || cleanPhone, cleanPhone]
+  );
+
+  return createdConversation.rows[0].id;
 }
 
 // ============================================
@@ -850,6 +938,16 @@ router.post('/public/:slug/submit', async (req, res) => {
 
     const submission = submissionResult.rows[0];
 
+    let assignedUserId = form.created_by || null;
+
+    if (phone && form.use_round_robin) {
+      try {
+        assignedUserId = await resolveRoundRobinOwnerId(form);
+      } catch (assignmentError) {
+        logError('Error resolving round robin owner for external form:', assignmentError);
+      }
+    }
+
     // Route lead to prospect or directly into CRM
     if (phone) {
       try {
@@ -867,8 +965,8 @@ router.post('/public/:slug/submit', async (req, res) => {
             throw new Error('Funil do CRM sem etapa inicial configurada');
           }
 
-          const ownerId = await resolveRoundRobinOwnerId(form);
           const createdByUserId = form.created_by || await getFirstOrgUserId(form.organization_id);
+          const ownerId = assignedUserId || createdByUserId;
           const companyId = await ensureDefaultCompanyId(form.organization_id, createdByUserId);
           const contactId = await findOrCreateCrmContact(form.organization_id, createdByUserId, name, phone, city, state);
 
@@ -934,24 +1032,25 @@ router.post('/public/:slug/submit', async (req, res) => {
           }
         }
 
-        // Create chat_contact for WhatsApp messaging
-        // Find a connection belonging to this organization to link the contact
-        const orgConnResult = await query(
-          `SELECT id FROM connections WHERE organization_id = $1 LIMIT 1`,
-          [form.organization_id]
-        );
-        const orgConnectionId = orgConnResult.rows[0]?.id;
-
-        if (orgConnectionId) {
-          await query(
-            `INSERT INTO chat_contacts (connection_id, phone, name, created_at, updated_at)
-             VALUES ($1, $2, $3, NOW(), NOW())
-             ON CONFLICT (connection_id, phone) DO UPDATE SET
-               name = COALESCE(NULLIF(EXCLUDED.name, ''), chat_contacts.name),
-               updated_at = NOW()
-             RETURNING id`,
-            [orgConnectionId, phone, name]
+        try {
+          const chatConnection = await resolveDefaultConnectionForUser(
+            form.organization_id,
+            assignedUserId,
+            form.connection_id || null
           );
+
+          if (chatConnection?.id) {
+            await query(
+              `INSERT INTO chat_contacts (connection_id, phone, name, created_at, updated_at)
+               VALUES ($1, $2, $3, NOW(), NOW())
+               ON CONFLICT (connection_id, phone) DO UPDATE SET
+                 name = COALESCE(NULLIF(EXCLUDED.name, ''), chat_contacts.name),
+                 updated_at = NOW()`,
+              [chatConnection.id, phone, name]
+            );
+          }
+        } catch (chatContactError) {
+          logError('Error creating chat contact from external form:', chatContactError);
         }
 
         // Create notification alert for the form creator
@@ -972,6 +1071,7 @@ router.post('/public/:slug/submit', async (req, res) => {
                   lead_phone: phone,
                   lead_email: email,
                   lead_target: normalizeLeadTarget(form.lead_target),
+                  assigned_user_id: assignedUserId,
                 })
               ]
             );
@@ -992,32 +1092,66 @@ router.post('/public/:slug/submit', async (req, res) => {
       [form.id]
     );
 
-    // Trigger flow if configured
-    if (form.trigger_flow_id && form.connection_id && phone) {
+    // Trigger flow using the assigned seller default connection when possible
+    if (form.trigger_flow_id && phone) {
       try {
-        // Create flow session
+        const flowConnection = await resolveDefaultConnectionForUser(
+          form.organization_id,
+          assignedUserId,
+          form.connection_id || null
+        );
+
+        if (!flowConnection?.id) {
+          throw new Error('Nenhuma conexão ativa encontrada para disparar o fluxo');
+        }
+
+        const conversationId = await ensureConversationForConnection(flowConnection.id, phone, name);
+        const initialVariables = {
+          nome: name,
+          telefone: phone,
+          email,
+          cidade: city,
+          estado: state,
+          assigned_user_id: assignedUserId,
+          connection_id: flowConnection.id,
+          submission_id: submission.id,
+          ...data,
+        };
+
+        const execResult = await executeFlow(
+          form.trigger_flow_id,
+          conversationId,
+          'start',
+          initialVariables
+        );
+
+        if (!execResult?.success) {
+          throw new Error(execResult?.error || 'Falha ao executar fluxo');
+        }
+
         const flowSessionResult = await query(
-          `INSERT INTO flow_sessions (
-            flow_id, conversation_id, organization_id, status, variables
-          ) VALUES ($1, $2, $3, 'active', $4)
-          RETURNING id`,
-          [
-            form.trigger_flow_id,
-            `form:${submission.id}`, // Use submission ID as conversation reference
-            form.organization_id,
-            JSON.stringify({ nome: name, telefone: phone, email, cidade: city, estado: state, ...data })
-          ]
+          `SELECT id
+             FROM flow_sessions
+            WHERE conversation_id = $1
+              AND flow_id = $2
+              AND is_active = true
+            ORDER BY started_at DESC
+            LIMIT 1`,
+          [conversationId, form.trigger_flow_id]
         );
 
         await query(
           `UPDATE external_form_submissions SET flow_session_id = $1, processed_at = NOW() WHERE id = $2`,
-          [flowSessionResult.rows[0].id, submission.id]
+          [flowSessionResult.rows[0]?.id || null, submission.id]
         );
 
         logInfo('Flow triggered from external form', {
           formId: form.id,
           flowId: form.trigger_flow_id,
-          phone
+          phone,
+          connectionId: flowConnection.id,
+          assignedUserId,
+          conversationId,
         });
       } catch (flowError) {
         logError('Error triggering flow from form:', flowError);
