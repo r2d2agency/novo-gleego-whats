@@ -95,10 +95,10 @@ export default function AgentesIA() {
   };
 
   useEffect(() => {
-    if (isSuperadmin) {
+    if (!checkingAccess) {
       loadAgents();
     }
-  }, [isSuperadmin]);
+  }, [checkingAccess]);
 
   useEffect(() => {
     if (!isSuperadmin) return;

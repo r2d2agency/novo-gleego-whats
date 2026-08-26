@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { API_URL, getAuthToken } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
  import { Bot, Plus, Trash2, Loader2, Pencil, Building2, X, Brain, MessageSquare, Send, Sparkles, FileText, BookOpen, Shield, Clock, Headphones, Target, Upload, BarChart3, Mic, Image, Eye, Users, Zap, ArrowRightLeft, Scissors, RefreshCw, Package } from 'lucide-react';
 import { useAIAgents } from '@/hooks/use-ai-agents';
@@ -482,6 +483,7 @@ const headers = () => ({
 });
 
 export function GlobalAgentsTab() {
+  const { isLoading: authLoading, isAuthenticated } = useAuth();
   const [agents, setAgents] = useState<GlobalAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -539,12 +541,25 @@ export function GlobalAgentsTab() {
   const [selectedCapabilities, setSelectedCapabilities] = useState<string[]>(['respond_messages']);
 
   const loadAgents = useCallback(async () => {
+    if (authLoading) return;
+    if (!isAuthenticated || !getAuthToken()) {
+      setAgents([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/global-agents/admin/list`, { headers: headers() });
-      if (res.ok) setAgents(await res.json());
-    } catch { /* ignore */ } finally { setLoading(false); }
-  }, []);
+      if (res.ok) {
+        setAgents(await res.json());
+      } else {
+        setAgents([]);
+      }
+    } catch {
+      setAgents([]);
+    } finally { setLoading(false); }
+  }, [authLoading, isAuthenticated]);
 
   useEffect(() => { loadAgents(); }, [loadAgents]);
 

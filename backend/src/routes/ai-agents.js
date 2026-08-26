@@ -2362,7 +2362,7 @@ router.post('/:id/test', authenticate, async (req, res) => {
         } : null,
         trace: {
           user_message: message,
-          system_prompt,
+          system_prompt: systemPrompt,
           registered_tools: tools.map(tool => tool.function?.name).filter(Boolean),
           required_tool: requiredTool,
           required_source: requiredTool ? inferAppBarberToolSource(requiredTool) : null,
