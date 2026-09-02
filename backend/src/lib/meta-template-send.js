@@ -145,31 +145,61 @@ export async function sendMetaTemplate({
     },
   };
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
-
-  const response = await fetch(
-    `https://graph.facebook.com/v21.0/${metaPhoneNumberId}/messages`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${metaToken}` },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
+  const post = async (body) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/v21.0/${metaPhoneNumberId}/messages`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${metaToken}` },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        }
+      );
+      const json = await response.json().catch(() => ({}));
+      return { response, json };
+    } finally {
+      clearTimeout(timeout);
     }
-  );
-  clearTimeout(timeout);
+  };
 
-  const result = await response.json().catch(() => ({}));
+  let { response, json: result } = await post(payload);
+
+  // #132012 = parameter format mismatch. Common cause: named vs numbered params.
+  // Retry once with parameter_name stripped (numbered format).
+  if (!response.ok && Number(result?.error?.code) === 132012) {
+    const stripped = JSON.parse(JSON.stringify(payload));
+    let changed = false;
+    for (const comp of stripped.template?.components || []) {
+      for (const p of comp.parameters || []) {
+        if (p.parameter_name) { delete p.parameter_name; changed = true; }
+      }
+    }
+    if (changed) {
+      const retry = await post(stripped);
+      response = retry.response;
+      result = retry.json;
+    }
+  }
 
   if (!response.ok) {
     const metaErr = result?.error || {};
-    const errMsg = metaErr.error_user_msg || metaErr.message || `HTTP ${response.status}`;
+    let errMsg = metaErr.error_user_msg || metaErr.message || `HTTP ${response.status}`;
+    if (Number(metaErr.code) === 132012) {
+      const expected = templateComponents
+        .map(c => `${c.type}: ${(c.parameters || []).length}`)
+        .join(', ') || 'nenhum';
+      errMsg = `Formato dos parâmetros não corresponde ao template aprovado na Meta (#132012). Enviado -> ${expected}. Verifique se o template usa variáveis numeradas ({{1}}) ou nomeadas e se todos foram preenchidos.`;
+    }
     const err = new Error(errMsg);
     err.metaError = metaErr;
     err.status = response.status;
     err.isTransient = response.status >= 500 || response.status === 429;
     throw err;
   }
+
 
   const metaMessageId = result?.messages?.[0]?.id || `template_${Date.now()}`;
 
