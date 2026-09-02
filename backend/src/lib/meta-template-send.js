@@ -18,6 +18,46 @@ export function resolveParamValue(rawValue, contact = {}) {
   return applyContactVars(String(rawValue), contact).trim();
 }
 
+// Extracts placeholders in the order they appear, deduplicated.
+// Supports numbered ({{1}}) and named ({{nome_cliente}}) templates.
+function extractPlaceholders(text = '') {
+  const found = [];
+  const seen = new Set();
+  const re = /\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const key = m[1];
+    if (!seen.has(key)) {
+      seen.add(key);
+      found.push(key);
+    }
+  }
+  return found;
+}
+
+// Looks up a param value using every key shape the UI/DB may have stored.
+function pickParam(paramValues, key, position) {
+  const candidates = [
+    `{{${key}}}`,
+    key,
+    `{{ ${key} }}`,
+    `{{${position}}}`,
+    String(position),
+  ];
+  for (const c of candidates) {
+    if (paramValues[c] != null && String(paramValues[c]).trim() !== '') return paramValues[c];
+  }
+  return '';
+}
+
+function buildTextParam(key, position, paramValues, contact) {
+  const raw = pickParam(paramValues, key, position);
+  const param = { type: 'text', text: resolveParamValue(raw, contact) || ' ' };
+  // Named-parameter templates require parameter_name; numbered ones must NOT have it.
+  if (!/^\d+$/.test(key)) param.parameter_name = key.toLowerCase();
+  return param;
+}
+
 export function buildTemplateComponents(components, paramValues = {}, contact = {}) {
   const out = [];
   const bodyComp = (components || []).find(c => (c.type || '').toUpperCase() === 'BODY');
@@ -33,28 +73,23 @@ export function buildTemplateComponents(components, paramValues = {}, contact = 
         out.push({ type: 'header', parameters: [{ type: mediaType, [mediaType]: { link: mediaUrl } }] });
       }
     } else if (headerComp.text) {
-      const headerParams = headerComp.text.match(/\{\{(\d+)\}\}/g) || ['{{1}}'];
-      if (headerParams.length > 0) {
+      // Only send header parameters when the template header actually has placeholders.
+      const keys = extractPlaceholders(headerComp.text);
+      if (keys.length > 0) {
         out.push({
           type: 'header',
-          parameters: headerParams.map(p => ({
-            type: 'text',
-            text: resolveParamValue(paramValues[p], contact) || ' ',
-          })),
+          parameters: keys.map((k, i) => buildTextParam(k, i + 1, paramValues, contact)),
         });
       }
     }
   }
 
   if (bodyComp?.text) {
-    const bodyParams = bodyComp.text.match(/\{\{(\d+)\}\}/g) || [];
-    if (bodyParams.length > 0) {
+    const keys = extractPlaceholders(bodyComp.text);
+    if (keys.length > 0) {
       out.push({
         type: 'body',
-        parameters: bodyParams.map(p => ({
-          type: 'text',
-          text: resolveParamValue(paramValues[p], contact) || ' ',
-        })),
+        parameters: keys.map((k, i) => buildTextParam(k, i + 1, paramValues, contact)),
       });
     }
   }
@@ -63,7 +98,9 @@ export function buildTemplateComponents(components, paramValues = {}, contact = 
     const buttons = btnComp.buttons || [];
     buttons.forEach((btn, idx) => {
       if (btn.type === 'URL' && btn.url && btn.url.includes('{{')) {
-        const v = paramValues[`{{button_${idx}}}`] || paramValues[`button_${idx}`];
+        const keys = extractPlaceholders(btn.url);
+        const key = keys[0] || '1';
+        const v = paramValues[`{{button_${idx}}}`] ?? paramValues[`button_${idx}`] ?? pickParam(paramValues, key, 1);
         if (v) {
           out.push({
             type: 'button',
@@ -78,6 +115,7 @@ export function buildTemplateComponents(components, paramValues = {}, contact = 
 
   return out;
 }
+
 
 export async function sendMetaTemplate({
   metaToken,
