@@ -915,10 +915,43 @@ app.post('/api/meta/webhook', async (req, res) => {
                 [wamid]
               );
             } else if (statusValue === 'failed') {
+              // The synchronous /messages call only confirms Meta *accepted* the request;
+              // real delivery failures (24h window closed, template rejected, number not
+              // on WhatsApp, etc.) arrive later as this async "failed" status. Without this
+              // branch a campaign shows as 100% sent while every message actually bounced.
+              const metaErrors = Array.isArray(status.errors) ? status.errors : [];
+              const errorMsg = metaErrors
+                .map((e) => e.error_data?.details || e.title || e.message)
+                .filter(Boolean)
+                .join('; ') || 'Falha na entrega (Meta)';
+
+              logMetaEvent('status_failed_detail', {
+                request_id: req.requestId || null,
+                connection_id: connection.id,
+                message_id: wamid,
+                errors: metaErrors,
+              });
+
               await dbQuery(
-                `UPDATE chat_messages SET status = 'failed' WHERE message_id = $1`,
-                [wamid]
+                `UPDATE chat_messages SET status = 'failed', error_message = $2 WHERE message_id = $1`,
+                [wamid, errorMsg]
               );
+
+              const campaignMsg = await dbQuery(
+                `UPDATE campaign_messages
+                 SET status = 'failed', error_message = $2
+                 WHERE whatsapp_message_id = $1 AND status = 'sent'
+                 RETURNING campaign_id`,
+                [wamid, errorMsg]
+              );
+              for (const row of campaignMsg.rows) {
+                await dbQuery(
+                  `UPDATE campaigns
+                   SET sent_count = GREATEST(sent_count - 1, 0), failed_count = failed_count + 1, updated_at = NOW()
+                   WHERE id = $1`,
+                  [row.campaign_id]
+                );
+              }
             }
           } catch (statusErr) {
             logMetaEvent('status_error', {

@@ -426,8 +426,8 @@ export async function executeCampaignMessages() {
             }
 
             await query(
-              `UPDATE campaign_messages SET status = 'sent', sent_at = NOW() WHERE id = $1`,
-              [msg.id]
+              `UPDATE campaign_messages SET status = 'sent', sent_at = NOW(), whatsapp_message_id = $2 WHERE id = $1`,
+              [msg.id, metaMessageId]
             );
             await query(
               `UPDATE campaigns SET sent_count = sent_count + 1, updated_at = NOW() WHERE id = $1`,
@@ -589,11 +589,12 @@ export async function executeCampaignMessages() {
         const result = await sendWhatsAppMessage(connection, msg.phone, messageItems, contact);
 
         if (result.success) {
+          const firstMessageId = result.results?.[0]?.messageId || null;
           await query(
-            `UPDATE campaign_messages 
-             SET status = 'sent', sent_at = NOW()
+            `UPDATE campaign_messages
+             SET status = 'sent', sent_at = NOW(), whatsapp_message_id = $2
              WHERE id = $1`,
-            [msg.id]
+            [msg.id, firstMessageId]
           );
           stats.sent++;
           console.log(`  ✓ [${msg.phone}] Mensagem enviada (${messageItems.length} item(s))`);

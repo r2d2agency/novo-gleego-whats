@@ -564,9 +564,15 @@ CREATE TABLE IF NOT EXISTS campaign_messages (
 DO $$ BEGIN
     ALTER TABLE campaign_messages ADD COLUMN IF NOT EXISTS message_id UUID REFERENCES message_templates(id) ON DELETE SET NULL;
     ALTER TABLE campaign_messages ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP WITH TIME ZONE;
+    -- Stores the provider's WhatsApp message id (wamid) so async delivery-status
+    -- webhooks (e.g. Meta Cloud API "failed" status) can be matched back to the
+    -- campaign message that generated them.
+    ALTER TABLE campaign_messages ADD COLUMN IF NOT EXISTS whatsapp_message_id VARCHAR(100);
 EXCEPTION
     WHEN duplicate_column THEN null;
 END $$;
+
+CREATE INDEX IF NOT EXISTS idx_campaign_messages_wamid ON campaign_messages(whatsapp_message_id);
 `;
 
 // ============================================
