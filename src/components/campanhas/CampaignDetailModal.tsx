@@ -35,7 +35,7 @@ interface CampaignMessage {
   phone: string;
   contact_name?: string;
   message_template_name?: string;
-  status: 'pending' | 'sent' | 'failed';
+  status: 'pending' | 'processing' | 'sent' | 'failed' | 'cancelled';
   sent_at?: string;
   scheduled_at?: string;
   error_message?: string;
@@ -78,6 +78,8 @@ const statusConfig = {
   sent: { icon: CheckCircle2, label: "Enviado", color: "text-green-500", bgColor: "bg-green-500/10" },
   failed: { icon: XCircle, label: "Falhou", color: "text-red-500", bgColor: "bg-red-500/10" },
   pending: { icon: Clock, label: "Aguardando", color: "text-yellow-500", bgColor: "bg-yellow-500/10" },
+  processing: { icon: Loader2, label: "Enviando", color: "text-blue-500", bgColor: "bg-blue-500/10" },
+  cancelled: { icon: AlertCircle, label: "Cancelado", color: "text-muted-foreground", bgColor: "bg-muted" },
 };
 
 // Translate common error messages to Portuguese
@@ -518,7 +520,7 @@ export function CampaignDetailModal({ campaignId, open, onClose }: CampaignDetai
                       return matchesStatus && matchesSearch;
                     })
                     .map((msg) => {
-                    const config = statusConfig[msg.status];
+                    const config = statusConfig[msg.status] || statusConfig.pending;
                     const StatusIcon = config.icon;
                     
                     return (
