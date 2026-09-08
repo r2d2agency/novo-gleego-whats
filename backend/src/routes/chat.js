@@ -2559,6 +2559,111 @@ router.get('/tags/with-count', authenticate, async (req, res) => {
   }
 });
 
+// Get contacts (conversations) that have a given tag, with last customer reply info
+router.get('/tags/:id/contacts', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userOrg = await getUserOrganization(req.userId);
+    const organizationId = userOrg?.organization_id;
+
+    if (!organizationId) {
+      return res.status(400).json({ error: 'Usuário não pertence a uma organização' });
+    }
+
+    const tagResult = await query(
+      `SELECT id FROM conversation_tags WHERE id = $1 AND organization_id = $2`,
+      [id, organizationId]
+    );
+    if (tagResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Tag não encontrada' });
+    }
+
+    const connectionIds = await getUserConnections(req.userId);
+    if (connectionIds.length === 0) {
+      return res.json([]);
+    }
+
+    const isAdminOrSupervisor = userOrg && ['owner', 'admin'].includes(userOrg.role);
+
+    let sharedConversations = false;
+    let accessGroupIds = [];
+    try {
+      const orgResult = await query(
+        `SELECT modules_enabled FROM organizations WHERE id = $1`,
+        [organizationId]
+      );
+      if (orgResult.rows[0]?.modules_enabled?.shared_conversations === true) {
+        sharedConversations = true;
+      }
+      const agResult = await query(
+        `SELECT access_group_id FROM access_group_members WHERE user_id = $1`,
+        [req.userId]
+      );
+      accessGroupIds = agResult.rows.map(r => r.access_group_id);
+    } catch {}
+
+    let filter = `conv.connection_id = ANY($1) AND ctl.tag_id = $2`;
+    const params = [connectionIds, id];
+    let paramIndex = 3;
+
+    if (!isAdminOrSupervisor && !sharedConversations) {
+      if (accessGroupIds.length > 0) {
+        filter += ` AND (
+          conv.assigned_to = $${paramIndex}
+          OR conv.assigned_to IS NULL
+          OR conv.assigned_to IN (
+            SELECT user_id FROM access_group_members
+            WHERE access_group_id IN (
+              SELECT access_group_id FROM access_group_members WHERE user_id = $${paramIndex}
+            )
+          )
+        )`;
+        params.push(req.userId);
+        paramIndex++;
+      } else {
+        filter += ` AND (conv.assigned_to = $${paramIndex} OR (conv.assigned_to IS NULL AND conv.attendance_status = 'waiting'))`;
+        params.push(req.userId);
+        paramIndex++;
+      }
+    }
+
+    const result = await query(
+      `SELECT conv.id as conversation_id, conv.contact_name, conv.contact_phone,
+        (COALESCE(conv.is_group, false) OR conv.remote_jid LIKE '%@g.us') AS is_group,
+        conv.group_name, conv.attendance_status, conv.is_archived,
+        conn.name as connection_name, u.name as assigned_name,
+        lm.content as last_message, lm.timestamp as last_message_at,
+        lc.content as last_customer_message, lc.timestamp as last_customer_message_at
+       FROM conversations conv
+       JOIN conversation_tag_links ctl ON ctl.conversation_id = conv.id
+       JOIN connections conn ON conn.id = conv.connection_id
+       LEFT JOIN users u ON u.id = conv.assigned_to
+       LEFT JOIN LATERAL (
+         SELECT content, timestamp
+         FROM chat_messages
+         WHERE conversation_id = conv.id
+         ORDER BY timestamp DESC
+         LIMIT 1
+       ) lm ON true
+       LEFT JOIN LATERAL (
+         SELECT content, timestamp
+         FROM chat_messages
+         WHERE conversation_id = conv.id AND from_me = false
+         ORDER BY timestamp DESC
+         LIMIT 1
+       ) lc ON true
+       WHERE ${filter}
+       ORDER BY lc.timestamp DESC NULLS LAST, lm.timestamp DESC NULLS LAST`,
+      params
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get tag contacts error:', error);
+    res.status(500).json({ error: 'Erro ao buscar contatos da tag' });
+  }
+});
+
 // Update tag
 router.patch('/tags/:id', authenticate, async (req, res) => {
   try {
