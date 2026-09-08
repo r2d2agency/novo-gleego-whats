@@ -1,10 +1,19 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -76,10 +85,13 @@ const PRESET_COLORS = [
   "#64748b", // slate
 ];
 
+type SortOrder = "recent" | "oldest" | "name";
+
 const Tags = () => {
+  const navigate = useNavigate();
   const [tags, setTags] = useState<TagWithCount[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTag, setSelectedTag] = useState<TagWithCount | null>(null);
@@ -91,6 +103,9 @@ const Tags = () => {
   const [contactsTag, setContactsTag] = useState<TagWithCount | null>(null);
   const [contacts, setContacts] = useState<TagContact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
+  const [periodStart, setPeriodStart] = useState("");
+  const [periodEnd, setPeriodEnd] = useState("");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("recent");
 
   useEffect(() => {
     loadTags();
@@ -169,12 +184,14 @@ const Tags = () => {
     }
   };
 
-  const handleOpenContacts = async (tag: TagWithCount) => {
-    setContactsTag(tag);
-    setContactsDialogOpen(true);
+  const loadContacts = async (tag: TagWithCount, start: string, end: string, sort: SortOrder) => {
     setContactsLoading(true);
     try {
-      const data = await api<TagContact[]>(`/api/chat/tags/${tag.id}/contacts`);
+      const params = new URLSearchParams();
+      if (start) params.set("start_date", start);
+      if (end) params.set("end_date", end);
+      params.set("sort", sort);
+      const data = await api<TagContact[]>(`/api/chat/tags/${tag.id}/contacts?${params.toString()}`);
       setContacts(data);
     } catch (error) {
       console.error("Error loading tag contacts:", error);
@@ -183,6 +200,33 @@ const Tags = () => {
     } finally {
       setContactsLoading(false);
     }
+  };
+
+  const handleOpenContacts = (tag: TagWithCount) => {
+    setContactsTag(tag);
+    setContactsDialogOpen(true);
+    setPeriodStart("");
+    setPeriodEnd("");
+    setSortOrder("recent");
+    loadContacts(tag, "", "", "recent");
+  };
+
+  const handleApplyContactFilters = () => {
+    if (!contactsTag) return;
+    loadContacts(contactsTag, periodStart, periodEnd, sortOrder);
+  };
+
+  const handleClearContactFilters = () => {
+    if (!contactsTag) return;
+    setPeriodStart("");
+    setPeriodEnd("");
+    setSortOrder("recent");
+    loadContacts(contactsTag, "", "", "recent");
+  };
+
+  const handleOpenConversation = (contact: TagContact) => {
+    setContactsDialogOpen(false);
+    navigate(`/chat?conversation=${contact.conversation_id}`);
   };
 
   const totalConversations = tags.reduce((acc, tag) => acc + tag.conversation_count, 0);
@@ -421,9 +465,49 @@ const Tags = () => {
               Contatos com a tag "{contactsTag?.name}"
             </DialogTitle>
             <DialogDescription>
-              Última conversa ativa = último momento em que o cliente respondeu
+              Última conversa ativa = último momento em que o cliente respondeu. Clique em um contato para abrir a conversa.
             </DialogDescription>
           </DialogHeader>
+
+          <div className="flex flex-wrap items-end gap-3 pb-2">
+            <div>
+              <Label className="text-xs text-muted-foreground">De</Label>
+              <Input
+                type="date"
+                value={periodStart}
+                onChange={(e) => setPeriodStart(e.target.value)}
+                className="w-[150px]"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Até</Label>
+              <Input
+                type="date"
+                value={periodEnd}
+                onChange={(e) => setPeriodEnd(e.target.value)}
+                className="w-[150px]"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Ordenar por</Label>
+              <Select value={sortOrder} onValueChange={(v) => setSortOrder(v as SortOrder)}>
+                <SelectTrigger className="w-[190px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recent">Resposta mais recente</SelectItem>
+                  <SelectItem value="oldest">Resposta mais antiga</SelectItem>
+                  <SelectItem value="name">Nome (A-Z)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleApplyContactFilters} disabled={contactsLoading}>
+              Filtrar
+            </Button>
+            <Button variant="outline" onClick={handleClearContactFilters} disabled={contactsLoading}>
+              Limpar
+            </Button>
+          </div>
 
           {contactsLoading ? (
             <div className="flex items-center justify-center py-12">
@@ -440,7 +524,13 @@ const Tags = () => {
                 {contacts.map((contact) => (
                   <div
                     key={contact.conversation_id}
-                    className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleOpenConversation(contact)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") handleOpenConversation(contact);
+                    }}
+                    className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/30 transition-colors cursor-pointer"
                   >
                     <div className="min-w-0">
                       <p className="font-medium truncate">

@@ -2563,6 +2563,7 @@ router.get('/tags/with-count', authenticate, async (req, res) => {
 router.get('/tags/:id/contacts', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
+    const { start_date, end_date, sort = 'recent' } = req.query;
     const userOrg = await getUserOrganization(req.userId);
     const organizationId = userOrg?.organization_id;
 
@@ -2627,6 +2628,24 @@ router.get('/tags/:id/contacts', authenticate, async (req, res) => {
       }
     }
 
+    if (start_date) {
+      filter += ` AND lc.timestamp >= $${paramIndex}`;
+      params.push(`${start_date} 00:00:00`);
+      paramIndex++;
+    }
+    if (end_date) {
+      filter += ` AND lc.timestamp <= $${paramIndex}`;
+      params.push(`${end_date} 23:59:59.999`);
+      paramIndex++;
+    }
+
+    let orderClause = 'lc.timestamp DESC NULLS LAST, lm.timestamp DESC NULLS LAST';
+    if (sort === 'oldest') {
+      orderClause = 'lc.timestamp ASC NULLS LAST, lm.timestamp ASC NULLS LAST';
+    } else if (sort === 'name') {
+      orderClause = 'COALESCE(conv.contact_name, conv.group_name, conv.contact_phone) ASC NULLS LAST';
+    }
+
     const result = await query(
       `SELECT conv.id as conversation_id, conv.contact_name, conv.contact_phone,
         (COALESCE(conv.is_group, false) OR conv.remote_jid LIKE '%@g.us') AS is_group,
@@ -2653,7 +2672,7 @@ router.get('/tags/:id/contacts', authenticate, async (req, res) => {
          LIMIT 1
        ) lc ON true
        WHERE ${filter}
-       ORDER BY lc.timestamp DESC NULLS LAST, lm.timestamp DESC NULLS LAST`,
+       ORDER BY ${orderClause}`,
       params
     );
 
