@@ -1959,6 +1959,41 @@ async function handleIncomingMessage(connection, payload) {
       return;
     }
 
+    // Reconcile with a pending optimistic message sent via the web chat.
+    // W-API's webhook messageId can differ from what the initial send response
+    // returned, so the exact message_id match above can miss it — without this,
+    // messages (especially media) sent from the web chat get inserted a second
+    // time below. sender_id IS NOT NULL is only ever set by the web chat send
+    // endpoint, so it safely excludes real distinct messages echoed from the phone.
+    if (payload.fromMe === true) {
+      const pendingMsg = await query(
+        `SELECT id FROM chat_messages
+         WHERE conversation_id = $1
+           AND from_me = true
+           AND sender_id IS NOT NULL
+           AND status IN ('pending', 'sent')
+           AND message_type = $2
+           AND timestamp > NOW() - INTERVAL '60 seconds'
+         ORDER BY timestamp DESC
+         LIMIT 1`,
+        [conversationId, messageType]
+      );
+
+      if (pendingMsg.rows.length > 0) {
+        await query(
+          `UPDATE chat_messages
+           SET message_id = $1,
+               status = 'sent',
+               media_url = COALESCE(media_url, $3),
+               media_mimetype = COALESCE(media_mimetype, $4)
+           WHERE id = $2`,
+          [messageId, pendingMsg.rows[0].id, effectiveMediaUrl || null, effectiveMediaMimetype || null]
+        );
+        console.log('[W-API] Reconciled webhook echo with pending optimistic message:', messageId);
+        return;
+      }
+    }
+
     // Get sender info for group messages
     const senderName = isGroup 
       ? (payload.sender?.pushName || payload.pushName || payload.senderName || null)

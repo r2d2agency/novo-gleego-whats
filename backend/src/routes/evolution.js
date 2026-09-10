@@ -1789,13 +1789,20 @@ async function handleMessageUpsert(connection, data) {
     if (!existingRow && fromMe) {
       // For outgoing messages from our system: look for a pending optimistic message
       // that was saved before Evolution confirmed. Match by conversation + content/type + recent time.
+      // NOTE: don't require status = 'pending' AND message_id LIKE 'temp_%' here.
+      // For media messages the send endpoint swaps temp_ for the provider's real
+      // id and marks the row 'sent' synchronously, before this webhook fires. If
+      // Evolution's webhook reports a DIFFERENT id than what got stored, a query
+      // requiring 'pending'/'temp_%' would never find the row, inserting a
+      // duplicate below. sender_id IS NOT NULL is the reliable signal that this
+      // row was created by the web chat (webhook-inserted rows never set it).
       const pendingMsg = await query(
         `SELECT id, media_url, message_type, media_mimetype, status, message_id, content
-         FROM chat_messages 
-         WHERE conversation_id = $1 
-           AND from_me = true 
-           AND status = 'pending'
-           AND message_id LIKE 'temp_%'
+         FROM chat_messages
+         WHERE conversation_id = $1
+           AND from_me = true
+           AND sender_id IS NOT NULL
+           AND status IN ('pending', 'sent')
            AND timestamp > NOW() - INTERVAL '60 seconds'
          ORDER BY timestamp DESC
          LIMIT 1`,

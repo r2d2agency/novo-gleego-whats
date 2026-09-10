@@ -687,12 +687,19 @@ async function persistIncomingMessage(connection, payload) {
              AND timestamp > NOW() - INTERVAL '180 seconds'
              AND message_type = $2
              AND (
-               -- ONLY optimistic rows created by the web chat can be reconciled.
+               -- ONLY optimistic rows created by the web chat can be reconciled
+               -- (sender_id is only ever set by the web chat send endpoint).
                -- message_id IS NULL rows come from the phone/provider itself and are
                -- REAL distinct messages (e.g. several files sent from WhatsApp) —
                -- collapsing them made only the first file show up in the chat.
-               message_id LIKE 'temp_%'
-               AND sender_id IS NOT NULL
+               -- NOTE: don't require message_id LIKE 'temp_%' here — for media
+               -- messages the send endpoint already swaps temp_ for the provider's
+               -- real id (synchronously) before this webhook fires. If the webhook
+               -- reports a DIFFERENT id than what got stored, the row no longer
+               -- starts with temp_ and this check would fail to match it, causing
+               -- a duplicate row to be inserted below. The exact message_id match
+               -- above already ruled out this being the very same id.
+               sender_id IS NOT NULL
                AND status IN ('pending','sent')
                AND (
                  -- Text: match by exact content (safe: distinct texts don't collide)
