@@ -236,67 +236,71 @@ export function SendTemplateDialog({
             </ScrollArea>
           </>
         ) : (
-          <div className="space-y-4">
+          <div className="flex flex-col flex-1 min-h-0 space-y-4">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setSelectedTemplate(null)}
-              className="text-xs"
+              className="text-xs self-start"
             >
               ← Voltar aos templates
             </Button>
 
-            {/* Preview */}
-            <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-sm">
-                  {selectedTemplate.name}
-                </span>
-                <Badge variant="outline" className="text-[10px]">
-                  {selectedTemplate.language}
-                </Badge>
-              </div>
-
-              {getHeaderText(selectedTemplate.components) && (
-                <p className="text-sm font-semibold">
-                  {replaceParams(getHeaderText(selectedTemplate.components))}
-                </p>
-              )}
-              <p className="text-sm whitespace-pre-wrap">
-                {replaceParams(getBodyText(selectedTemplate.components))}
-              </p>
-              {getFooterText(selectedTemplate.components) && (
-                <p className="text-xs text-muted-foreground">
-                  {getFooterText(selectedTemplate.components)}
-                </p>
-              )}
-            </div>
-
-            {/* Param inputs */}
-            {params.length > 0 && (
-              <div className="space-y-3">
-                <p className="text-sm font-medium">
-                  Preencha os parâmetros:
-                </p>
-                {params.map((param) => (
-                  <div key={param} className="space-y-1">
-                    <label className="text-xs text-muted-foreground">
-                      {param}
-                    </label>
-                    <Input
-                      placeholder={`Valor para ${param}`}
-                      value={paramValues[param] || ""}
-                      onChange={(e) =>
-                        setParamValues((prev) => ({
-                          ...prev,
-                          [param]: e.target.value,
-                        }))
-                      }
-                    />
+            <ScrollArea className="flex-1 min-h-0">
+              <div className="space-y-4 pr-2">
+                {/* Preview */}
+                <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-sm">
+                      {selectedTemplate.name}
+                    </span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {selectedTemplate.language}
+                    </Badge>
                   </div>
-                ))}
+
+                  {getHeaderText(selectedTemplate.components) && (
+                    <p className="text-sm font-semibold">
+                      {replaceParams(getHeaderText(selectedTemplate.components))}
+                    </p>
+                  )}
+                  <p className="text-sm whitespace-pre-wrap">
+                    {replaceParams(getBodyText(selectedTemplate.components))}
+                  </p>
+                  {getFooterText(selectedTemplate.components) && (
+                    <p className="text-xs text-muted-foreground">
+                      {getFooterText(selectedTemplate.components)}
+                    </p>
+                  )}
+                </div>
+
+                {/* Param inputs */}
+                {params.length > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium">
+                      Preencha os parâmetros:
+                    </p>
+                    {params.map((param) => (
+                      <div key={param} className="space-y-1">
+                        <label className="text-xs text-muted-foreground">
+                          {param}
+                        </label>
+                        <Input
+                          placeholder={`Valor para ${param}`}
+                          value={paramValues[param] || ""}
+                          onChange={(e) =>
+                            setParamValues((prev) => ({
+                              ...prev,
+                              [param]: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            </ScrollArea>
 
             <Button
               className="w-full"
