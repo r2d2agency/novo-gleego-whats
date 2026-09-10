@@ -927,7 +927,19 @@ router.post('/:connectionId/sync-conversations/batch', authenticate, async (req,
           `INSERT INTO conversations (connection_id, remote_jid, contact_name, contact_phone, is_group, last_message_at, created_at, updated_at, attendance_status)
            VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), NOW(), 'waiting')
            ON CONFLICT (connection_id, remote_jid) DO UPDATE SET
-             contact_name = COALESCE(EXCLUDED.contact_name, conversations.contact_name), updated_at = NOW()
+             contact_name = CASE
+               WHEN EXISTS (
+                 SELECT 1 FROM chat_contacts cc
+                 WHERE cc.connection_id = conversations.connection_id
+                   AND cc.is_deleted = false
+                   AND (
+                     regexp_replace(COALESCE(cc.phone, ''), '\\D', '', 'g') = regexp_replace(COALESCE(conversations.contact_phone, ''), '\\D', '', 'g')
+                     OR regexp_replace(COALESCE(cc.phone, ''), '\\D', '', 'g') = regexp_replace(split_part(COALESCE(conversations.remote_jid, ''), '@', 1), '\\D', '', 'g')
+                   )
+               ) THEN conversations.contact_name
+               ELSE COALESCE(EXCLUDED.contact_name, conversations.contact_name)
+             END,
+             updated_at = NOW()
            RETURNING id, (xmax = 0) as is_new`,
           [connectionId, remoteJid, chat.name || chat.phone, chat.phone, isGroup]
         );
@@ -1018,7 +1030,20 @@ router.post('/:connectionId/sync-conversations', authenticate, async (req, res) 
         const convResult = await query(
           `INSERT INTO conversations (connection_id, remote_jid, contact_name, contact_phone, is_group, last_message_at, created_at, updated_at, attendance_status)
            VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), NOW(), 'waiting')
-           ON CONFLICT (connection_id, remote_jid) DO UPDATE SET contact_name = COALESCE(EXCLUDED.contact_name, conversations.contact_name), updated_at = NOW()
+           ON CONFLICT (connection_id, remote_jid) DO UPDATE SET
+             contact_name = CASE
+               WHEN EXISTS (
+                 SELECT 1 FROM chat_contacts cc
+                 WHERE cc.connection_id = conversations.connection_id
+                   AND cc.is_deleted = false
+                   AND (
+                     regexp_replace(COALESCE(cc.phone, ''), '\\D', '', 'g') = regexp_replace(COALESCE(conversations.contact_phone, ''), '\\D', '', 'g')
+                     OR regexp_replace(COALESCE(cc.phone, ''), '\\D', '', 'g') = regexp_replace(split_part(COALESCE(conversations.remote_jid, ''), '@', 1), '\\D', '', 'g')
+                   )
+               ) THEN conversations.contact_name
+               ELSE COALESCE(EXCLUDED.contact_name, conversations.contact_name)
+             END,
+             updated_at = NOW()
            RETURNING id, (xmax = 0) as is_new`,
           [connectionId, remoteJid, chat.name || chat.phone, chat.phone, isGroup]
         );
@@ -1862,12 +1887,25 @@ async function handleIncomingMessage(connection, payload) {
             [conversationId, groupName, connection.id, payload.fromMe === true]
         );
       } else {
-        // For individual chats, update contact_name with sender's pushName
+        // For individual chats, update contact_name with sender's pushName —
+        // but never override a name the user set manually in the agenda (chat_contacts),
+        // otherwise every new inbound message resets it back to the raw WhatsApp pushName.
         await query(
-          `UPDATE conversations 
-           SET last_message_at = NOW(), 
+          `UPDATE conversations
+           SET last_message_at = NOW(),
                 unread_count = CASE WHEN $4::boolean THEN unread_count ELSE unread_count + 1 END,
-               contact_name = COALESCE($2, contact_name),
+               contact_name = CASE
+                 WHEN EXISTS (
+                   SELECT 1 FROM chat_contacts cc
+                   WHERE cc.connection_id = conversations.connection_id
+                     AND cc.is_deleted = false
+                     AND (
+                       regexp_replace(COALESCE(cc.phone, ''), '\\D', '', 'g') = regexp_replace(COALESCE(conversations.contact_phone, ''), '\\D', '', 'g')
+                       OR regexp_replace(COALESCE(cc.phone, ''), '\\D', '', 'g') = regexp_replace(split_part(COALESCE(conversations.remote_jid, ''), '@', 1), '\\D', '', 'g')
+                     )
+                 ) THEN contact_name
+                 ELSE COALESCE($2, contact_name)
+               END,
                  attendance_status = CASE
                    WHEN $4::boolean AND attendance_status = 'waiting' THEN 'attending'
                    WHEN NOT $4::boolean AND attendance_status = 'finished' THEN 'waiting'

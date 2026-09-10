@@ -771,7 +771,18 @@ async function persistIncomingMessage(connection, payload) {
       `UPDATE conversations
        SET last_message_at = NOW(),
             unread_count = CASE WHEN $5::boolean THEN unread_count ELSE unread_count + 1 END,
-           contact_name = COALESCE($2, contact_name),
+           contact_name = CASE
+             WHEN EXISTS (
+               SELECT 1 FROM chat_contacts cc
+               WHERE cc.connection_id = conversations.connection_id
+                 AND cc.is_deleted = false
+                 AND (
+                   regexp_replace(COALESCE(cc.phone, ''), '\\D', '', 'g') = regexp_replace(COALESCE(conversations.contact_phone, ''), '\\D', '', 'g')
+                   OR regexp_replace(COALESCE(cc.phone, ''), '\\D', '', 'g') = regexp_replace(split_part(COALESCE(conversations.remote_jid, ''), '@', 1), '\\D', '', 'g')
+                 )
+             ) THEN contact_name
+             ELSE COALESCE($2, contact_name)
+           END,
             is_group = CASE WHEN $6::boolean THEN true ELSE COALESCE(is_group, false) END,
             group_name = CASE WHEN ($6::boolean OR COALESCE(is_group, false) = true OR remote_jid LIKE '%@g.us') THEN COALESCE($3, group_name) ELSE group_name END,
             attendance_status = CASE

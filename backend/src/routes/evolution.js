@@ -1756,10 +1756,21 @@ async function handleMessageUpsert(connection, data) {
         // For individual chats
         if (!fromMe) {
           await query(
-            `UPDATE conversations 
-             SET last_message_at = NOW(), 
+            `UPDATE conversations
+             SET last_message_at = NOW(),
                  unread_count = unread_count + 1,
-                 contact_name = COALESCE(NULLIF($2, ''), contact_name),
+                 contact_name = CASE
+                   WHEN EXISTS (
+                     SELECT 1 FROM chat_contacts cc
+                     WHERE cc.connection_id = conversations.connection_id
+                       AND cc.is_deleted = false
+                       AND (
+                         regexp_replace(COALESCE(cc.phone, ''), '\\D', '', 'g') = regexp_replace(COALESCE(conversations.contact_phone, ''), '\\D', '', 'g')
+                         OR regexp_replace(COALESCE(cc.phone, ''), '\\D', '', 'g') = regexp_replace(split_part(COALESCE(conversations.remote_jid, ''), '@', 1), '\\D', '', 'g')
+                       )
+                   ) THEN contact_name
+                   ELSE COALESCE(NULLIF($2, ''), contact_name)
+                 END,
                  connection_id = COALESCE($3, connection_id),
                  updated_at = NOW()
              WHERE id = $1`,
