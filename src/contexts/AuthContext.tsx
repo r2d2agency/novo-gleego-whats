@@ -110,6 +110,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
+  // Global 401 handler: when the session token expires server-side (e.g. tab
+  // left open for days past the 7-day JWT expiry), any API call fails with
+  // 401. Without this, the UI kept showing the user as "logged in" forever
+  // while message polling silently failed in the background.
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      if (!getAuthToken()) return;
+      clearAuthToken();
+      setUser(null);
+      toast({
+        title: 'Sessão expirada',
+        description: 'Faça login novamente para continuar.',
+        variant: 'destructive',
+      });
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, [toast]);
+
+  // Revalidate session when the tab/window regains focus (e.g. after the PC
+  // wakes from sleep), so an expired session is caught quickly instead of
+  // only when the next background poll happens to fail.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && getAuthToken()) {
+        refreshUser();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
   const login = async (email: string, password: string) => {
     const { user: userData, token } = await authApi.login(email, password);
     setAuthToken(token);

@@ -22,6 +22,16 @@ const inFlightGetRequests = new Map<string, Promise<unknown>>();
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Fires once when an authenticated request comes back 401, so the app can
+// clear the stale session and send the user back to login instead of
+// silently failing every request forever (token expired but UI stays "logged in").
+let hasNotifiedUnauthorized = false;
+const notifyUnauthorized = () => {
+  if (hasNotifiedUnauthorized) return;
+  hasNotifiedUnauthorized = true;
+  window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+};
+
 const shouldRetry = (method: string, status?: number) => {
   if (method !== 'GET') return false;
   if (!status) return true;
@@ -72,11 +82,9 @@ const executeApiRequest = async <T>(endpoint: string, options: ApiOptions = {}):
     'Content-Type': 'application/json',
   };
 
-  if (auth) {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+  const authToken = auth ? localStorage.getItem('auth_token') : null;
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
   }
 
   const baseCandidates = getBaseCandidates(endpoint);
@@ -127,6 +135,10 @@ const executeApiRequest = async <T>(endpoint: string, options: ApiOptions = {}):
           if (attempt < retries && shouldRetry(method, response.status)) {
             await sleep(250 * Math.pow(2, attempt));
             continue;
+          }
+
+          if (response.status === 401 && authToken) {
+            notifyUnauthorized();
           }
 
           const baseMsg = data?.error || data?.message || `Erro na requisição (${response.status})`;
@@ -247,6 +259,7 @@ export const authApi = {
 
 export const setAuthToken = (token: string) => {
   localStorage.setItem('auth_token', token);
+  hasNotifiedUnauthorized = false;
 };
 
 export const clearAuthToken = () => {
