@@ -1090,6 +1090,23 @@ export function ConversationList({
                     </Button>
                   )}
 
+                  {/* Reopen button - standalone on mobile too, since the "..." actions
+                      dropdown below (which also has this action) is desktop-only */}
+                  {isFinished && onReopenConversation && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs flex-shrink-0 gap-1 text-blue-600 border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onReopenConversation(conv.id);
+                      }}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      Reabrir
+                    </Button>
+                  )}
+
                   {/* Actions dropdown - desktop only */}
                   {!isMobile && (
                     <DropdownMenu>
