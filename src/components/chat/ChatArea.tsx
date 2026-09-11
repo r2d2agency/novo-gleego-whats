@@ -145,6 +145,7 @@ interface ChatAreaProps {
   isMobile?: boolean;
   onMobileBack?: () => void;
   onOpenCRM?: () => void;
+  onStartConversation?: (contactName: string, contactPhone: string, connectionId: string) => void;
 }
 
 export function ChatArea({
@@ -178,6 +179,7 @@ export function ChatArea({
   isMobile = false,
   onMobileBack,
   onOpenCRM,
+  onStartConversation,
 }: ChatAreaProps) {
   const isViewOnly = userRole === 'manager';
   
@@ -247,7 +249,7 @@ export function ChatArea({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const { uploadFile, isUploading, progress: uploadProgress, resetProgress } = useUpload();
+  const { uploadFile, uploadFileMeta, isUploading, progress: uploadProgress, resetProgress } = useUpload();
   const [pendingFiles, setPendingFiles] = useState<Array<{ file: File; preview?: string }>>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ active: boolean; current: number; total: number; fileName: string } | null>(null);
@@ -822,18 +824,21 @@ export function ChatArea({
       const file = new File([audioBlob], fileName, { type: cleanMimeType });
       
       console.log(`[Audio] Sending audio: ${fileName} (${cleanMimeType})`);
-      
+
       setUploadStatus({ active: true, current: 1, total: 1, fileName: 'Áudio' });
-      const url = await uploadFile(file);
-      
-      if (url) { 
+      const uploaded = await uploadFileMeta(file);
+
+      if (uploaded) {
         // Ensure duration is a valid number
         const validDuration = typeof duration === 'number' && !isNaN(duration) && duration > 0 ? Math.floor(duration) : 1;
-        
-        console.log(`[Audio] Uploaded successfully. URL: ${url}, Duration: ${validDuration}s`);
-        
-        await onSendMessage('', 'audio', url, undefined, cleanMimeType, validDuration); 
-        toast.success("Áudio enviado!"); 
+
+        // Use the mimetype the backend actually saved (webm gets converted to ogg/opus
+        // server-side for WhatsApp/iOS compatibility) instead of the original blob's type,
+        // otherwise a mismatched mimetype makes the audio unplayable on iPhone recipients.
+        console.log(`[Audio] Uploaded successfully. URL: ${uploaded.url}, mimetype: ${uploaded.mimetype}, Duration: ${validDuration}s`);
+
+        await onSendMessage('', 'audio', uploaded.url, undefined, uploaded.mimetype, validDuration);
+        toast.success("Áudio enviado!");
       }
       clearAudio();
     } catch (error) { 
@@ -1481,6 +1486,7 @@ export function ChatArea({
                    getDocumentDisplayName={getDocumentDisplayName}
                    looksLikeFilename={looksLikeFilename}
                    messageRef={(el) => { if (el) messageRefs.current.set(msg.id, el); }}
+                   onStartConversation={onStartConversation}
                  />
                </div>
              );

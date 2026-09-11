@@ -891,6 +891,29 @@ const Chat = () => {
     loadConversationsRef.current();
   };
 
+  // Start (or open existing) conversation from a shared contact card in a message
+  const handleStartConversationFromContact = async (contactName: string, contactPhone: string, connectionId: string) => {
+    const cleanPhone = contactPhone.replace(/\D/g, '');
+    if (!cleanPhone) {
+      toast.error('Telefone do contato inválido');
+      return;
+    }
+    try {
+      const conversation = await api<Conversation & { existed?: boolean }>('/api/chat/conversations', {
+        method: 'POST',
+        body: {
+          contact_phone: cleanPhone,
+          contact_name: contactName || undefined,
+          connection_id: connectionId,
+        },
+      });
+      toast.success(conversation.existed ? 'Abrindo conversa existente' : 'Conversa iniciada');
+      await handleNewConversationCreated(conversation);
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao iniciar conversa');
+    }
+  };
+
   // Mobile: go back to conversation list
   const handleMobileBack = () => {
     selectedIdRef.current = null;
@@ -1035,6 +1058,7 @@ const Chat = () => {
                 onReleaseConversation={handleReleaseConversation} onFinishConversation={() => handleFinishConversation()} onReopenConversation={() => handleReopenConversation()}
                 onDepartmentChange={() => loadConversations()} isMobile={true} onMobileBack={handleMobileBack}
                 onOpenCRM={() => setCrmPanelOpen(true)}
+                onStartConversation={handleStartConversationFromContact}
               />
             )}
             {selectedConversation && (
@@ -1141,6 +1165,7 @@ const Chat = () => {
                 onReleaseConversation={handleReleaseConversation} onFinishConversation={() => handleFinishConversation()} onReopenConversation={() => handleReopenConversation()}
                 onDepartmentChange={() => loadConversations()} isMobile={false}
                 onOpenCRM={() => setCrmPanelOpen(true)}
+                onStartConversation={handleStartConversationFromContact}
               />
             </ResizablePanel>
 

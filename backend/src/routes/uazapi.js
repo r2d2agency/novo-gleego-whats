@@ -543,6 +543,35 @@ function extractMessageData(payload) {
   ].find(v => !!v) || null;
 
   let content = text;
+
+  // ===== Contato compartilhado (vCard) =====
+  // A UAZAPI normaliza o contato recebido como texto legível ("Nome\nPhone: +55...")
+  // em vez de expor o vCard bruto, então detectamos pelo formato do texto (além do
+  // typeRaw, quando disponível) e convertemos para o formato estruturado que o card
+  // de contato do chat espera (message_type 'contact' com {contactName, contactPhone}).
+  {
+    const vcardSource = msg?.vcard || msg?.contactMessage?.vcard || msg?.content?.vcard || payload?.vcard
+      || (Array.isArray(msg?.contacts) ? msg.contacts[0]?.vcard : '') || '';
+    const fnMatch = vcardSource ? String(vcardSource).match(/FN:(.+)/i) : null;
+    const telMatch = vcardSource ? String(vcardSource).match(/TEL[^:]*:([+\d\s-]+)/i) : null;
+
+    let contactName = msg?.displayName || msg?.contactName || fnMatch?.[1]?.trim() || '';
+    let contactPhone = (telMatch?.[1] || '').replace(/\D/g, '');
+
+    if ((!contactName || !contactPhone) && typeof text === 'string') {
+      const contactTextMatch = text.trim().match(/^(.+)\n\s*(?:Phone|Tel|Telefone)[:\s]+([+\d][\d\s()-]{6,})/i);
+      if (contactTextMatch) {
+        if (!contactName) contactName = contactTextMatch[1].trim();
+        if (!contactPhone) contactPhone = contactTextMatch[2].replace(/\D/g, '');
+      }
+    }
+
+    if (contactName && contactPhone) {
+      content = JSON.stringify({ contactName, contactPhone });
+      messageType = 'contact';
+    }
+  }
+
   if (!content) {
     if (messageType === 'image') content = '[Imagem]';
     else if (messageType === 'video') content = '[Vídeo]';

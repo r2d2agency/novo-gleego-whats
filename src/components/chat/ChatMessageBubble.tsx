@@ -18,6 +18,8 @@ import {
   Forward,
   UserPlus,
   Loader2,
+  MessageSquarePlus,
+  BookUser,
 } from "lucide-react";
 
  import { format, isBefore, subHours } from "date-fns";
@@ -29,6 +31,7 @@ import { AudioPlayer } from "./AudioPlayer";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { LinkPreview } from "./LinkPreview";
+import { SaveContactDialog } from "./SaveContactDialog";
 import { RefreshCw } from "lucide-react";
 
 const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi;
@@ -100,6 +103,7 @@ interface ChatMessageBubbleProps {
   getDocumentDisplayName: (msg: ChatMessage, resolvedUrl?: string | null) => string;
   looksLikeFilename: (value: string) => boolean;
   messageRef: (el: HTMLDivElement | null) => void;
+  onStartConversation?: (contactName: string, contactPhone: string, connectionId: string) => void;
 }
 
 
@@ -139,9 +143,11 @@ export function ChatMessageBubble({
   getDocumentDisplayName,
   looksLikeFilename,
   messageRef,
+  onStartConversation,
 }: ChatMessageBubbleProps) {
   const mediaUrl = resolveMediaUrl(msg.media_url);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [saveContactOpen, setSaveContactOpen] = useState(false);
 
   const handleRetry = async () => {
     if (!onRetryMediaDownload || isRetrying) return;
@@ -469,15 +475,41 @@ export function ChatMessageBubble({
                 </div>
               </div>
               {contactPhone && (
-                <a
-                  href={vcardUrl}
-                  download={`${(contactName || 'contato').replace(/\s+/g, '_')}.vcf`}
-                  className="mt-2 flex items-center justify-center gap-1.5 text-xs font-medium text-primary hover:underline border-t border-border/40 pt-2"
-                >
-                  <UserPlus className="h-3.5 w-3.5" />
-                  Salvar contato
-                </a>
+                <div className="mt-2 flex flex-col border-t border-border/40 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setSaveContactOpen(true)}
+                    className="flex items-center justify-center gap-1.5 text-xs font-medium text-primary hover:underline py-1.5"
+                  >
+                    <BookUser className="h-3.5 w-3.5" />
+                    Salvar contato
+                  </button>
+                  {onStartConversation && (
+                    <button
+                      type="button"
+                      onClick={() => onStartConversation(contactName, contactPhone, conversation.connection_id)}
+                      className="flex items-center justify-center gap-1.5 text-xs font-medium text-primary hover:underline py-1.5 border-t border-border/40"
+                    >
+                      <MessageSquarePlus className="h-3.5 w-3.5" />
+                      Iniciar conversa
+                    </button>
+                  )}
+                  <a
+                    href={vcardUrl}
+                    download={`${(contactName || 'contato').replace(/\s+/g, '_')}.vcf`}
+                    className="flex items-center justify-center gap-1.5 text-xs font-medium text-muted-foreground hover:underline py-1.5 border-t border-border/40"
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Baixar vCard
+                  </a>
+                </div>
               )}
+              <SaveContactDialog
+                open={saveContactOpen}
+                onOpenChange={setSaveContactOpen}
+                contactName={contactName}
+                contactPhone={contactPhone}
+              />
             </div>
           );
         })()}

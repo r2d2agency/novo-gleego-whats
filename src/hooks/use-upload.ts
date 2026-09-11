@@ -16,7 +16,12 @@ export function useUpload() {
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const uploadFile = useCallback(async (file: File): Promise<string | null> => {
+  // Same as uploadFile, but also returns the mimetype the backend actually stored
+  // the file as. Needed for audio: recorded voice notes are uploaded as webm/opus
+  // and converted server-side to ogg/opus for WhatsApp/iOS compatibility, so the
+  // mimetype attached to the message must reflect the converted file, not the
+  // original blob's type - otherwise iPhone recipients get a "unavailable audio" error.
+  const uploadFileMeta = useCallback(async (file: File): Promise<{ url: string; mimetype: string } | null> => {
     const MAX_SIZE = 200 * 1024 * 1024; // 200MB
     if (file.size > MAX_SIZE) {
       const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
@@ -59,7 +64,7 @@ export function useUpload() {
             const result: UploadResult = JSON.parse(xhr.responseText);
             setProgress(100);
             console.log('[useUpload] Success, URL:', result.file.url);
-            resolve(result.file.url);
+            resolve({ url: result.file.url, mimetype: result.file.mimetype });
           } catch (e) {
             console.error('[useUpload] Parse error:', e);
             reject(new Error('Erro ao processar resposta'));
@@ -100,12 +105,18 @@ export function useUpload() {
     });
   }, []);
 
+  const uploadFile = useCallback(async (file: File): Promise<string | null> => {
+    const result = await uploadFileMeta(file);
+    return result?.url ?? null;
+  }, [uploadFileMeta]);
+
   const resetProgress = useCallback(() => {
     setProgress(0);
   }, []);
 
   return {
     uploadFile,
+    uploadFileMeta,
     isUploading,
     progress,
     resetProgress,
