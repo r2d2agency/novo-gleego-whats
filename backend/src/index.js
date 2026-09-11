@@ -690,9 +690,16 @@ app.post('/api/meta/webhook', async (req, res) => {
               case 'location':
                 content = `[Localização: ${message.location?.latitude}, ${message.location?.longitude}]`;
                 break;
-              case 'contacts':
-                content = `[Contato: ${message.contacts?.[0]?.name?.formatted_name || ''}]`;
+              case 'contacts': {
+                const sharedContact = message.contacts?.[0];
+                const sharedContactPhone = (sharedContact?.phones?.[0]?.wa_id || sharedContact?.phones?.[0]?.phone || '').replace(/\D/g, '');
+                content = JSON.stringify({
+                  contactName: sharedContact?.name?.formatted_name || '',
+                  contactPhone: sharedContactPhone,
+                });
+                effectiveType = 'contact';
                 break;
+              }
               case 'reaction':
                 content = message.reaction?.emoji || '👍';
                 break;
@@ -701,8 +708,13 @@ app.post('/api/meta/webhook', async (req, res) => {
                 content = message.interactive?.button_reply?.title
                   || message.interactive?.list_reply?.title
                   || message.interactive?.list_reply?.description
-                  || message.interactive?.nfm_reply?.body
-                  || JSON.stringify(message.interactive || {});
+                  || message.interactive?.nfm_reply?.body;
+                if (!content) {
+                  // Formato de 'interactive' não coberto pelos campos acima (ex.: catalog/product,
+                  // location_request, cta_url). Logamos bruto para mapear o formato real.
+                  console.warn('[Meta Webhook] interactive sem campos conhecidos, payload bruto:', JSON.stringify(message.interactive || {}));
+                  content = JSON.stringify(message.interactive || {});
+                }
                 effectiveType = 'text';
                 break;
               case 'button':

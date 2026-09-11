@@ -556,9 +556,13 @@ function extractMessageData(payload) {
         content = `Opções: ${btnList}`;
       } else {
         content = '[Mensagem interativa]';
+        // Payload não reconhecido pelos parsers acima (linhas 370-527) - logamos bruto para
+        // conseguir mapear o formato real e evoluir o parser em vez de mostrar só o placeholder.
+        console.warn('[UAZAPI] Mensagem interativa não reconhecida, payload bruto:', JSON.stringify({ typeRaw, msg, payload }).slice(0, 3000));
       }
     } else {
       content = '[Mensagem interativa]';
+      console.warn('[UAZAPI] Tipo de mensagem não mapeado (tratado como interativa). typeRaw:', typeRaw, 'payload bruto:', JSON.stringify({ typeRaw, msg, payload }).slice(0, 3000));
     }
   }
 
