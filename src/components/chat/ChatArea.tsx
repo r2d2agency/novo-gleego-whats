@@ -748,12 +748,15 @@ export function ChatArea({
         // Small pause between files: providers (UAZAPI/W-API/Meta) frequently drop
         // media sent back-to-back in the same instant.
         if (i > 0) await new Promise((r) => setTimeout(r, 900));
-        const url = await uploadFile(file);
-        if (url) {
+        const uploaded = await uploadFileMeta(file);
+        if (uploaded) {
           const type = inferMessageTypeFromFile(file);
           const content = type === 'document' ? file.name : '';
           try {
-            await onSendMessage(content, type, url, undefined, file.type);
+            // Use the mimetype the backend actually saved (video/audio may get
+            // re-encoded server-side for WhatsApp compatibility - e.g. .mov/.webm to
+            // .mp4), not the original file's type, or the provider may reject it.
+            await onSendMessage(content, type, uploaded.url, undefined, uploaded.mimetype);
             successCount++;
           } catch (sendError) {
             const msg = sendError instanceof Error ? sendError.message : 'Erro desconhecido';

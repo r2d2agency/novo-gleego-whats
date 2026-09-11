@@ -238,14 +238,15 @@ router.post('/', authenticate, (req, res) => {
       let size = req.file.size;
 
       // WhatsApp Compatibility: Convert WebM/Opus to OGG/Opus using FFmpeg
-      if (mimetype === 'audio/webm' || filename.endsWith('.webm')) {
+      // (mimetype check first so a video recorded as .webm isn't mistaken for audio below)
+      if (mimetype === 'audio/webm' || (mimetype.startsWith('audio/') && filename.endsWith('.webm'))) {
         const inputPath = path.join(uploadsDir, filename);
         const outputFilename = filename.replace(/\.webm$/, '') + '.ogg';
         const outputPath = path.join(uploadsDir, outputFilename);
 
         try {
           console.log(`[Audio] Converting ${filename} to OGG/Opus for WhatsApp compatibility...`);
-          
+
           // -c:a libopus: Use Opus codec
           // -b:a 64k: Good bitrate for voice
           // -ar 48000: 48 kHz (Apple requirement)
@@ -253,13 +254,13 @@ router.post('/', authenticate, (req, res) => {
           // -application voip: Optimized for voice
           await execPromise(`ffmpeg -i "${inputPath}" -c:a libopus -b:a 64k -ar 48000 -ac 1 -application voip "${outputPath}"`);
 
-          
+
           if (fs.existsSync(outputPath)) {
             const stats = fs.statSync(outputPath);
             filename = outputFilename;
             mimetype = 'audio/ogg';
             size = stats.size;
-            
+
             // Clean up original webm file
             fs.unlinkSync(inputPath);
             console.log(`[Audio] Conversion successful: ${filename} (${size} bytes)`);
@@ -267,6 +268,44 @@ router.post('/', authenticate, (req, res) => {
         } catch (convErr) {
           console.error('[Audio] Conversion failed, using original file:', convErr.message);
           // If conversion fails, we keep the original webm file
+        }
+      }
+
+      // WhatsApp Compatibility: Meta/WhatsApp only accepts MP4 (H.264 + AAC).
+      // iPhone's camera records .mov (often HEVC), and browsers record .webm -
+      // both get uploaded fine but are rejected by the provider at send time
+      // ("Failed to process file, invalid video format. Only mp4 files are accepted").
+      // Re-encode anything that isn't already an .mp4 file.
+      if (mimetype.startsWith('video/') && !filename.toLowerCase().endsWith('.mp4')) {
+        const inputPath = path.join(uploadsDir, filename);
+        const inputExt = path.extname(filename);
+        const outputFilename = filename.slice(0, filename.length - inputExt.length) + '.mp4';
+        const outputPath = path.join(uploadsDir, outputFilename);
+
+        try {
+          console.log(`[Video] Converting ${filename} to MP4/H.264 for WhatsApp compatibility...`);
+
+          // -c:v libx264 -profile:v baseline -pix_fmt yuv420p: broadly compatible H.264
+          // -c:a aac: WhatsApp-accepted audio codec
+          // -movflags +faststart: moov atom at the start, so it can stream/preview
+          await execPromise(
+            `ffmpeg -i "${inputPath}" -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart "${outputPath}"`,
+            { timeout: 180000 }
+          );
+
+          if (fs.existsSync(outputPath)) {
+            const stats = fs.statSync(outputPath);
+            filename = outputFilename;
+            mimetype = 'video/mp4';
+            size = stats.size;
+
+            fs.unlinkSync(inputPath);
+            console.log(`[Video] Conversion successful: ${filename} (${size} bytes)`);
+          }
+        } catch (convErr) {
+          console.error('[Video] Conversion failed, using original file:', convErr.message);
+          // If conversion fails, we keep the original file (send will likely be rejected
+          // by the provider, but we don't want to block the upload itself on this).
         }
       }
 
