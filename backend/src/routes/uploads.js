@@ -251,8 +251,11 @@ router.post('/', authenticate, (req, res) => {
           // -b:a 64k: Good bitrate for voice
           // -ar 48000: 48 kHz (Apple requirement)
           // -ac 1: Mono (Apple requirement)
+          // -avoid_negative_ts make_zero: fixes container timestamps that Android/WhatsApp
+          //   Web tolerate but the iOS WhatsApp client rejects as "audio unavailable"
+          //   (documented Baileys/WhatsApp Web quirk - https://baileys.wiki/advanced/troubleshooting)
           // -application voip: Optimized for voice
-          await execPromise(`ffmpeg -i "${inputPath}" -c:a libopus -b:a 64k -ar 48000 -ac 1 -application voip "${outputPath}"`);
+          await execPromise(`ffmpeg -i "${inputPath}" -c:a libopus -b:a 64k -ar 48000 -ac 1 -avoid_negative_ts make_zero -application voip "${outputPath}"`);
 
 
           if (fs.existsSync(outputPath)) {
