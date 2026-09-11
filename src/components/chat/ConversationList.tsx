@@ -59,6 +59,7 @@ import {
   Pin,
   Star,
   Zap,
+  MessageCircleReply,
 } from "lucide-react";
 import { formatDistanceToNow, format, subDays, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -95,6 +96,7 @@ interface ConversationListProps {
     attendance_status: 'waiting' | 'attending' | 'finished';
     department: string;
     favorite: boolean;
+    hasReply?: boolean;
     startDate?: string;
     endDate?: string;
   };
@@ -109,6 +111,7 @@ interface ConversationListProps {
     attendance_status: 'waiting' | 'attending' | 'finished';
     department: string;
     favorite: boolean;
+    hasReply?: boolean;
     startDate?: string;
     endDate?: string;
   }) => void;
@@ -814,6 +817,22 @@ export function ConversationList({
             title={filters.favorite ? "Ver todas" : "Ver favoritas"}
           >
             <Star className={cn("h-3 w-3", filters.favorite && "fill-current")} />
+          </Button>
+
+          {/* Has-reply filter toggle: separates campaign/disparo sends still awaiting
+              a first reply from ones where the contact already answered (both sit in
+              attendance_status 'waiting' otherwise, with no other way to tell them apart) */}
+          <Button
+            variant={filters.hasReply ? "default" : "ghost"}
+            size="icon"
+            className={cn(
+              "h-8 w-8 flex-shrink-0 transition-colors",
+              filters.hasReply && "bg-primary hover:bg-primary/90 text-primary-foreground"
+            )}
+            onClick={() => onFiltersChange({ ...filters, hasReply: !filters.hasReply })}
+            title={filters.hasReply ? "Ver todas" : "Ver só com resposta do contato"}
+          >
+            <MessageCircleReply className="h-3.5 w-3.5" />
           </Button>
 
           {/* Archive toggle */}

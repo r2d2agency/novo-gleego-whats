@@ -188,6 +188,7 @@ const Chat = () => {
       attendance_status: 'attending' as 'waiting' | 'attending' | 'finished',
       department: 'all',
       favorite: false,
+      hasReply: false,
       startDate: undefined as string | undefined,
       endDate: undefined as string | undefined,
       selectedConnections: [] as string[],
@@ -395,6 +396,7 @@ const Chat = () => {
       filterParams.is_group = activeTab === 'groups' ? 'true' : 'false';
       filterParams.attendance_status = filters.attendance_status;
       if (filters.favorite) filterParams.favorite = 'true';
+      if (filters.hasReply) filterParams.hasReply = 'true';
       if (filters.startDate) filterParams.startDate = filters.startDate;
       if (filters.endDate) filterParams.endDate = filters.endDate;
       
@@ -464,7 +466,7 @@ const Chat = () => {
   useEffect(() => {
     loadConversations();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.search, filters.tag, filters.assigned, filters.connection, filters.archived, filters.attendance_status, filters.department, filters.favorite, filters.startDate, filters.endDate, activeTab]);
+  }, [filters.search, filters.tag, filters.assigned, filters.connection, filters.archived, filters.attendance_status, filters.department, filters.favorite, filters.hasReply, filters.startDate, filters.endDate, activeTab]);
 
   // Clear the list instantly when switching between chats/groups so the UI
   // doesn't keep showing the previous tab's conversations while loading

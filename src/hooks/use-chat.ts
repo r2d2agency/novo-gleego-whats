@@ -235,6 +235,7 @@ export const useChat = () => {
     attendance_status?: 'waiting' | 'attending' | 'finished';
     department?: string;
     favorite?: string;
+    hasReply?: string;
     startDate?: string;
     endDate?: string;
     limit?: number;
@@ -259,6 +260,7 @@ export const useChat = () => {
       if (filters?.attendance_status) params.append('attendance_status', filters.attendance_status);
       if (filters?.department && filters.department !== 'all') params.append('department', filters.department);
       if (filters?.favorite === 'true') params.append('favorite', 'true');
+      if (filters?.hasReply === 'true') params.append('has_reply', 'true');
       if (filters?.startDate) params.append('startDate', filters.startDate);
       if (filters?.endDate) params.append('endDate', filters.endDate);
       if (filters?.limit) params.append('limit', String(filters.limit));

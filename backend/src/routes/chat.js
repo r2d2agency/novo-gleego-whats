@@ -577,6 +577,7 @@ router.get('/conversations', authenticate, async (req, res) => {
       connection_id: filterConnectionId,
       show_archived: show_archived_raw = 'false',
       favorite,
+      has_reply,
       tag
     } = req.query;
     
@@ -667,6 +668,16 @@ router.get('/conversations', authenticate, async (req, res) => {
 
     if (favorite === 'true') {
       filter += ` AND COALESCE(conv.is_favorite, false) = true`;
+    }
+
+    // Separates campaign/disparo sends still awaiting a first reply from ones where
+    // the contact already answered - both otherwise sit in attendance_status 'waiting'
+    // with no way to tell them apart.
+    if (has_reply === 'true') {
+      filter += ` AND EXISTS (
+        SELECT 1 FROM chat_messages cm_reply
+        WHERE cm_reply.conversation_id = conv.id AND cm_reply.from_me = false
+      )`;
     }
 
     if (tag && tag !== 'all') {
