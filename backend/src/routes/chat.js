@@ -763,18 +763,20 @@ router.post('/conversations/finish-stale', authenticate, async (req, res) => {
       return res.json({ finished: 0 });
     }
 
+    // Postgres doesn't allow a LATERAL subquery in an UPDATE...FROM clause to
+    // reference the target table (conv), so the "last message per conversation"
+    // lookup has to be a plain CTE joined by conversation_id instead.
     const result = await query(
-      `UPDATE conversations conv
-       SET attendance_status = 'finished', updated_at = NOW()
-       FROM connections conn
-       LEFT JOIN LATERAL (
-         SELECT from_me, timestamp
+      `WITH last_msgs AS (
+         SELECT DISTINCT ON (conversation_id) conversation_id, from_me, timestamp
          FROM chat_messages
-         WHERE conversation_id = conv.id
-         ORDER BY timestamp DESC
-         LIMIT 1
-       ) lm ON true
+         ORDER BY conversation_id, timestamp DESC
+       )
+       UPDATE conversations conv
+       SET attendance_status = 'finished', updated_at = NOW()
+       FROM connections conn, last_msgs lm
        WHERE conv.connection_id = conn.id
+         AND conv.id = lm.conversation_id
          AND conn.provider = 'meta'
          AND conv.connection_id = ANY($1)
          AND conv.attendance_status IN ('waiting', 'attending')
