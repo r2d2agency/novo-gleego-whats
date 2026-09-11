@@ -35,9 +35,11 @@ export interface Conversation {
   assigned_name: string | null;
   connection_name: string;
   connection_phone: string | null;
+  connection_provider?: string;
   tags: ConversationTag[];
   last_message: string | null;
   last_message_type: string | null;
+  last_message_from_me?: boolean | null;
   attendance_status: 'waiting' | 'attending' | 'finished';
   accepted_at: string | null;
   accepted_by: string | null;

@@ -715,7 +715,7 @@ router.get('/conversations', authenticate, async (req, res) => {
 
     // Execute the final query
     const result = await query(
-      `SELECT conv.*, (COALESCE(conv.is_group, false) OR conv.remote_jid LIKE '%@g.us') AS is_group, conn.name as connection_name, u.name as assigned_name, d.name as department_name,
+      `SELECT conv.*, (COALESCE(conv.is_group, false) OR conv.remote_jid LIKE '%@g.us') AS is_group, conn.name as connection_name, conn.provider as connection_provider, u.name as assigned_name, d.name as department_name,
         COALESCE(
           (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color))
            FROM conversation_tag_links ctl
@@ -725,13 +725,14 @@ router.get('/conversations', authenticate, async (req, res) => {
         ) as tags,
         lm.content as last_message,
         lm.message_type as last_message_type,
-        lm.timestamp as last_message_at
+        lm.timestamp as last_message_at,
+        lm.from_me as last_message_from_me
        FROM conversations conv
        JOIN connections conn ON conn.id = conv.connection_id
        LEFT JOIN users u ON u.id = conv.assigned_to
        LEFT JOIN departments d ON d.id = conv.department_id
        LEFT JOIN LATERAL (
-         SELECT content, message_type, timestamp
+         SELECT content, message_type, timestamp, from_me
          FROM chat_messages
          WHERE conversation_id = conv.id
          ORDER BY timestamp DESC
@@ -747,6 +748,47 @@ router.get('/conversations', authenticate, async (req, res) => {
   } catch (error) {
     console.error('List conversations error:', error);
     res.status(500).json({ error: 'Erro ao listar conversas' });
+  }
+});
+
+// Finalize Meta API conversations stuck waiting on the customer for 24h+.
+// Meta's Cloud API only allows free-form replies within 24h of the customer's
+// last message - after that the conversation is effectively dead until the
+// customer writes again, so these just pile up in the "waiting"/"attending"
+// queue with nothing left to do. Manual, on-demand action (not automatic).
+router.post('/conversations/finish-stale', authenticate, async (req, res) => {
+  try {
+    const connectionIds = await getUserConnections(req.userId);
+    if (connectionIds.length === 0) {
+      return res.json({ finished: 0 });
+    }
+
+    const result = await query(
+      `UPDATE conversations conv
+       SET attendance_status = 'finished', updated_at = NOW()
+       FROM connections conn
+       LEFT JOIN LATERAL (
+         SELECT from_me, timestamp
+         FROM chat_messages
+         WHERE conversation_id = conv.id
+         ORDER BY timestamp DESC
+         LIMIT 1
+       ) lm ON true
+       WHERE conv.connection_id = conn.id
+         AND conn.provider = 'meta'
+         AND conv.connection_id = ANY($1)
+         AND conv.attendance_status IN ('waiting', 'attending')
+         AND conv.is_archived = false
+         AND lm.from_me = true
+         AND lm.timestamp < NOW() - INTERVAL '24 hours'
+       RETURNING conv.id`,
+      [connectionIds]
+    );
+
+    res.json({ finished: result.rowCount });
+  } catch (error) {
+    console.error('Finish stale conversations error:', error);
+    res.status(500).json({ error: 'Erro ao finalizar conversas paradas' });
   }
 });
 

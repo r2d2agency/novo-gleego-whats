@@ -152,6 +152,27 @@ function getConnectionColor(connectionId: string | undefined, connections: Conne
   return CONNECTION_COLORS[idx >= 0 ? idx % CONNECTION_COLORS.length : 0];
 }
 
+// Meta's Cloud API only allows free-form replies within 24h of the contact's last
+// message - after that, only template messages work again. Warn as that window
+// approaches so agents can act (or template-resend) before it closes.
+interface MetaWindowInfo {
+  state: 'warning' | 'critical' | 'expired';
+  hoursRemaining: number;
+}
+
+function getMetaWindowInfo(conv: Conversation): MetaWindowInfo | null {
+  if (conv.connection_provider !== 'meta') return null;
+  if (conv.attendance_status === 'finished') return null;
+  if (!conv.last_message_from_me || !conv.last_message_at) return null;
+
+  const hoursElapsed = (Date.now() - new Date(conv.last_message_at).getTime()) / (1000 * 60 * 60);
+  if (hoursElapsed < 10) return null;
+
+  const hoursRemaining = Math.max(0, 24 - hoursElapsed);
+  const state: MetaWindowInfo['state'] = hoursElapsed >= 24 ? 'expired' : hoursElapsed >= 20 ? 'critical' : 'warning';
+  return { state, hoursRemaining };
+}
+
 const getMessageTypeIcon = (type: string | null) => {
   switch (type) {
     case 'image':
@@ -372,6 +393,31 @@ export function ConversationList({
     }
   };
 
+  const handleFinishStaleMeta = async () => {
+    setDeleting(true);
+    try {
+      const result = await api<{ finished: number }>(
+        '/api/chat/conversations/finish-stale',
+        { method: 'POST' }
+      );
+      toast({
+        title: "Limpeza concluída",
+        description: result.finished > 0
+          ? `${result.finished} conversa(s) sem resposta há mais de 24h foram finalizadas.`
+          : "Nenhuma conversa parada há mais de 24h encontrada."
+      });
+      onRefresh();
+    } catch (error: any) {
+      toast({
+        title: "Erro ao finalizar conversas paradas",
+        description: error.message || "Não foi possível finalizar as conversas",
+        variant: "destructive"
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleCleanupEmpty = async () => {
     setDeleting(true);
     try {
@@ -483,6 +529,10 @@ export function ConversationList({
                   <DropdownMenuItem onClick={handleCleanupDuplicates} disabled={deleting}>
                     <Sparkles className="h-4 w-4 mr-2" />
                     Limpar duplicadas (@lid)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleFinishStaleMeta} disabled={deleting}>
+                    <Clock className="h-4 w-4 mr-2" />
+                    Finalizar paradas 24h+ (Meta)
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -886,12 +936,16 @@ export function ConversationList({
               const isAttending = conv.attendance_status === 'attending';
               const isFinished = conv.attendance_status === 'finished';
               const connColor = getConnectionColor(conv.connection_id, connections);
-              
+              const metaWindow = getMetaWindowInfo(conv);
+
               const conversationContent = (
                 <div
                   className={cn(
                     "flex items-start gap-3 p-4 cursor-pointer transition-colors hover:bg-accent/50 group relative",
-                    selectedId === conv.id && "bg-accent"
+                    selectedId === conv.id && "bg-accent",
+                    selectedId !== conv.id && metaWindow?.state === 'expired' && "bg-red-500/10",
+                    selectedId !== conv.id && metaWindow?.state === 'critical' && "bg-orange-500/10",
+                    selectedId !== conv.id && metaWindow?.state === 'warning' && "bg-amber-500/10"
                   )}
                   style={connColor ? { borderLeft: `3px solid ${connColor}` } : undefined}
                   onClick={() => onSelect(conv)}
@@ -975,6 +1029,25 @@ export function ConversationList({
 
                     {/* Tags and Department row */}
                     <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                      {/* Meta 24h reply-window countdown */}
+                      {metaWindow && (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px] px-1.5 py-0 gap-1",
+                            metaWindow.state === 'expired' && "border-red-500/50 text-red-600 dark:text-red-400 bg-red-500/10",
+                            metaWindow.state === 'critical' && "border-orange-500/50 text-orange-600 dark:text-orange-400 bg-orange-500/10",
+                            metaWindow.state === 'warning' && "border-amber-500/50 text-amber-600 dark:text-amber-400 bg-amber-500/10"
+                          )}
+                          title={metaWindow.state === 'expired'
+                            ? "Janela de 24h da Meta fechada - só é possível responder enviando um template novamente"
+                            : `Janela de 24h da Meta fecha em ${Math.floor(metaWindow.hoursRemaining)}h - depois disso só é possível responder com template`}
+                        >
+                          <Clock className="h-2.5 w-2.5" />
+                          {metaWindow.state === 'expired' ? 'Janela expirada' : `${Math.floor(metaWindow.hoursRemaining)}h p/ expirar`}
+                        </Badge>
+                      )}
+
                       {/* Department badge */}
                       {conv.department_name && (() => {
                         const deptColor = allDepartments.find(d => d.id === conv.department_id)?.color || '#6b7280';
