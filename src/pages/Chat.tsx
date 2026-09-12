@@ -291,11 +291,14 @@ const Chat = () => {
     const unsubscribe = chatEvents.subscribe('new_message', () => {
       loadConversationsRef.current();
       if (selectedConversation) {
-        getMessages(selectedConversation.id).then((msgs) => setMessages(dedupeMessages(msgs))).catch(console.error);
+        // Keep the same day range/limit as the initial load, otherwise this
+        // silently truncates back to the last 50 messages overall and wipes out
+        // any older history the user had scrolled back to.
+        getMessages(selectedConversation.id, { days: historyDays, limit: 500 }).then((msgs) => setMessages(dedupeMessages(msgs))).catch(console.error);
       }
     });
     return unsubscribe;
-  }, [selectedConversation, getMessages]);
+  }, [selectedConversation, getMessages, historyDays]);
 
    // Listen for refresh-conversations event
    useEffect(() => {
@@ -779,8 +782,11 @@ const Chat = () => {
          provider: connection?.provider,
        });
 
-      // Refresh messages and conversations
-      const msgs = await getMessages(selectedConversation.id);
+      // Refresh messages and conversations - use the day range that was just synced
+      // (and a higher limit), otherwise this silently falls back to the default
+      // last-50-messages view and the newly imported history never becomes visible.
+      setHistoryDays(days);
+      const msgs = await getMessages(selectedConversation.id, { days, limit: 500 });
       setMessages(msgs);
       loadConversations();
 
@@ -1041,7 +1047,7 @@ const Chat = () => {
                         setFilters((prev) => ({ ...prev, attendance_status: convStatus }));
                         selectedIdRef.current = conv.id;
                         setSelectedConversation(conv);
-                        const msgs = await getMessages(conversationId);
+                        const msgs = await getMessages(conversationId, { days: historyDays, limit: 500 });
                         setMessages(msgs);
                       }
                     } catch (error: any) { toast.error('Erro ao abrir conversa'); }
@@ -1145,7 +1151,7 @@ const Chat = () => {
                       setFilters((prev) => ({ ...prev, attendance_status: convStatus }));
                       selectedIdRef.current = conv.id;
                       setSelectedConversation(conv);
-                      const msgs = await getMessages(conversationId);
+                      const msgs = await getMessages(conversationId, { days: historyDays, limit: 500 });
                       setMessages(msgs);
                     }
                   } catch (error: any) { toast.error('Erro ao abrir conversa'); }
