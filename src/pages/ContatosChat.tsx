@@ -937,92 +937,113 @@ const ContatosChat = () => {
             </Dialog>
 
             {/* Single Delete Confirmation Dialog */}
-            <AlertDialog open={!!contactToDelete} onOpenChange={(open) => { if (!open) setContactToDelete(null); }}>
-              <AlertDialogContent>
+            <AlertDialog
+              open={!!contactToDelete}
+              onOpenChange={(open) => { if (!open && !deletingContact) setContactToDelete(null); }}
+            >
+              <AlertDialogContent
+                onEscapeKeyDown={(e) => { if (deletingContact) e.preventDefault(); }}
+                onInteractOutside={(e) => { if (deletingContact) e.preventDefault(); }}
+              >
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Excluir contato</AlertDialogTitle>
+                  <AlertDialogTitle>
+                    {deletingContact ? "Excluindo..." : "Excluir contato"}
+                  </AlertDialogTitle>
                   <AlertDialogDescription asChild>
-                    <div className="space-y-2">
-                      <p>
-                        Tem certeza que deseja excluir{" "}
-                        <strong>{contactToDelete?.name || contactToDelete?.phone || "este contato"}</strong> da agenda?
-                      </p>
-                      {contactToDelete?.has_conversation && (
-                        <p className="text-destructive font-medium">
-                          Este contato possui uma conversa ativa. A conversa e todo o histórico de mensagens também serão excluídos permanentemente.
+                    {deletingContact ? (
+                      <div className="flex flex-col items-center gap-3 py-6">
+                        <Loader2 className="h-8 w-8 animate-spin text-destructive" />
+                        <p className="text-center text-foreground">
+                          {contactToDelete?.has_conversation
+                            ? "Excluindo o contato e a conversa associada. Isso pode levar alguns instantes, aguarde..."
+                            : "Excluindo o contato. Aguarde..."}
                         </p>
-                      )}
-                      <p>Esta ação não pode ser desfeita.</p>
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p>
+                          Tem certeza que deseja excluir{" "}
+                          <strong>{contactToDelete?.name || contactToDelete?.phone || "este contato"}</strong> da agenda?
+                        </p>
+                        {contactToDelete?.has_conversation && (
+                          <p className="text-destructive font-medium">
+                            Este contato possui uma conversa ativa. A conversa e todo o histórico de mensagens também serão excluídos permanentemente.
+                          </p>
+                        )}
+                        <p>Esta ação não pode ser desfeita.</p>
+                      </div>
+                    )}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={deletingContact}>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={confirmDeleteChatContact}
-                    disabled={deletingContact}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    {deletingContact ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Excluindo...
-                      </>
-                    ) : (
-                      "Excluir"
-                    )}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
+                {!deletingContact && (
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={(e) => { e.preventDefault(); confirmDeleteChatContact(); }}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Excluir
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                )}
               </AlertDialogContent>
             </AlertDialog>
 
             {/* Bulk Delete Confirmation Dialog */}
-            <Dialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
-              <DialogContent>
+            <Dialog
+              open={showBulkDeleteDialog}
+              onOpenChange={(open) => { if (!open && !deletingBulk) setShowBulkDeleteDialog(false); }}
+            >
+              <DialogContent
+                onEscapeKeyDown={(e) => { if (deletingBulk) e.preventDefault(); }}
+                onInteractOutside={(e) => { if (deletingBulk) e.preventDefault(); }}
+              >
                 <DialogHeader>
-                  <DialogTitle>Confirmar exclusão</DialogTitle>
+                  <DialogTitle>
+                    {deletingBulk ? "Excluindo..." : "Confirmar exclusão"}
+                  </DialogTitle>
                   <DialogDescription asChild>
-                    <div className="space-y-2">
-                      <p>
-                        Tem certeza que deseja excluir {selectedContactIds.size} contato(s) da agenda?
-                      </p>
-                      {Array.from(selectedContactIds).some(
-                        id => chatContacts.find(c => c.id === id)?.has_conversation
-                      ) && (
-                        <p className="text-destructive font-medium">
-                          Alguns contatos selecionados possuem conversa ativa. As conversas e o histórico de mensagens também serão excluídos permanentemente.
+                    {deletingBulk ? (
+                      <div className="flex flex-col items-center gap-3 py-6">
+                        <Loader2 className="h-8 w-8 animate-spin text-destructive" />
+                        <p className="text-center text-foreground">
+                          Excluindo {selectedContactIds.size} contato(s) e as conversas associadas. Isso pode levar alguns instantes, aguarde...
                         </p>
-                      )}
-                      <p>Esta ação não pode ser desfeita.</p>
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p>
+                          Tem certeza que deseja excluir {selectedContactIds.size} contato(s) da agenda?
+                        </p>
+                        {Array.from(selectedContactIds).some(
+                          id => chatContacts.find(c => c.id === id)?.has_conversation
+                        ) && (
+                          <p className="text-destructive font-medium">
+                            Alguns contatos selecionados possuem conversa ativa. As conversas e o histórico de mensagens também serão excluídos permanentemente.
+                          </p>
+                        )}
+                        <p>Esta ação não pode ser desfeita.</p>
+                      </div>
+                    )}
                   </DialogDescription>
                 </DialogHeader>
-                <DialogFooter className="gap-2 sm:gap-0">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setShowBulkDeleteDialog(false)}
-                    disabled={deletingBulk}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button 
-                    variant="destructive" 
-                    onClick={handleBulkDelete}
-                    disabled={deletingBulk}
-                  >
-                    {deletingBulk ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Excluindo...
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Excluir {selectedContactIds.size} contato(s)
-                      </>
-                    )}
-                  </Button>
-                </DialogFooter>
+                {!deletingBulk && (
+                  <DialogFooter className="gap-2 sm:gap-0">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowBulkDeleteDialog(false)}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={handleBulkDelete}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Excluir {selectedContactIds.size} contato(s)
+                    </Button>
+                  </DialogFooter>
+                )}
               </DialogContent>
             </Dialog>
           </TabsContent>
