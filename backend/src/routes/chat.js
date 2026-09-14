@@ -4083,18 +4083,35 @@ router.patch('/contacts/:id', authenticate, async (req, res) => {
     }
 
     const result = await query(
-      `UPDATE chat_contacts 
+      `UPDATE chat_contacts
        SET name = $1, updated_at = NOW()
        WHERE id = $2 AND connection_id = ANY($3)
        RETURNING *`,
       [name.trim(), id, connectionIds]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Contato não encontrado' });
-    }
+    let updatedContact = result.rows[0];
 
-    const updatedContact = result.rows[0];
+    if (!updatedContact) {
+      // Not a chat_contacts row: the agenda list also includes contacts that
+      // only exist via contact_lists (campaign lists), not chat_contacts.
+      const listResult = await query(
+        `UPDATE contacts ct
+         SET name = $1
+         FROM contact_lists cl
+         WHERE ct.id = $2
+           AND ct.list_id = cl.id
+           AND cl.connection_id = ANY($3)
+         RETURNING ct.*, cl.connection_id`,
+        [name.trim(), id, connectionIds]
+      );
+
+      if (listResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Contato não encontrado' });
+      }
+
+      updatedContact = listResult.rows[0];
+    }
 
     await query(
       `UPDATE conversations
@@ -4178,7 +4195,22 @@ router.delete('/contacts/:id', authenticate, async (req, res) => {
       [id, connectionIds]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows.length > 0) {
+      return res.json({ success: true });
+    }
+
+    // Not a chat_contacts row: the agenda list also includes contacts that
+    // only exist via contact_lists (campaign lists) — try deleting from there.
+    const listResult = await query(
+      `DELETE FROM contacts
+       WHERE id = $1 AND list_id IN (
+         SELECT id FROM contact_lists WHERE connection_id = ANY($2)
+       )
+       RETURNING id`,
+      [id, connectionIds]
+    );
+
+    if (listResult.rows.length === 0) {
       return res.status(404).json({ error: 'Contato não encontrado' });
     }
 
@@ -4208,9 +4240,27 @@ router.post('/contacts/bulk-delete', authenticate, async (req, res) => {
       [contact_ids, connectionIds]
     );
 
-    res.json({ 
-      success: true, 
-      deleted: result.rows.length 
+    const deletedIds = new Set(result.rows.map(r => r.id));
+    const remainingIds = contact_ids.filter(id => !deletedIds.has(id));
+
+    let listDeletedCount = 0;
+    if (remainingIds.length > 0) {
+      // Some selected ids belong to contacts that only exist via contact_lists
+      // (campaign lists), not chat_contacts.
+      const listResult = await query(
+        `DELETE FROM contacts
+         WHERE id = ANY($1) AND list_id IN (
+           SELECT id FROM contact_lists WHERE connection_id = ANY($2)
+         )
+         RETURNING id`,
+        [remainingIds, connectionIds]
+      );
+      listDeletedCount = listResult.rows.length;
+    }
+
+    res.json({
+      success: true,
+      deleted: result.rows.length + listDeletedCount
     });
   } catch (error) {
     console.error('Bulk delete chat contacts error:', error);
