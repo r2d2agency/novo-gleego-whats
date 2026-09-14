@@ -4203,23 +4203,30 @@ router.post('/contacts/by-phone', authenticate, async (req, res) => {
 });
 
 // Delete contact from agenda (soft delete to prevent reappearing from conversation sync)
+//
+// The agenda list merges two sources for the same phone (chat_contacts +
+// contacts from campaign contact_lists) via DISTINCT ON, showing only one id.
+// If we only deleted the row matching the clicked id, a duplicate row for the
+// same phone in the *other* table would survive and resurface on next load,
+// making the deletion look like it silently failed. So once we resolve which
+// phone/connection the clicked id belongs to, we delete every row for that
+// phone in BOTH tables.
 router.delete('/contacts/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
     const connectionIds = await getUserConnections(req.userId);
 
-    // Resolve the contact's phone/jid first so we can also delete its
-    // conversation history (chat_messages/conversations have no FK to the
-    // contact tables — they're only matched by phone/jid).
+    // Resolve the contact's phone/jid/connection, whichever table it lives in.
+    let connectionId = null;
+    let phone = null;
+    let jid = null;
+
     const chatContactLookup = await query(
       `SELECT connection_id, phone, jid FROM chat_contacts WHERE id = $1 AND connection_id = ANY($2)`,
       [id, connectionIds]
     );
-
-    let conversationsDeleted = 0;
     if (chatContactLookup.rows.length > 0) {
-      const { connection_id, phone, jid } = chatContactLookup.rows[0];
-      conversationsDeleted = await deleteConversationsForContact(connection_id, phone, jid);
+      ({ connection_id: connectionId, phone, jid } = chatContactLookup.rows[0]);
     } else {
       const listContactLookup = await query(
         `SELECT cl.connection_id, ct.phone
@@ -4229,35 +4236,37 @@ router.delete('/contacts/:id', authenticate, async (req, res) => {
         [id, connectionIds]
       );
       if (listContactLookup.rows.length > 0) {
-        const { connection_id, phone } = listContactLookup.rows[0];
-        conversationsDeleted = await deleteConversationsForContact(connection_id, phone, null);
+        connectionId = listContactLookup.rows[0].connection_id;
+        phone = listContactLookup.rows[0].phone;
       }
     }
 
-    const result = await query(
-      `UPDATE chat_contacts
-       SET is_deleted = true, deleted_at = NOW(), updated_at = NOW()
-       WHERE id = $1 AND connection_id = ANY($2)
-       RETURNING id`,
-      [id, connectionIds]
-    );
-
-    if (result.rows.length > 0) {
-      return res.json({ success: true, conversations_deleted: conversationsDeleted });
+    if (!connectionId || !phone) {
+      return res.status(404).json({ error: 'Contato não encontrado' });
     }
 
-    // Not a chat_contacts row: the agenda list also includes contacts that
-    // only exist via contact_lists (campaign lists) — try deleting from there.
-    const listResult = await query(
-      `DELETE FROM contacts
-       WHERE id = $1 AND list_id IN (
-         SELECT id FROM contact_lists WHERE connection_id = ANY($2)
-       )
+    const conversationsDeleted = await deleteConversationsForContact(connectionId, phone, jid);
+
+    // Soft-delete every chat_contacts row for this phone within the connection
+    const chatDeleteResult = await query(
+      `UPDATE chat_contacts
+       SET is_deleted = true, deleted_at = NOW(), updated_at = NOW()
+       WHERE connection_id = $1 AND phone = $2
        RETURNING id`,
-      [id, connectionIds]
+      [connectionId, phone]
     );
 
-    if (listResult.rows.length === 0) {
+    // Hard-delete every matching row from campaign contact_lists too
+    const listDeleteResult = await query(
+      `DELETE FROM contacts
+       WHERE phone = $1 AND list_id IN (
+         SELECT id FROM contact_lists WHERE connection_id = $2
+       )
+       RETURNING id`,
+      [phone, connectionId]
+    );
+
+    if (chatDeleteResult.rows.length === 0 && listDeleteResult.rows.length === 0) {
       return res.status(404).json({ error: 'Contato não encontrado' });
     }
 
@@ -4269,6 +4278,11 @@ router.delete('/contacts/:id', authenticate, async (req, res) => {
 });
 
 // Bulk delete contacts from agenda (soft delete)
+//
+// Same duplicate-across-tables issue as the single-delete route above: resolve
+// each selected id to its (connection_id, phone), dedupe, then delete every
+// row for that phone in both chat_contacts and campaign contact_lists so no
+// duplicate survives to resurface in the agenda.
 router.post('/contacts/bulk-delete', authenticate, async (req, res) => {
   try {
     const { contact_ids } = req.body;
@@ -4279,8 +4293,6 @@ router.post('/contacts/bulk-delete', authenticate, async (req, res) => {
 
     const connectionIds = await getUserConnections(req.userId);
 
-    // Resolve phone/jid for every selected contact first so their conversation
-    // history can be deleted along with them.
     const chatContactsLookup = await query(
       `SELECT id, connection_id, phone, jid FROM chat_contacts WHERE id = ANY($1) AND connection_id = ANY($2)`,
       [contact_ids, connectionIds]
@@ -4293,43 +4305,48 @@ router.post('/contacts/bulk-delete', authenticate, async (req, res) => {
       [contact_ids, connectionIds]
     );
 
-    let conversationsDeleted = 0;
+    // Dedupe (connection_id, phone) pairs across both sources
+    const refsByKey = new Map();
     for (const row of chatContactsLookup.rows) {
-      conversationsDeleted += await deleteConversationsForContact(row.connection_id, row.phone, row.jid);
+      refsByKey.set(`${row.connection_id}:${row.phone}`, { connection_id: row.connection_id, phone: row.phone, jid: row.jid });
     }
     for (const row of listContactsLookup.rows) {
-      conversationsDeleted += await deleteConversationsForContact(row.connection_id, row.phone, null);
+      const key = `${row.connection_id}:${row.phone}`;
+      if (!refsByKey.has(key)) {
+        refsByKey.set(key, { connection_id: row.connection_id, phone: row.phone, jid: null });
+      }
     }
 
-    const result = await query(
-      `UPDATE chat_contacts
-       SET is_deleted = true, deleted_at = NOW(), updated_at = NOW()
-       WHERE id = ANY($1) AND connection_id = ANY($2)
-       RETURNING id`,
-      [contact_ids, connectionIds]
-    );
+    let conversationsDeleted = 0;
+    let contactsDeleted = 0;
+    for (const ref of refsByKey.values()) {
+      conversationsDeleted += await deleteConversationsForContact(ref.connection_id, ref.phone, ref.jid);
 
-    const deletedIds = new Set(result.rows.map(r => r.id));
-    const remainingIds = contact_ids.filter(id => !deletedIds.has(id));
+      const chatDeleteResult = await query(
+        `UPDATE chat_contacts
+         SET is_deleted = true, deleted_at = NOW(), updated_at = NOW()
+         WHERE connection_id = $1 AND phone = $2
+         RETURNING id`,
+        [ref.connection_id, ref.phone]
+      );
 
-    let listDeletedCount = 0;
-    if (remainingIds.length > 0) {
-      // Some selected ids belong to contacts that only exist via contact_lists
-      // (campaign lists), not chat_contacts.
-      const listResult = await query(
+      const listDeleteResult = await query(
         `DELETE FROM contacts
-         WHERE id = ANY($1) AND list_id IN (
-           SELECT id FROM contact_lists WHERE connection_id = ANY($2)
+         WHERE phone = $1 AND list_id IN (
+           SELECT id FROM contact_lists WHERE connection_id = $2
          )
          RETURNING id`,
-        [remainingIds, connectionIds]
+        [ref.phone, ref.connection_id]
       );
-      listDeletedCount = listResult.rows.length;
+
+      if (chatDeleteResult.rows.length > 0 || listDeleteResult.rows.length > 0) {
+        contactsDeleted++;
+      }
     }
 
     res.json({
       success: true,
-      deleted: result.rows.length + listDeletedCount,
+      deleted: contactsDeleted,
       conversations_deleted: conversationsDeleted
     });
   } catch (error) {
