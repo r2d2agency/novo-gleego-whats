@@ -21,6 +21,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -142,6 +152,8 @@ const ContatosChat = () => {
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [deletingBulk, setDeletingBulk] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<ChatContact | null>(null);
+  const [deletingContact, setDeletingContact] = useState(false);
   
   // Pagination for chat contacts
   const [visibleCount, setVisibleCount] = useState(100);
@@ -496,16 +508,29 @@ const ContatosChat = () => {
     }
   };
 
-  // Delete contact from agenda
-  const handleDeleteChatContact = async (contactId: string) => {
-    if (!confirm("Tem certeza que deseja excluir este contato da agenda?")) return;
+  // Delete contact from agenda (opens confirmation dialog)
+  const handleDeleteChatContact = (contact: ChatContact) => {
+    setContactToDelete(contact);
+  };
 
+  // Confirm deletion of the contact (and its conversation, if any)
+  const confirmDeleteChatContact = async () => {
+    if (!contactToDelete) return;
+
+    setDeletingContact(true);
     try {
-      await api(`/api/chat/contacts/${contactId}`, { method: "DELETE" });
-      toast.success("Contato excluído da agenda");
+      await api(`/api/chat/contacts/${contactToDelete.id}`, { method: "DELETE" });
+      toast.success(
+        contactToDelete.has_conversation
+          ? "Contato e conversa excluídos com sucesso"
+          : "Contato excluído da agenda"
+      );
+      setContactToDelete(null);
       loadData();
     } catch (err) {
       toast.error("Erro ao excluir contato");
+    } finally {
+      setDeletingContact(false);
     }
   };
 
@@ -537,7 +562,7 @@ const ContatosChat = () => {
 
     setDeletingBulk(true);
     try {
-      const result = await api<{ success: boolean; deleted: number }>("/api/chat/contacts/bulk-delete", {
+      const result = await api<{ success: boolean; deleted: number; conversations_deleted?: number }>("/api/chat/contacts/bulk-delete", {
         method: "POST",
         body: { contact_ids: Array.from(selectedContactIds) },
       });
@@ -546,6 +571,10 @@ const ContatosChat = () => {
         toast.error("Nenhum contato foi excluído", {
           description: "Esses itens não estavam na agenda ou você não tem permissão.",
         });
+      } else if (result.conversations_deleted) {
+        toast.success(
+          `${result.deleted} contato(s) e ${result.conversations_deleted} conversa(s) excluído(s)`
+        );
       } else {
         toast.success(`${result.deleted} contato(s) excluído(s) da agenda`);
       }
@@ -827,7 +856,7 @@ const ContatosChat = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => handleDeleteChatContact(contact.id)}
+                              onClick={() => handleDeleteChatContact(contact)}
                               title="Excluir da agenda"
                               className="text-destructive hover:text-destructive"
                             >
@@ -907,14 +936,65 @@ const ContatosChat = () => {
               </DialogContent>
             </Dialog>
 
+            {/* Single Delete Confirmation Dialog */}
+            <AlertDialog open={!!contactToDelete} onOpenChange={(open) => { if (!open) setContactToDelete(null); }}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Excluir contato</AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-2">
+                      <p>
+                        Tem certeza que deseja excluir{" "}
+                        <strong>{contactToDelete?.name || contactToDelete?.phone || "este contato"}</strong> da agenda?
+                      </p>
+                      {contactToDelete?.has_conversation && (
+                        <p className="text-destructive font-medium">
+                          Este contato possui uma conversa ativa. A conversa e todo o histórico de mensagens também serão excluídos permanentemente.
+                        </p>
+                      )}
+                      <p>Esta ação não pode ser desfeita.</p>
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={deletingContact}>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={confirmDeleteChatContact}
+                    disabled={deletingContact}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    {deletingContact ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Excluindo...
+                      </>
+                    ) : (
+                      "Excluir"
+                    )}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
             {/* Bulk Delete Confirmation Dialog */}
             <Dialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Confirmar exclusão</DialogTitle>
-                  <DialogDescription>
-                    Tem certeza que deseja excluir {selectedContactIds.size} contato(s) da agenda?
-                    Esta ação não pode ser desfeita.
+                  <DialogDescription asChild>
+                    <div className="space-y-2">
+                      <p>
+                        Tem certeza que deseja excluir {selectedContactIds.size} contato(s) da agenda?
+                      </p>
+                      {Array.from(selectedContactIds).some(
+                        id => chatContacts.find(c => c.id === id)?.has_conversation
+                      ) && (
+                        <p className="text-destructive font-medium">
+                          Alguns contatos selecionados possuem conversa ativa. As conversas e o histórico de mensagens também serão excluídos permanentemente.
+                        </p>
+                      )}
+                      <p>Esta ação não pode ser desfeita.</p>
+                    </div>
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter className="gap-2 sm:gap-0">

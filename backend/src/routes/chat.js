@@ -119,6 +119,27 @@ async function hasColumn(tableName, columnName) {
   return Boolean(result.rows[0]?.exists_column);
 }
 
+// Delete all conversations (and their messages/notes/tags) matching a contact's
+// phone/jid within a connection. Used when a contact is deleted from the agenda
+// so its conversation history doesn't survive orphaned.
+async function deleteConversationsForContact(connectionId, phone, jid) {
+  if (!connectionId || (!phone && !jid)) return 0;
+
+  const convResult = await query(
+    `SELECT id FROM conversations WHERE connection_id = $1 AND (contact_phone = $2 OR remote_jid = $3)`,
+    [connectionId, phone || null, jid || null]
+  );
+
+  for (const conv of convResult.rows) {
+    await query(`DELETE FROM conversation_notes WHERE conversation_id = $1`, [conv.id]);
+    await query(`DELETE FROM conversation_tag_links WHERE conversation_id = $1`, [conv.id]);
+    await query(`DELETE FROM chat_messages WHERE conversation_id = $1`, [conv.id]);
+    await query(`DELETE FROM conversations WHERE id = $1`, [conv.id]);
+  }
+
+  return convResult.rows.length;
+}
+
 // ==========================================
 // CONVERSATIONS
 // ==========================================
@@ -4187,6 +4208,32 @@ router.delete('/contacts/:id', authenticate, async (req, res) => {
     const { id } = req.params;
     const connectionIds = await getUserConnections(req.userId);
 
+    // Resolve the contact's phone/jid first so we can also delete its
+    // conversation history (chat_messages/conversations have no FK to the
+    // contact tables — they're only matched by phone/jid).
+    const chatContactLookup = await query(
+      `SELECT connection_id, phone, jid FROM chat_contacts WHERE id = $1 AND connection_id = ANY($2)`,
+      [id, connectionIds]
+    );
+
+    let conversationsDeleted = 0;
+    if (chatContactLookup.rows.length > 0) {
+      const { connection_id, phone, jid } = chatContactLookup.rows[0];
+      conversationsDeleted = await deleteConversationsForContact(connection_id, phone, jid);
+    } else {
+      const listContactLookup = await query(
+        `SELECT cl.connection_id, ct.phone
+         FROM contacts ct
+         JOIN contact_lists cl ON cl.id = ct.list_id
+         WHERE ct.id = $1 AND cl.connection_id = ANY($2)`,
+        [id, connectionIds]
+      );
+      if (listContactLookup.rows.length > 0) {
+        const { connection_id, phone } = listContactLookup.rows[0];
+        conversationsDeleted = await deleteConversationsForContact(connection_id, phone, null);
+      }
+    }
+
     const result = await query(
       `UPDATE chat_contacts
        SET is_deleted = true, deleted_at = NOW(), updated_at = NOW()
@@ -4196,7 +4243,7 @@ router.delete('/contacts/:id', authenticate, async (req, res) => {
     );
 
     if (result.rows.length > 0) {
-      return res.json({ success: true });
+      return res.json({ success: true, conversations_deleted: conversationsDeleted });
     }
 
     // Not a chat_contacts row: the agenda list also includes contacts that
@@ -4214,7 +4261,7 @@ router.delete('/contacts/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Contato não encontrado' });
     }
 
-    res.json({ success: true });
+    res.json({ success: true, conversations_deleted: conversationsDeleted });
   } catch (error) {
     console.error('Delete chat contact error:', error);
     res.status(500).json({ error: 'Erro ao excluir contato' });
@@ -4231,6 +4278,28 @@ router.post('/contacts/bulk-delete', authenticate, async (req, res) => {
     }
 
     const connectionIds = await getUserConnections(req.userId);
+
+    // Resolve phone/jid for every selected contact first so their conversation
+    // history can be deleted along with them.
+    const chatContactsLookup = await query(
+      `SELECT id, connection_id, phone, jid FROM chat_contacts WHERE id = ANY($1) AND connection_id = ANY($2)`,
+      [contact_ids, connectionIds]
+    );
+    const listContactsLookup = await query(
+      `SELECT ct.id, cl.connection_id, ct.phone
+       FROM contacts ct
+       JOIN contact_lists cl ON cl.id = ct.list_id
+       WHERE ct.id = ANY($1) AND cl.connection_id = ANY($2)`,
+      [contact_ids, connectionIds]
+    );
+
+    let conversationsDeleted = 0;
+    for (const row of chatContactsLookup.rows) {
+      conversationsDeleted += await deleteConversationsForContact(row.connection_id, row.phone, row.jid);
+    }
+    for (const row of listContactsLookup.rows) {
+      conversationsDeleted += await deleteConversationsForContact(row.connection_id, row.phone, null);
+    }
 
     const result = await query(
       `UPDATE chat_contacts
@@ -4260,7 +4329,8 @@ router.post('/contacts/bulk-delete', authenticate, async (req, res) => {
 
     res.json({
       success: true,
-      deleted: result.rows.length + listDeletedCount
+      deleted: result.rows.length + listDeletedCount,
+      conversations_deleted: conversationsDeleted
     });
   } catch (error) {
     console.error('Bulk delete chat contacts error:', error);
