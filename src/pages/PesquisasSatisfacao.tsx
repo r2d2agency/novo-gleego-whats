@@ -37,6 +37,10 @@ export default function PesquisasSatisfacao() {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [wizardInitialData, setWizardInitialData] = useState<WizardInitialData>(null);
+  // Tracks whether the wizard is editing a real survey (a UUID from the DB) —
+  // kept separate from wizardInitialData.id because a SurveyTemplate also has
+  // an `id` (a slug like "evento"), which must never be sent as a survey id.
+  const [editingSurveyId, setEditingSurveyId] = useState<string | null>(null);
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [surveyToDelete, setSurveyToDelete] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -64,12 +68,14 @@ export default function PesquisasSatisfacao() {
   };
 
   const handleNewBlank = () => {
+    setEditingSurveyId(null);
     setWizardInitialData(null);
     setIsWizardOpen(true);
   };
 
   const handleSelectTemplate = (template: SurveyTemplate | null) => {
     setIsLibraryOpen(false);
+    setEditingSurveyId(null);
     setWizardInitialData(template);
     setIsWizardOpen(true);
   };
@@ -82,6 +88,7 @@ export default function PesquisasSatisfacao() {
         toast.error("Não foi possível carregar a pesquisa");
         return;
       }
+      setEditingSurveyId(survey.id);
       setWizardInitialData(full);
       setIsWizardOpen(true);
     } finally {
@@ -92,12 +99,12 @@ export default function PesquisasSatisfacao() {
   const closeWizard = () => {
     setIsWizardOpen(false);
     setWizardInitialData(null);
+    setEditingSurveyId(null);
   };
 
   const handleSaveWizard = (data: any) => {
-    const id = (wizardInitialData as any)?.id;
-    if (id) {
-      updateSurvey.mutate({ id, ...data }, { onSuccess: closeWizard });
+    if (editingSurveyId) {
+      updateSurvey.mutate({ id: editingSurveyId, ...data }, { onSuccess: closeWizard });
     } else {
       createSurvey.mutate(data, { onSuccess: closeWizard });
     }
@@ -189,7 +196,7 @@ export default function PesquisasSatisfacao() {
               onSave={handleSaveWizard}
               isSubmitting={createSurvey.isPending || updateSurvey.isPending}
               initialData={wizardInitialData}
-              isEditing={!!(wizardInitialData as any)?.id}
+              isEditing={!!editingSurveyId}
             />
           </DialogContent>
         </Dialog>
