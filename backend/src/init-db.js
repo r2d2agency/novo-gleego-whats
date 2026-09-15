@@ -2949,6 +2949,24 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN null; END $$;
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_phone ON external_form_submissions(phone);
 CREATE INDEX IF NOT EXISTS idx_external_form_submissions_created ON external_form_submissions(created_at DESC);
+
+-- Referral ("indicação") at the end of a survey: respondent can name friends
+-- to refer, and the app builds ready-to-send WhatsApp messages for them.
+DO $$ BEGIN
+    ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS referral_enabled BOOLEAN DEFAULT false;
+    ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS referral_message TEXT;
+EXCEPTION WHEN duplicate_column THEN null; END $$;
+
+CREATE TABLE IF NOT EXISTS external_form_referrals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  submission_id UUID NOT NULL REFERENCES external_form_submissions(id) ON DELETE CASCADE,
+  form_id UUID NOT NULL REFERENCES external_forms(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  phone VARCHAR(50) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_external_form_referrals_submission ON external_form_referrals(submission_id);
+CREATE INDEX IF NOT EXISTS idx_external_form_referrals_form ON external_form_referrals(form_id);
 `;
 
 // ============================================

@@ -32,6 +32,11 @@ function csvEscape(val: unknown) {
   return /["\n,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+function formatReferrals(referrals: unknown) {
+  if (!Array.isArray(referrals) || referrals.length === 0) return "";
+  return referrals.map((r: any) => `${r?.name || ""} (${r?.phone || ""})`).join("; ");
+}
+
 export default function PesquisasSatisfacao() {
   const [search, setSearch] = useState("");
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -276,13 +281,14 @@ function SurveyItem({
     const fieldKeys = Array.from(
       new Set(safeResults.flatMap((r: any) => Object.keys(r?.data || {})))
     );
-    const headers = ["Data", "Nome", "Telefone", "E-mail", ...fieldKeys.map((k) => fieldLabels[k] || k)];
+    const headers = ["Data", "Nome", "Telefone", "E-mail", ...fieldKeys.map((k) => fieldLabels[k] || k), "Indicações"];
     const rows = safeResults.map((r: any) => [
       r.created_at ? new Date(r.created_at).toLocaleString() : "",
       r.name || "",
       r.phone || "",
       r.email || "",
       ...fieldKeys.map((k) => (r?.data || {})[k] ?? ""),
+      formatReferrals(r.referrals),
     ]);
     const csvContent = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
     const blob = new Blob(["﻿" + csvContent], { type: "text/csv;charset=utf-8;" });
@@ -400,6 +406,12 @@ function SurveyItem({
                             </div>
                           ))}
                         </div>
+                        {Array.isArray(res.referrals) && res.referrals.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+                            <span className="font-medium">Indicou: </span>
+                            {formatReferrals(res.referrals)}
+                          </p>
+                        )}
                       </div>
                     );
                   })}

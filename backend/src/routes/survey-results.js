@@ -22,9 +22,15 @@ router.get('/:id/stats', authenticate, async (req, res) => {
     if (!org) return res.status(403).json({ error: 'No organization' });
 
     const submissions = await query(
-      `SELECT * FROM external_form_submissions 
-       WHERE form_id = $1 AND organization_id = $2 
-       ORDER BY created_at DESC`,
+      `SELECT s.*,
+        COALESCE(
+          (SELECT json_agg(json_build_object('name', r.name, 'phone', r.phone) ORDER BY r.created_at)
+           FROM external_form_referrals r WHERE r.submission_id = s.id),
+          '[]'::json
+        ) as referrals
+       FROM external_form_submissions s
+       WHERE s.form_id = $1 AND s.organization_id = $2
+       ORDER BY s.created_at DESC`,
       [req.params.id, org.organization_id]
     );
 

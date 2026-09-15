@@ -25,8 +25,13 @@ interface SurveyWizardInitialData {
   text_color?: string;
   logo_url?: string;
   logo_size?: number;
+  referral_enabled?: boolean;
+  referral_message?: string;
   fields?: FormField[];
 }
+
+const DEFAULT_REFERRAL_MESSAGE =
+  "Olá {name}! Acabei de responder uma pesquisa e te indiquei — em breve vamos falar com você por aqui. 😊";
 
 interface SurveyWizardProps {
   onClose: () => void;
@@ -51,6 +56,8 @@ function buildInitialState(initialData?: SurveyWizardProps["initialData"], isEdi
     text_color: initialData?.text_color || "#1f2937",
     logo_url: initialData?.logo_url || "",
     logo_size: initialData?.logo_size || 48,
+    referral_enabled: initialData?.referral_enabled || false,
+    referral_message: initialData?.referral_message || DEFAULT_REFERRAL_MESSAGE,
     fields: (nonRespondentFields.length > 0
       ? nonRespondentFields
       : [
@@ -181,6 +188,40 @@ export function SurveyWizard({ onClose, onSave, isSubmitting, initialData, isEdi
                   Essas perguntas aparecem no fim da pesquisa e ficam salvas junto de cada resposta.
                 </p>
               </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-lg border space-y-3">
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="referral-enabled"
+                  checked={formData.referral_enabled}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, referral_enabled: e.target.checked }))}
+                  className="h-4 w-4 mt-0.5 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                />
+                <div>
+                  <Label htmlFor="referral-enabled" className="cursor-pointer">
+                    Pedir indicações ao final da pesquisa
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Quem responder poderá indicar amigos (nome + WhatsApp) e receberá mensagens prontas pra enviar a cada um.
+                  </p>
+                </div>
+              </div>
+              {formData.referral_enabled && (
+                <div className="space-y-1 pl-7">
+                  <Label htmlFor="referral-message" className="text-xs">Mensagem para o indicado</Label>
+                  <Textarea
+                    id="referral-message"
+                    value={formData.referral_message}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, referral_message: e.target.value }))}
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use <code className="bg-white px-1 rounded border">{"{name}"}</code> onde quiser que apareça o nome do indicado.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

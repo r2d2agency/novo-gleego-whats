@@ -47,7 +47,11 @@ export interface ExternalForm {
   round_robin_user_ids?: string[];
   display_mode?: "chat" | "typeform" | "standard" | "survey";
   transition_type?: "slide-right" | "slide-left";
-  
+
+  // Referral ("indicação")
+  referral_enabled?: boolean;
+  referral_message?: string;
+
   // Stats
   views_count: number;
   submissions_count: number;
@@ -73,6 +77,7 @@ export interface FormSubmission {
   prospect_id?: string;
   prospect_name?: string;
   prospect_converted_at?: string;
+  referrals?: { name: string; phone: string }[];
   created_at: string;
 }
 
@@ -184,7 +189,13 @@ export async function getPublicForm(slug: string): Promise<ExternalForm | null> 
 export async function submitPublicForm(
   slug: string,
   data: Record<string, string>,
-  meta?: { utm_source?: string; utm_medium?: string; utm_campaign?: string; referrer?: string }
+  meta?: {
+    utm_source?: string;
+    utm_medium?: string;
+    utm_campaign?: string;
+    referrer?: string;
+    referrals?: { name: string; phone: string }[];
+  }
 ): Promise<{ success: boolean; thank_you_message?: string; redirect_url?: string }> {
   const baseUrls = [API_URL, window.location.origin].filter(Boolean);
   const uniqueUrls = Array.from(new Set(baseUrls));

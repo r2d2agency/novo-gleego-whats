@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Send, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, Star } from "lucide-react";
+import { Loader2, Send, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, Star, Plus, X, MessageCircle } from "lucide-react";
 import { getPublicForm, submitPublicForm, ExternalForm, FormField } from "@/hooks/use-external-forms";
 
 interface ChatMessage {
@@ -34,6 +34,12 @@ function isValidBrazilianPhone(value: string) {
 function isValidBrazilianWhatsApp(value: string) {
   const national = normalizeBrazilDigits(value);
   return national.length === 11 && /^[1-9][1-9]9/.test(national);
+}
+
+// Ensures the number is dialable (has the 55 DDI) for a wa.me link.
+function toDialableBrazilPhone(value: string) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.startsWith("55") ? digits : `55${digits}`;
 }
 
 export default function PublicFormPage() {
@@ -344,7 +350,7 @@ export default function PublicFormPage() {
   const rawMode = String(form.display_mode || "typeform").trim().toLowerCase();
   const mode = ["typeform", "standard", "survey"].includes(rawMode) ? rawMode : "typeform";
 
-  const doSubmit = async (data: Record<string, string>) => {
+  const doSubmit = async (data: Record<string, string>, referrals?: { name: string; phone: string }[]) => {
     if (!slug) return null;
     setSubmitting(true);
     try {
@@ -353,6 +359,7 @@ export default function PublicFormPage() {
         utm_medium: searchParams.get("utm_medium") || undefined,
         utm_campaign: searchParams.get("utm_campaign") || undefined,
         referrer: document.referrer || undefined,
+        referrals: referrals && referrals.length > 0 ? referrals : undefined,
       });
       setSubmitted(true);
       setThankYouMessage(result.thank_you_message || form.thank_you_message || "Obrigado!");
@@ -657,7 +664,7 @@ interface ViewProps {
   submitted: boolean;
   submitting: boolean;
   thankYouMessage: string;
-  onSubmit: (data: Record<string, string>) => Promise<any>;
+  onSubmit: (data: Record<string, string>, referrals?: { name: string; phone: string }[]) => Promise<any>;
   isSurvey?: boolean;
   renderRatingStars: (value: string | undefined, onChange: (val: string) => void, userInput: string, setUserInput: (v: string) => void) => React.ReactNode;
   userInput: string;
@@ -672,6 +679,10 @@ function TypeformView({ form, primaryColor, bgColor, textColor, buttonTextColor,
   const [error, setError] = useState<string | null>(null);
   const [animKey, setAnimKey] = useState(0);
   const [direction, setDirection] = useState<"next" | "prev">("next");
+  const [showReferralScreen, setShowReferralScreen] = useState(false);
+  const [submittedReferrals, setSubmittedReferrals] = useState<{ name: string; phone: string }[]>([]);
+
+  const referralEnabled = !!isSurvey && !!form.referral_enabled;
 
   const total = fields.length;
   const current = fields[index];
@@ -682,13 +693,22 @@ function TypeformView({ form, primaryColor, bgColor, textColor, buttonTextColor,
     setError(null);
   }, [index]);
 
+  const finalizeSubmit = async (referrals: { name: string; phone: string }[]) => {
+    setSubmittedReferrals(referrals);
+    await onSubmit(values, referrals);
+  };
+
   const goNext = async () => {
     if (!current) return;
     const val = values[current.field_key] || "";
     const err = validateField(val, current);
     if (err) { setError(err); return; }
     if (index + 1 >= total) {
-      await onSubmit(values);
+      if (referralEnabled) {
+        setShowReferralScreen(true);
+      } else {
+        await finalizeSubmit([]);
+      }
     } else {
       setDirection("next");
       setIndex(index + 1);
@@ -705,7 +725,59 @@ function TypeformView({ form, primaryColor, bgColor, textColor, buttonTextColor,
       <div className="min-h-screen flex flex-col items-center justify-center p-8" style={{ backgroundColor: bgColor, color: textColor }}>
         <CheckCircle2 className="h-16 w-16 mb-4" style={{ color: primaryColor }} />
         <p className="text-xl text-center max-w-md">{thankYouMessage}</p>
+
+        {submittedReferrals.length > 0 && form.referral_message && (
+          <div className="mt-8 w-full max-w-md space-y-3">
+            <p className="text-sm font-medium text-center opacity-70">Mensagens prontas para enviar:</p>
+            {submittedReferrals.map((r, i) => {
+              const text = form.referral_message!.replace(/\{name\}/g, r.name);
+              const waLink = `https://wa.me/${toDialableBrazilPhone(r.phone)}?text=${encodeURIComponent(text)}`;
+              return (
+                <a
+                  key={i}
+                  href={waLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between gap-3 p-3 rounded-lg border hover:opacity-90 transition-opacity"
+                  style={{ borderColor: `${primaryColor}40` }}
+                >
+                  <div className="min-w-0 text-left">
+                    <p className="font-medium truncate">{r.name}</p>
+                    <p className="text-xs opacity-60 truncate">{text}</p>
+                  </div>
+                  <span
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium"
+                    style={{ backgroundColor: primaryColor, color: buttonTextColor }}
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    Abrir WhatsApp
+                  </span>
+                </a>
+              );
+            })}
+          </div>
+        )}
       </div>
+    );
+  }
+
+  if (showReferralScreen) {
+    return (
+      <ReferralCollectionScreen
+        formName={form.name}
+        logoUrl={form.logo_url}
+        logoSize={form.logo_size}
+        primaryColor={primaryColor}
+        bgColor={bgColor}
+        textColor={textColor}
+        buttonTextColor={buttonTextColor}
+        fieldBackgroundColor={fieldBackgroundColor}
+        fieldBorderColor={fieldBorderColor}
+        fieldTextColor={fieldTextColor}
+        submitting={submitting}
+        onSkip={() => finalizeSubmit([])}
+        onContinue={(referrals) => finalizeSubmit(referrals)}
+      />
     );
   }
 
@@ -849,6 +921,126 @@ function TypeformView({ form, primaryColor, bgColor, textColor, buttonTextColor,
       <footer className="py-3 text-center text-xs opacity-60">
         {form.organization_name && <span>© {new Date().getFullYear()} {form.organization_name}</span>}
       </footer>
+    </div>
+  );
+}
+
+// ============ REFERRAL ("INDICAÇÃO") SCREEN ============
+// Shown after the last question of a survey with referral_enabled, before the
+// actual submit — lets the respondent name friends to refer (name + WhatsApp).
+// Always skippable; never blocks the real submission.
+interface ReferralRow {
+  name: string;
+  phone: string;
+}
+
+function ReferralCollectionScreen({
+  formName,
+  logoUrl,
+  logoSize,
+  primaryColor,
+  bgColor,
+  textColor,
+  buttonTextColor,
+  fieldBackgroundColor,
+  fieldBorderColor,
+  fieldTextColor,
+  submitting,
+  onSkip,
+  onContinue,
+}: {
+  formName: string;
+  logoUrl?: string;
+  logoSize?: number;
+  primaryColor: string;
+  bgColor: string;
+  textColor: string;
+  buttonTextColor: string;
+  fieldBackgroundColor: string;
+  fieldBorderColor: string;
+  fieldTextColor: string;
+  submitting: boolean;
+  onSkip: () => void;
+  onContinue: (referrals: ReferralRow[]) => void;
+}) {
+  const [rows, setRows] = useState<ReferralRow[]>([{ name: "", phone: "" }]);
+  const [error, setError] = useState<string | null>(null);
+
+  const updateRow = (i: number, patch: Partial<ReferralRow>) => {
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  };
+  const addRow = () => setRows((prev) => [...prev, { name: "", phone: "" }]);
+  const removeRow = (i: number) => setRows((prev) => prev.filter((_, idx) => idx !== i));
+
+  const handleContinue = () => {
+    const filled = rows.filter((r) => r.name.trim() || r.phone.trim());
+    const invalid = filled.find((r) => !r.name.trim() || !isValidBrazilianWhatsApp(r.phone));
+    if (invalid) {
+      setError("Preencha nome e um WhatsApp válido em cada indicação (ou remova a linha).");
+      return;
+    }
+    onContinue(filled.map((r) => ({ name: r.name.trim(), phone: r.phone.trim() })));
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: bgColor, color: textColor }}>
+      <header className="py-6 px-6 flex flex-col items-center gap-3 border-b" style={{ borderColor: `${primaryColor}15` }}>
+        {logoUrl && (
+          <img src={logoUrl} alt="Logo" style={{ height: `${logoSize || 48}px`, width: "auto" }} className="object-contain" onError={(e) => (e.currentTarget.style.display = "none")} />
+        )}
+        <h1 className="text-xl font-semibold text-center">{formName}</h1>
+      </header>
+
+      <main className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-xl">
+          <h2 className="text-2xl sm:text-3xl font-medium mb-2">Quer indicar alguém?</h2>
+          <p className="text-sm opacity-70 mb-6">Deixe o nome e o WhatsApp de quem você indicaria. É opcional.</p>
+
+          <div className="space-y-3">
+            {rows.map((row, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <Input
+                  value={row.name}
+                  onChange={(e) => updateRow(i, { name: e.target.value })}
+                  placeholder="Nome do indicado"
+                  style={{ borderColor: fieldBorderColor, backgroundColor: fieldBackgroundColor, color: fieldTextColor }}
+                />
+                <Input
+                  value={row.phone}
+                  onChange={(e) => updateRow(i, { phone: e.target.value })}
+                  placeholder="WhatsApp (com DDD)"
+                  style={{ borderColor: fieldBorderColor, backgroundColor: fieldBackgroundColor, color: fieldTextColor }}
+                />
+                {rows.length > 1 && (
+                  <Button type="button" variant="ghost" size="icon" className="shrink-0" onClick={() => removeRow(i)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <Button type="button" variant="outline" size="sm" className="mt-3 gap-1.5" onClick={addRow}>
+            <Plus className="h-4 w-4" /> Adicionar indicado
+          </Button>
+
+          {error && <p className="text-sm mt-3 text-destructive">{error}</p>}
+
+          <div className="flex items-center justify-between mt-8">
+            <Button variant="ghost" onClick={onSkip} disabled={submitting}>
+              Pular
+            </Button>
+            <Button
+              onClick={handleContinue}
+              disabled={submitting}
+              style={{ backgroundColor: primaryColor, color: buttonTextColor }}
+              className="gap-2"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Continuar <ArrowRight className="h-4 w-4" /></>}
+            </Button>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

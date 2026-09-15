@@ -23,6 +23,18 @@ const VALID_FIELD_TYPES = ['text', 'phone', 'whatsapp', 'email', 'select', 'text
     `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS use_round_robin BOOLEAN DEFAULT false`,
     `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS round_robin_user_ids UUID[] DEFAULT '{}'::uuid[]`,
     `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS round_robin_last_index INTEGER DEFAULT -1`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS referral_enabled BOOLEAN DEFAULT false`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS referral_message TEXT`,
+    `CREATE TABLE IF NOT EXISTS external_form_referrals (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      submission_id UUID NOT NULL REFERENCES external_form_submissions(id) ON DELETE CASCADE,
+      form_id UUID NOT NULL REFERENCES external_forms(id) ON DELETE CASCADE,
+      name VARCHAR(255) NOT NULL,
+      phone VARCHAR(50) NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_external_form_referrals_submission ON external_form_referrals(submission_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_external_form_referrals_form ON external_form_referrals(form_id)`,
   ];
 
   for (const statement of ddl) {
@@ -491,6 +503,8 @@ router.post('/', authenticate, async (req, res) => {
       round_robin_user_ids,
       display_mode,
       transition_type,
+      referral_enabled,
+      referral_message,
       fields
     } = req.body;
 
@@ -508,8 +522,9 @@ router.post('/', authenticate, async (req, res) => {
         field_background_color, field_border_color, field_text_color, label_color,
         welcome_message, thank_you_message, redirect_url,
         trigger_flow_id, connection_id, created_by, display_mode, transition_type,
-        lead_target, crm_funnel_id, use_round_robin, round_robin_user_ids
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+        lead_target, crm_funnel_id, use_round_robin, round_robin_user_ids,
+        referral_enabled, referral_message
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
       RETURNING *`,
       [
         org.organization_id, name, slug, description, logo_url, logo_size || 48,
@@ -522,7 +537,8 @@ router.post('/', authenticate, async (req, res) => {
         redirect_url, trigger_flow_id || null, connection_id || null, req.userId,
         normalizeDisplayMode(display_mode), transition_type || 'slide-right',
         normalizeLeadTarget(lead_target), crm_funnel_id || null,
-        !!use_round_robin, normalizeUuidArray(round_robin_user_ids)
+        !!use_round_robin, normalizeUuidArray(round_robin_user_ids),
+        !!referral_enabled, referral_message || null
       ]
     );
 
@@ -712,6 +728,8 @@ router.put('/:id', authenticate, async (req, res) => {
       round_robin_user_ids,
       display_mode,
       transition_type,
+      referral_enabled,
+      referral_message,
       fields
     } = req.body;
 
@@ -753,6 +771,8 @@ router.put('/:id', authenticate, async (req, res) => {
         crm_funnel_id = COALESCE($25, crm_funnel_id),
         use_round_robin = COALESCE($26, use_round_robin),
         round_robin_user_ids = COALESCE($27, round_robin_user_ids),
+        referral_enabled = COALESCE($28, referral_enabled),
+        referral_message = COALESCE($29, referral_message),
         updated_at = NOW()
        WHERE id = $14 AND organization_id = $15
        RETURNING *`,
@@ -773,6 +793,8 @@ router.put('/:id', authenticate, async (req, res) => {
         normalizedCrmFunnelId,
         typeof use_round_robin === 'boolean' ? use_round_robin : null,
         normalizedRoundRobinUserIds,
+        typeof referral_enabled === 'boolean' ? referral_enabled : null,
+        referral_message ?? null,
       ]
     );
 
@@ -910,6 +932,7 @@ router.get('/public/:slug', async (req, res) => {
         f.button_text, f.button_text_color, f.field_background_color, f.field_border_color,
         f.field_text_color, f.label_color, f.welcome_message, f.is_active, f.display_mode,
         f.transition_type, f.redirect_url, f.thank_you_message,
+        f.referral_enabled, f.referral_message,
         o.name as organization_name
        FROM external_forms f
        JOIN organizations o ON o.id = f.organization_id
@@ -966,7 +989,7 @@ router.get('/public/:slug', async (req, res) => {
 // Submit form (public)
 router.post('/public/:slug/submit', async (req, res) => {
   try {
-    const { data, utm_source, utm_medium, utm_campaign, referrer } = req.body;
+    const { data, utm_source, utm_medium, utm_campaign, referrer, referrals } = req.body;
 
     // Get form
     const formResult = await query(
@@ -1036,6 +1059,27 @@ router.post('/public/:slug/submit', async (req, res) => {
     );
 
     const submission = submissionResult.rows[0];
+
+    // Referral ("indicação"): optional, never blocks the submission. Invalid
+    // entries (empty name or an unparseable Brazilian WhatsApp number) are
+    // silently dropped rather than rejecting the whole survey response.
+    if (form.referral_enabled && Array.isArray(referrals) && referrals.length > 0) {
+      try {
+        for (const referral of referrals) {
+          const referralName = String(referral?.name || '').trim();
+          const referralPhoneRaw = String(referral?.phone || '').replace(/\D/g, '');
+          if (!referralName || !isValidBrazilianWhatsApp(referralPhoneRaw)) continue;
+          const referralPhone = referralPhoneRaw.startsWith('55') ? referralPhoneRaw : `55${referralPhoneRaw}`;
+          await query(
+            `INSERT INTO external_form_referrals (submission_id, form_id, name, phone)
+             VALUES ($1, $2, $3, $4)`,
+            [submission.id, form.id, referralName, referralPhone]
+          );
+        }
+      } catch (referralError) {
+        logError('Error saving survey referrals:', referralError);
+      }
+    }
 
     let assignedUserId = form.created_by || null;
 
