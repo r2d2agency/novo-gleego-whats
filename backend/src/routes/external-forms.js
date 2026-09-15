@@ -35,6 +35,8 @@ const VALID_FIELD_TYPES = ['text', 'phone', 'whatsapp', 'email', 'select', 'text
     )`,
     `CREATE INDEX IF NOT EXISTS idx_external_form_referrals_submission ON external_form_referrals(submission_id)`,
     `CREATE INDEX IF NOT EXISTS idx_external_form_referrals_form ON external_form_referrals(form_id)`,
+    `ALTER TABLE external_form_submissions ADD COLUMN IF NOT EXISTS deal_id UUID REFERENCES crm_deals(id) ON DELETE SET NULL`,
+    `ALTER TABLE external_form_submissions ADD COLUMN IF NOT EXISTS routing_error TEXT`,
   ];
 
   for (const statement of ddl) {
@@ -1174,6 +1176,14 @@ router.post('/public/:slug/submit', async (req, res) => {
             );
           }
 
+          // Trace the deal back to the submission it came from, so "Ver Leads"
+          // can show whether each lead actually reached the CRM (and which
+          // card) without anyone having to dig through server logs.
+          await query(
+            `UPDATE external_form_submissions SET deal_id = $1 WHERE id = $2`,
+            [dealResult.rows[0].id, submission.id]
+          );
+
           emitLeadEvent({
             organizationId: form.organization_id,
             dealId: dealResult.rows[0].id,
@@ -1276,6 +1286,17 @@ router.post('/public/:slug/submit', async (req, res) => {
           shouldCreateCrmDeal ? 'Error creating CRM deal from form:' : 'Error creating prospect from form:',
           prospectError
         );
+        // Persist the error on the submission itself so "Ver Leads" can show
+        // exactly why a lead didn't reach the CRM, without anyone having to
+        // dig through server logs (which are too noisy on a busy instance).
+        try {
+          await query(
+            `UPDATE external_form_submissions SET routing_error = $1 WHERE id = $2`,
+            [String(prospectError?.message || prospectError).slice(0, 500), submission.id]
+          );
+        } catch (routingErrorSaveError) {
+          logError('Error saving routing_error on submission:', routingErrorSaveError);
+        }
         // Don't fail the submission, just log the error
       }
     }

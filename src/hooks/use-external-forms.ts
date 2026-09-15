@@ -77,6 +77,8 @@ export interface FormSubmission {
   prospect_id?: string;
   prospect_name?: string;
   prospect_converted_at?: string;
+  deal_id?: string;
+  routing_error?: string;
   referrals?: { name: string; phone: string }[];
   created_at: string;
 }

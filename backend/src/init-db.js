@@ -2967,6 +2967,14 @@ CREATE TABLE IF NOT EXISTS external_form_referrals (
 );
 CREATE INDEX IF NOT EXISTS idx_external_form_referrals_submission ON external_form_referrals(submission_id);
 CREATE INDEX IF NOT EXISTS idx_external_form_referrals_form ON external_form_referrals(form_id);
+
+-- Traces each submission back to the CRM deal it created (if any) and keeps
+-- the error when lead routing (CRM deal / prospect) fails, so "Ver Leads"
+-- can show the real outcome per lead without needing server logs.
+DO $$ BEGIN
+    ALTER TABLE external_form_submissions ADD COLUMN IF NOT EXISTS deal_id UUID REFERENCES crm_deals(id) ON DELETE SET NULL;
+    ALTER TABLE external_form_submissions ADD COLUMN IF NOT EXISTS routing_error TEXT;
+EXCEPTION WHEN duplicate_column THEN null; END $$;
 `;
 
 // ============================================

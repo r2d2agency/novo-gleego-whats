@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Check, ExternalLink, Loader2, Users } from "lucide-react";
+import { Check, ExternalLink, Loader2, Users, Briefcase, AlertTriangle } from "lucide-react";
 import { useExternalForms, ExternalForm, FormSubmission } from "@/hooks/use-external-forms";
 
 interface FormSubmissionsDialogProps {
@@ -120,7 +120,17 @@ export function FormSubmissionsDialog({
                         })}
                       </TableCell>
                       <TableCell>
-                        {sub.prospect_converted_at ? (
+                        {sub.deal_id ? (
+                          <Badge className="bg-blue-600">
+                            <Briefcase className="h-3 w-3 mr-1" />
+                            Criado no CRM
+                          </Badge>
+                        ) : sub.routing_error ? (
+                          <Badge variant="destructive" className="cursor-help" title={sub.routing_error}>
+                            <AlertTriangle className="h-3 w-3 mr-1" />
+                            Erro ao criar no CRM
+                          </Badge>
+                        ) : sub.prospect_converted_at ? (
                           <Badge className="bg-green-600">
                             <Check className="h-3 w-3 mr-1" />
                             Convertido
@@ -129,6 +139,11 @@ export function FormSubmissionsDialog({
                           <Badge variant="secondary">Prospect</Badge>
                         ) : (
                           <Badge variant="outline">Novo</Badge>
+                        )}
+                        {sub.routing_error && (
+                          <p className="text-xs text-destructive mt-1 max-w-[220px] truncate" title={sub.routing_error}>
+                            {sub.routing_error}
+                          </p>
                         )}
                       </TableCell>
                     </TableRow>
