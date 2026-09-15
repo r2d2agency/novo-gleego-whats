@@ -1063,19 +1063,31 @@ router.post('/public/:slug/submit', async (req, res) => {
     // Referral ("indicação"): optional, never blocks the submission. Invalid
     // entries (empty name or an unparseable Brazilian WhatsApp number) are
     // silently dropped rather than rejecting the whole survey response.
+    logInfo('Survey referral payload received', {
+      formId: form.id,
+      referralEnabledOnForm: !!form.referral_enabled,
+      referralsReceived: Array.isArray(referrals) ? referrals.length : typeof referrals,
+    });
     if (form.referral_enabled && Array.isArray(referrals) && referrals.length > 0) {
       try {
+        let inserted = 0;
+        let skipped = 0;
         for (const referral of referrals) {
           const referralName = String(referral?.name || '').trim();
           const referralPhoneRaw = String(referral?.phone || '').replace(/\D/g, '');
-          if (!referralName || !isValidBrazilianWhatsApp(referralPhoneRaw)) continue;
+          if (!referralName || !isValidBrazilianWhatsApp(referralPhoneRaw)) {
+            skipped++;
+            continue;
+          }
           const referralPhone = referralPhoneRaw.startsWith('55') ? referralPhoneRaw : `55${referralPhoneRaw}`;
           await query(
             `INSERT INTO external_form_referrals (submission_id, form_id, name, phone)
              VALUES ($1, $2, $3, $4)`,
             [submission.id, form.id, referralName, referralPhone]
           );
+          inserted++;
         }
+        logInfo('Survey referrals saved', { submissionId: submission.id, inserted, skipped });
       } catch (referralError) {
         logError('Error saving survey referrals:', referralError);
       }
