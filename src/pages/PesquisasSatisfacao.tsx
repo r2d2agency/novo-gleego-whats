@@ -365,7 +365,7 @@ function SurveyItem({
                 )}
               </div>
             </DialogHeader>
-            <ScrollArea className="flex-1 pr-4">
+            <ScrollArea className="flex-1 min-h-0 pr-4">
               {isLoading ? (
                 <p className="py-8 text-center text-muted-foreground">Carregando resultados...</p>
               ) : isError ? (
