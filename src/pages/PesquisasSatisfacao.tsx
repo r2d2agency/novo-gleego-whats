@@ -184,6 +184,7 @@ export default function PesquisasSatisfacao() {
                 handleCopyLink={handleCopyLink}
                 onEdit={handleEditSurvey}
                 onDeleteRequest={setSurveyToDelete}
+                getSurvey={getSurvey}
               />
             ))
           )}
@@ -240,28 +241,48 @@ function SurveyItem({
   handleCopyLink,
   onEdit,
   onDeleteRequest,
+  getSurvey,
 }: {
   survey: any;
   handleCopyLink: (s: string) => void;
   onEdit: (survey: any) => void;
   onDeleteRequest: (survey: any) => void;
+  getSurvey: (id: string) => Promise<any | null>;
 }) {
   const [showStats, setShowStats] = useState(false);
+  const [fieldLabels, setFieldLabels] = useState<Record<string, string>>({});
   const { data: results, isLoading, isError, refetch } = useSurveyResults(showStats ? survey.id : "");
+  const safeResults: any[] = Array.isArray(results) ? results : [];
+
+  const openStats = () => {
+    setShowStats(true);
+    // Fetch the survey's questions once, to show "Qual sua nota?" instead of
+    // the raw field_key ("rating") next to each answer.
+    getSurvey(survey.id).then((full) => {
+      if (full?.fields) {
+        const map: Record<string, string> = {};
+        for (const f of full.fields) map[f.field_key] = f.field_label || f.field_key;
+        setFieldLabels(map);
+      }
+    });
+  };
 
   const exportResponses = () => {
-    if (!results || results.length === 0) return;
+    if (safeResults.length === 0) {
+      toast.error("Nenhuma resposta para exportar");
+      return;
+    }
 
     const fieldKeys = Array.from(
-      new Set(results.flatMap((r: any) => Object.keys(r.data || {})))
+      new Set(safeResults.flatMap((r: any) => Object.keys(r?.data || {})))
     );
-    const headers = ["Data", "Nome", "Telefone", "E-mail", ...fieldKeys];
-    const rows = results.map((r: any) => [
-      new Date(r.created_at).toLocaleString(),
+    const headers = ["Data", "Nome", "Telefone", "E-mail", ...fieldKeys.map((k) => fieldLabels[k] || k)];
+    const rows = safeResults.map((r: any) => [
+      r.created_at ? new Date(r.created_at).toLocaleString() : "",
       r.name || "",
       r.phone || "",
       r.email || "",
-      ...fieldKeys.map((k) => (r.data || {})[k] ?? ""),
+      ...fieldKeys.map((k) => (r?.data || {})[k] ?? ""),
     ]);
     const csvContent = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
     const blob = new Blob(["﻿" + csvContent], { type: "text/csv;charset=utf-8;" });
@@ -273,6 +294,7 @@ function SurveyItem({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     toast.success("Respostas exportadas!");
   };
 
@@ -305,7 +327,7 @@ function SurveyItem({
             <Copy className="h-3.5 w-3.5" />
             Link
           </Button>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowStats(true)}>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={openStats}>
             <Star className="h-3.5 w-3.5" />
             Resultados
           </Button>
@@ -329,7 +351,7 @@ function SurveyItem({
             <DialogHeader>
               <div className="flex items-center justify-between gap-2 pr-6">
                 <DialogTitle>Resultados: {survey.name}</DialogTitle>
-                {!!results && results.length > 0 && (
+                {safeResults.length > 0 && (
                   <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={exportResponses}>
                     <Download className="h-3.5 w-3.5" />
                     Baixar respostas
@@ -349,33 +371,38 @@ function SurveyItem({
                     Tentar novamente
                   </Button>
                 </div>
-              ) : !results || results.length === 0 ? (
+              ) : safeResults.length === 0 ? (
                 <p className="py-8 text-center text-muted-foreground">Nenhuma resposta recebida ainda.</p>
               ) : (
                 <div className="space-y-4 py-4">
-                  {results.map((res: any, idx: number) => (
-                    <div key={res.id} className="p-4 border rounded-lg bg-slate-50">
-                      <div className="flex justify-between mb-2">
-                        <span className="text-sm font-bold">
-                          {res.name ? res.name : `Resposta #${results.length - idx}`}
-                        </span>
-                        <span className="text-xs text-muted-foreground">{new Date(res.created_at).toLocaleString()}</span>
+                  {safeResults.map((res: any, idx: number) => {
+                    const data = res?.data && typeof res.data === "object" ? res.data : {};
+                    return (
+                      <div key={res?.id || idx} className="p-4 border rounded-lg bg-slate-50">
+                        <div className="flex justify-between mb-2">
+                          <span className="text-sm font-bold">
+                            {res?.name ? res.name : `Resposta #${safeResults.length - idx}`}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {res?.created_at ? new Date(res.created_at).toLocaleString() : ""}
+                          </span>
+                        </div>
+                        {(res?.phone || res?.email) && (
+                          <p className="text-xs text-muted-foreground mb-2">
+                            {[res.phone, res.email].filter(Boolean).join(" · ")}
+                          </p>
+                        )}
+                        <div className="space-y-2">
+                          {Object.entries(data).map(([key, val]: [string, any]) => (
+                            <div key={key} className="text-sm">
+                              <span className="font-medium">{fieldLabels[key] || key}: </span>
+                              <span>{val === null || val === undefined || val === "" ? "—" : String(val)}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      {(res.phone || res.email) && (
-                        <p className="text-xs text-muted-foreground mb-2">
-                          {[res.phone, res.email].filter(Boolean).join(" · ")}
-                        </p>
-                      )}
-                      <div className="space-y-2">
-                        {Object.entries(res.data || {}).map(([key, val]: [string, any]) => (
-                          <div key={key} className="text-sm">
-                            <span className="font-medium">{key}: </span>
-                            <span>{String(val)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </ScrollArea>

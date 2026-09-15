@@ -36,7 +36,7 @@ interface SurveyWizardProps {
   isEditing?: boolean;
 }
 
-function buildInitialState(initialData?: SurveyWizardProps["initialData"]) {
+function buildInitialState(initialData?: SurveyWizardProps["initialData"], isEditing?: boolean) {
   const nonRespondentFields = (initialData?.fields || []).filter(
     (f) => !RESPONDENT_FIELD_KEYS.includes(f.field_key)
   );
@@ -64,16 +64,19 @@ function buildInitialState(initialData?: SurveyWizardProps["initialData"]) {
           },
         ]
     ).map((f, i) => ({ ...f, position: i })) as FormField[],
-    // If editing, only default the toggle on when the survey already had those fields.
-    collectRespondentInfo: initialData
-      ? (initialData.fields || []).some((f) => RESPONDENT_FIELD_KEYS.includes(f.field_key))
+    // Only editing an existing survey should reflect its current state (on
+    // only if it already asked for these fields); creating new — whether
+    // blank or from a library template, which never includes them — always
+    // defaults to on, since that's the expected behavior for new surveys.
+    collectRespondentInfo: isEditing
+      ? (initialData?.fields || []).some((f) => RESPONDENT_FIELD_KEYS.includes(f.field_key))
       : true,
   };
 }
 
 export function SurveyWizard({ onClose, onSave, isSubmitting, initialData, isEditing }: SurveyWizardProps) {
   const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState(() => buildInitialState(initialData));
+  const [formData, setFormData] = useState(() => buildInitialState(initialData, isEditing));
 
   const nextStep = () => setStep((s) => s + 1);
   const prevStep = () => setStep((s) => s - 1);
