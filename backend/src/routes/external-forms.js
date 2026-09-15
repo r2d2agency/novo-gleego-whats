@@ -37,9 +37,10 @@ const VALID_FIELD_TYPES = ['text', 'phone', 'whatsapp', 'email', 'select', 'text
 // Helper: Get user's organization
 async function getUserOrg(userId) {
   const result = await query(
-    `SELECT om.organization_id, om.role 
-     FROM organization_members om 
-     WHERE om.user_id = $1 
+    `SELECT om.organization_id, om.role
+     FROM organization_members om
+     WHERE om.user_id = $1
+     ORDER BY om.created_at ASC, om.id ASC
      LIMIT 1`,
     [userId]
   );

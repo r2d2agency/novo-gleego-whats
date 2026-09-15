@@ -8,9 +8,10 @@ const router = express.Router();
 // Helper: Get user's organization
 async function getUserOrg(userId) {
   const result = await query(
-    `SELECT om.organization_id, om.role 
-     FROM organization_members om 
-     WHERE om.user_id = $1 
+    `SELECT om.organization_id, om.role
+     FROM organization_members om
+     WHERE om.user_id = $1
+     ORDER BY om.created_at ASC, om.id ASC
      LIMIT 1`,
     [userId]
   );
@@ -100,7 +101,7 @@ router.post('/', authenticate, async (req, res) => {
           `INSERT INTO external_form_fields (form_id, field_key, field_label, field_type, is_required, options, position)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
-            survey.id, `q_${i}`, field.field_label, field.field_type || 'text',
+            survey.id, field.field_key || `q_${i}`, field.field_label, field.field_type || 'text',
             field.is_required || false, field.options ? JSON.stringify(field.options) : null, i
           ]
         );

@@ -4,18 +4,44 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, MessageSquare, Copy, ExternalLink, Sparkles, Star } from "lucide-react";
+import { Plus, Search, MessageSquare, Copy, ExternalLink, Sparkles, Star, Pencil, Trash2, Download, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import { useSurveys } from "@/hooks/use-surveys";
 import { toast } from "sonner";
 import { SurveyWizard } from "@/components/surveys/SurveyWizard";
+import { SurveyTemplateGallery } from "@/components/surveys/SurveyTemplateGallery";
+import { SurveyTemplate } from "@/components/surveys/survey-templates";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useSurveyResults } from "@/hooks/use-survey-results";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ExternalForm, FormField } from "@/hooks/use-external-forms";
+
+type WizardInitialData = (Partial<ExternalForm> & { fields?: FormField[] }) | SurveyTemplate | null;
+
+function csvEscape(val: unknown) {
+  const s = String(val ?? "");
+  return /["\n,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
 
 export default function PesquisasSatisfacao() {
   const [search, setSearch] = useState("");
   const [isWizardOpen, setIsWizardOpen] = useState(false);
-  const { surveys, isLoading, createSurvey } = useSurveys();
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [wizardInitialData, setWizardInitialData] = useState<WizardInitialData>(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+  const [surveyToDelete, setSurveyToDelete] = useState<any | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const { surveys, isLoading, createSurvey, updateSurvey, deleteSurvey, getSurvey } = useSurveys();
 
   const handleCopyLink = (slug: string) => {
     const url = `${window.location.origin}/f/${slug}`;
@@ -37,31 +63,58 @@ export default function PesquisasSatisfacao() {
     }
   };
 
-  const handleCreateAI = () => {
-    toast.info("A IA está gerando sua pesquisa de NPS...", {
-      description: "Estamos criando perguntas otimizadas para satisfação do cliente."
-    });
-    
-    createSurvey.mutate({
-      name: "Pesquisa de Satisfação IA",
-      description: "Pesquisa gerada automaticamente pela IA da Gleego",
-      fields: [
-        { field_key: "rating", field_label: "De 0 a 10, o quanto você nos recomendaria?", field_type: "select", is_required: true, options: ["0","1","2","3","4","5","6","7","8","9","10"] },
-        { field_key: "reason", field_label: "Qual o principal motivo da sua nota?", field_type: "textarea", is_required: false },
-        { field_key: "improvement", field_label: "O que poderíamos fazer para melhorar sua experiência?", field_type: "textarea", is_required: false }
-      ]
-    });
+  const handleNewBlank = () => {
+    setWizardInitialData(null);
+    setIsWizardOpen(true);
+  };
+
+  const handleSelectTemplate = (template: SurveyTemplate | null) => {
+    setIsLibraryOpen(false);
+    setWizardInitialData(template);
+    setIsWizardOpen(true);
+  };
+
+  const handleEditSurvey = async (survey: any) => {
+    setLoadingEdit(true);
+    try {
+      const full = await getSurvey(survey.id);
+      if (!full) {
+        toast.error("Não foi possível carregar a pesquisa");
+        return;
+      }
+      setWizardInitialData(full);
+      setIsWizardOpen(true);
+    } finally {
+      setLoadingEdit(false);
+    }
+  };
+
+  const closeWizard = () => {
+    setIsWizardOpen(false);
+    setWizardInitialData(null);
   };
 
   const handleSaveWizard = (data: any) => {
-    createSurvey.mutate(data, {
-      onSuccess: () => {
-        setIsWizardOpen(false);
-      }
-    });
+    const id = (wizardInitialData as any)?.id;
+    if (id) {
+      updateSurvey.mutate({ id, ...data }, { onSuccess: closeWizard });
+    } else {
+      createSurvey.mutate(data, { onSuccess: closeWizard });
+    }
   };
 
-  const filteredSurveys = surveys.filter(s => 
+  const handleConfirmDelete = async () => {
+    if (!surveyToDelete) return;
+    setDeleting(true);
+    try {
+      await deleteSurvey.mutateAsync(surveyToDelete.id);
+      setSurveyToDelete(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const filteredSurveys = surveys.filter((s: any) =>
     s.name.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -79,11 +132,11 @@ export default function PesquisasSatisfacao() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="gap-2 border-orange-200 hover:bg-orange-50" onClick={handleCreateAI}>
+            <Button variant="outline" className="gap-2 border-orange-200 hover:bg-orange-50" onClick={() => setIsLibraryOpen(true)}>
               <Sparkles className="h-4 w-4 text-orange-500" />
-              Criar com IA
+              Biblioteca de Pesquisas
             </Button>
-            <Button className="gap-2" onClick={() => setIsWizardOpen(true)}>
+            <Button className="gap-2" onClick={handleNewBlank}>
               <Plus className="h-4 w-4" />
               Nova Pesquisa
             </Button>
@@ -111,39 +164,110 @@ export default function PesquisasSatisfacao() {
                   <p className="font-medium text-muted-foreground">Nenhuma pesquisa encontrada</p>
                   <p className="text-sm text-muted-foreground">Comece criando sua primeira pesquisa de satisfação.</p>
                 </div>
-                <Button variant="outline" onClick={handleCreateAI}>
-                  Gerar exemplo com IA
+                <Button variant="outline" onClick={() => setIsLibraryOpen(true)}>
+                  Escolher da biblioteca
                 </Button>
               </CardContent>
             </Card>
           ) : (
-            filteredSurveys.map((survey) => (
-              <SurveyItem 
-                key={survey.id} 
-                survey={survey} 
-                handleCopyLink={handleCopyLink} 
+            filteredSurveys.map((survey: any) => (
+              <SurveyItem
+                key={survey.id}
+                survey={survey}
+                handleCopyLink={handleCopyLink}
+                onEdit={handleEditSurvey}
+                onDeleteRequest={setSurveyToDelete}
               />
             ))
           )}
         </div>
 
-        <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
+        <Dialog open={isWizardOpen} onOpenChange={(open) => { if (!open) closeWizard(); }}>
           <DialogContent className="max-w-3xl p-0 overflow-hidden border-none bg-transparent shadow-none">
-            <SurveyWizard 
-              onClose={() => setIsWizardOpen(false)} 
+            <SurveyWizard
+              onClose={closeWizard}
               onSave={handleSaveWizard}
-              isSubmitting={createSurvey.isPending}
+              isSubmitting={createSurvey.isPending || updateSurvey.isPending}
+              initialData={wizardInitialData}
+              isEditing={!!(wizardInitialData as any)?.id}
             />
           </DialogContent>
         </Dialog>
+
+        <SurveyTemplateGallery
+          open={isLibraryOpen}
+          onOpenChange={setIsLibraryOpen}
+          onSelect={handleSelectTemplate}
+        />
+
+        <AlertDialog
+          open={!!surveyToDelete}
+          onOpenChange={(open) => { if (!open && !deleting) setSurveyToDelete(null); }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir pesquisa</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir "{surveyToDelete?.name}"? As respostas já recebidas também serão excluídas. Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => { e.preventDefault(); handleConfirmDelete(); }}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Excluindo...</> : "Excluir"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </MainLayout>
   );
 }
 
-function SurveyItem({ survey, handleCopyLink }: { survey: any, handleCopyLink: (s: string) => void }) {
+function SurveyItem({
+  survey,
+  handleCopyLink,
+  onEdit,
+  onDeleteRequest,
+}: {
+  survey: any;
+  handleCopyLink: (s: string) => void;
+  onEdit: (survey: any) => void;
+  onDeleteRequest: (survey: any) => void;
+}) {
   const [showStats, setShowStats] = useState(false);
-  const { data: results, isLoading } = useSurveyResults(showStats ? survey.id : "");
+  const { data: results, isLoading, isError, refetch } = useSurveyResults(showStats ? survey.id : "");
+
+  const exportResponses = () => {
+    if (!results || results.length === 0) return;
+
+    const fieldKeys = Array.from(
+      new Set(results.flatMap((r: any) => Object.keys(r.data || {})))
+    );
+    const headers = ["Data", "Nome", "Telefone", "E-mail", ...fieldKeys];
+    const rows = results.map((r: any) => [
+      new Date(r.created_at).toLocaleString(),
+      r.name || "",
+      r.phone || "",
+      r.email || "",
+      ...fieldKeys.map((k) => (r.data || {})[k] ?? ""),
+    ]);
+    const csvContent = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+    const blob = new Blob(["﻿" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `respostas_${survey.name.replace(/\s+/g, "_")}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Respostas exportadas!");
+  };
 
   return (
     <Card className="group hover:border-orange-500/50 transition-colors">
@@ -168,7 +292,7 @@ function SurveyItem({ survey, handleCopyLink }: { survey: any, handleCopyLink: (
             <span>Respostas</span>
           </div>
         </div>
-        
+
         <div className="flex gap-2 pt-2">
           <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => handleCopyLink(survey.slug)}>
             <Copy className="h-3.5 w-3.5" />
@@ -178,19 +302,46 @@ function SurveyItem({ survey, handleCopyLink }: { survey: any, handleCopyLink: (
             <Star className="h-3.5 w-3.5" />
             Resultados
           </Button>
-          <Button variant="ghost" size="sm" className="h-9 w-9 p-0" onClick={() => window.open(`/f/${survey.slug}`, '_blank')}>
+          <Button variant="ghost" size="sm" className="h-9 w-9 p-0" onClick={() => window.open(`/f/${survey.slug}`, '_blank')} title="Abrir pesquisa">
             <ExternalLink className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button variant="ghost" size="sm" className="flex-1 gap-1.5" onClick={() => onEdit(survey)}>
+            <Pencil className="h-3.5 w-3.5" />
+            Editar
+          </Button>
+          <Button variant="ghost" size="sm" className="flex-1 gap-1.5 text-destructive hover:text-destructive" onClick={() => onDeleteRequest(survey)}>
+            <Trash2 className="h-3.5 w-3.5" />
+            Excluir
           </Button>
         </div>
 
         <Dialog open={showStats} onOpenChange={setShowStats}>
           <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
             <DialogHeader>
-              <DialogTitle>Resultados: {survey.name}</DialogTitle>
+              <div className="flex items-center justify-between gap-2 pr-6">
+                <DialogTitle>Resultados: {survey.name}</DialogTitle>
+                {!!results && results.length > 0 && (
+                  <Button variant="outline" size="sm" className="gap-1.5 shrink-0" onClick={exportResponses}>
+                    <Download className="h-3.5 w-3.5" />
+                    Baixar respostas
+                  </Button>
+                )}
+              </div>
             </DialogHeader>
             <ScrollArea className="flex-1 pr-4">
               {isLoading ? (
                 <p className="py-8 text-center text-muted-foreground">Carregando resultados...</p>
+              ) : isError ? (
+                <div className="py-8 flex flex-col items-center gap-3 text-center">
+                  <AlertTriangle className="h-8 w-8 text-destructive" />
+                  <p className="text-muted-foreground">Não foi possível carregar as respostas.</p>
+                  <Button variant="outline" size="sm" className="gap-1.5" onClick={() => refetch()}>
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Tentar novamente
+                  </Button>
+                </div>
               ) : !results || results.length === 0 ? (
                 <p className="py-8 text-center text-muted-foreground">Nenhuma resposta recebida ainda.</p>
               ) : (
@@ -198,9 +349,16 @@ function SurveyItem({ survey, handleCopyLink }: { survey: any, handleCopyLink: (
                   {results.map((res: any, idx: number) => (
                     <div key={res.id} className="p-4 border rounded-lg bg-slate-50">
                       <div className="flex justify-between mb-2">
-                        <span className="text-sm font-bold">Resposta #{results.length - idx}</span>
+                        <span className="text-sm font-bold">
+                          {res.name ? res.name : `Resposta #${results.length - idx}`}
+                        </span>
                         <span className="text-xs text-muted-foreground">{new Date(res.created_at).toLocaleString()}</span>
                       </div>
+                      {(res.phone || res.email) && (
+                        <p className="text-xs text-muted-foreground mb-2">
+                          {[res.phone, res.email].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
                       <div className="space-y-2">
                         {Object.entries(res.data || {}).map(([key, val]: [string, any]) => (
                           <div key={key} className="text-sm">
