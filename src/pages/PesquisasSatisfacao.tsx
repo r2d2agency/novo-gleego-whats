@@ -353,7 +353,7 @@ function SurveyItem({
         </div>
 
         <Dialog open={showStats} onOpenChange={setShowStats}>
-          <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <div className="flex items-center justify-between gap-2 pr-6">
                 <DialogTitle>Resultados: {survey.name}</DialogTitle>
@@ -365,7 +365,7 @@ function SurveyItem({
                 )}
               </div>
             </DialogHeader>
-            <ScrollArea className="flex-1 min-h-0 pr-4">
+            <ScrollArea className="flex-1 min-h-0 max-h-[65vh] pr-4">
               {isLoading ? (
                 <p className="py-8 text-center text-muted-foreground">Carregando resultados...</p>
               ) : isError ? (
