@@ -32,7 +32,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
+  Check,
   Edit2,
   Loader2,
   MessageSquare,
@@ -40,7 +42,9 @@ import {
   RefreshCw,
   Tag,
   Trash2,
+  UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -57,7 +61,10 @@ interface TagWithCount {
 }
 
 interface TagContact {
-  conversation_id: string;
+  type: "conversation" | "contact";
+  conversation_id: string | null;
+  contact_id: string | null;
+  connection_id: string;
   contact_name: string | null;
   contact_phone: string | null;
   is_group: boolean;
@@ -70,6 +77,15 @@ interface TagContact {
   last_message_at: string | null;
   last_customer_message: string | null;
   last_customer_message_at: string | null;
+}
+
+// Agenda contact, used by the "add contact to tag" search
+interface AgendaContact {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  connection_id: string;
+  connection_name: string | null;
 }
 
 const PRESET_COLORS = [
@@ -106,6 +122,16 @@ const Tags = () => {
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
   const [sortOrder, setSortOrder] = useState<SortOrder>("recent");
+
+  // Inline rename of a contact from within the tag's contacts dialog
+  const [renamingKey, setRenamingKey] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
+
+  // Add-contact-to-tag search
+  const [agendaContacts, setAgendaContacts] = useState<AgendaContact[]>([]);
+  const [addContactSearch, setAddContactSearch] = useState("");
+  const [addingContactId, setAddingContactId] = useState<string | null>(null);
 
   useEffect(() => {
     loadTags();
@@ -208,7 +234,19 @@ const Tags = () => {
     setPeriodStart("");
     setPeriodEnd("");
     setSortOrder("recent");
+    setAddContactSearch("");
+    setRenamingKey(null);
     loadContacts(tag, "", "", "recent");
+    loadAgendaContacts();
+  };
+
+  const loadAgendaContacts = async () => {
+    try {
+      const data = await api<AgendaContact[]>("/api/chat/contacts");
+      setAgendaContacts(data);
+    } catch (error) {
+      console.error("Error loading agenda contacts:", error);
+    }
   };
 
   const handleApplyContactFilters = () => {
@@ -225,9 +263,88 @@ const Tags = () => {
   };
 
   const handleOpenConversation = (contact: TagContact) => {
+    if (contact.type !== "conversation" || !contact.conversation_id) return;
     setContactsDialogOpen(false);
     navigate(`/chat?conversation=${contact.conversation_id}`);
   };
+
+  const contactKey = (contact: TagContact) =>
+    contact.type === "conversation" ? `conv:${contact.conversation_id}` : `contact:${contact.contact_id}`;
+
+  const handleStartRename = (contact: TagContact) => {
+    setRenamingKey(contactKey(contact));
+    setRenameValue(contact.contact_name || contact.contact_phone || "");
+  };
+
+  const handleSaveRename = async (contact: TagContact) => {
+    if (!renameValue.trim()) return;
+    setRenaming(true);
+    try {
+      await api("/api/chat/contacts/by-phone", {
+        method: "POST",
+        body: {
+          phone: contact.contact_phone,
+          connection_id: contact.connection_id,
+          name: renameValue.trim(),
+        },
+      });
+      toast.success("Contato atualizado");
+      setRenamingKey(null);
+      if (contactsTag) loadContacts(contactsTag, periodStart, periodEnd, sortOrder);
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao atualizar contato");
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const handleRemoveContactFromTag = async (contact: TagContact) => {
+    if (!contactsTag) return;
+    try {
+      if (contact.type === "conversation") {
+        await api(`/api/chat/conversations/${contact.conversation_id}/tags/${contactsTag.id}`, { method: "DELETE" });
+      } else {
+        await api(`/api/chat/contacts/${contact.contact_id}/tags/${contactsTag.id}`, { method: "DELETE" });
+      }
+      toast.success("Contato removido da tag");
+      loadContacts(contactsTag, periodStart, periodEnd, sortOrder);
+      loadTags();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao remover contato da tag");
+    }
+  };
+
+  const handleAddContactToTag = async (agendaContact: AgendaContact) => {
+    if (!contactsTag) return;
+    setAddingContactId(agendaContact.id);
+    try {
+      await api(`/api/chat/tags/${contactsTag.id}/contacts`, {
+        method: "POST",
+        body: { contact_id: agendaContact.id },
+      });
+      toast.success("Contato adicionado à tag");
+      setAddContactSearch("");
+      loadContacts(contactsTag, periodStart, periodEnd, sortOrder);
+      loadTags();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao adicionar contato à tag");
+    } finally {
+      setAddingContactId(null);
+    }
+  };
+
+  const alreadyTaggedKeys = new Set(
+    contacts.map(c => `${c.connection_id}:${c.contact_phone}`)
+  );
+  const addContactResults = addContactSearch.trim()
+    ? agendaContacts
+        .filter(c => !alreadyTaggedKeys.has(`${c.connection_id}:${c.phone}`))
+        .filter(c => {
+          const q = addContactSearch.toLowerCase();
+          return (c.name || "").toLowerCase().includes(q) || (c.phone || "").includes(q);
+        })
+        .slice(0, 8)
+    : [];
 
   const totalConversations = tags.reduce((acc, tag) => acc + tag.conversation_count, 0);
 
@@ -469,6 +586,41 @@ const Tags = () => {
             </DialogDescription>
           </DialogHeader>
 
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Adicionar contato à tag</Label>
+            <Command className="border rounded-md overflow-visible">
+              <CommandInput
+                placeholder="Buscar contato da agenda por nome ou telefone..."
+                value={addContactSearch}
+                onValueChange={setAddContactSearch}
+              />
+              {addContactSearch.trim() && (
+                <CommandList>
+                  <CommandEmpty>Nenhum contato encontrado</CommandEmpty>
+                  <CommandGroup>
+                    {addContactResults.map((c) => (
+                      <CommandItem
+                        key={c.id}
+                        value={`${c.name || ""} ${c.phone || ""}`}
+                        onSelect={() => handleAddContactToTag(c)}
+                        disabled={addingContactId === c.id}
+                      >
+                        <UserPlus className="h-4 w-4 mr-2 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <p className="truncate">{c.name || c.phone}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {c.phone} {c.connection_name ? `· ${c.connection_name}` : ""}
+                          </p>
+                        </div>
+                        {addingContactId === c.id && <Loader2 className="h-3 w-3 ml-auto animate-spin" />}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              )}
+            </Command>
+          </div>
+
           <div className="flex flex-wrap items-end gap-3 pb-2">
             <div>
               <Label className="text-xs text-muted-foreground">De</Label>
@@ -521,47 +673,110 @@ const Tags = () => {
           ) : (
             <ScrollArea className="h-[420px]">
               <div className="space-y-2 pr-3">
-                {contacts.map((contact) => (
-                  <div
-                    key={contact.conversation_id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => handleOpenConversation(contact)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") handleOpenConversation(contact);
-                    }}
-                    className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/30 transition-colors cursor-pointer"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">
-                        {contact.is_group
-                          ? contact.group_name || "Grupo sem nome"
-                          : contact.contact_name || contact.contact_phone || "Desconhecido"}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {contact.contact_phone}
-                        {contact.assigned_name ? ` · Atendido por ${contact.assigned_name}` : ""}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0 ml-3">
-                      {contact.last_customer_message_at ? (
-                        <>
-                          <p className="text-xs text-muted-foreground">Última resposta do cliente</p>
-                          <p className="text-sm font-medium">
-                            {formatDistanceToNow(new Date(contact.last_customer_message_at), {
-                              addSuffix: true,
-                              locale: ptBR,
-                            })}
-                          </p>
-                        </>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground">
-                          Cliente nunca respondeu
-                        </Badge>
+                {contacts.map((contact) => {
+                  const key = contactKey(contact);
+                  const isRenaming = renamingKey === key;
+                  return (
+                    <div
+                      key={key}
+                      role={contact.type === "conversation" ? "button" : undefined}
+                      tabIndex={contact.type === "conversation" ? 0 : undefined}
+                      onClick={() => handleOpenConversation(contact)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") handleOpenConversation(contact);
+                      }}
+                      className={cn(
+                        "flex items-center justify-between gap-2 p-3 rounded-lg border bg-card transition-colors",
+                        contact.type === "conversation" && "hover:bg-accent/30 cursor-pointer"
+                      )}
+                    >
+                      <div className="min-w-0 flex-1">
+                        {isRenaming ? (
+                          <div
+                            className="flex items-center gap-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Input
+                              autoFocus
+                              value={renameValue}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSaveRename(contact);
+                                if (e.key === "Escape") setRenamingKey(null);
+                              }}
+                              className="h-8"
+                            />
+                            <Button size="icon" className="h-8 w-8 shrink-0" disabled={renaming} onClick={() => handleSaveRename(contact)}>
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" disabled={renaming} onClick={() => setRenamingKey(null)}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="font-medium truncate">
+                              {contact.is_group
+                                ? contact.group_name || "Grupo sem nome"
+                                : contact.contact_name || contact.contact_phone || "Desconhecido"}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {contact.contact_phone}
+                              {contact.assigned_name ? ` · Atendido por ${contact.assigned_name}` : ""}
+                            </p>
+                          </>
+                        )}
+                      </div>
+
+                      {!isRenaming && (
+                        <div className="text-right shrink-0">
+                          {contact.type === "contact" ? (
+                            <Badge variant="outline" className="text-muted-foreground">
+                              Sem conversa
+                            </Badge>
+                          ) : contact.last_customer_message_at ? (
+                            <>
+                              <p className="text-xs text-muted-foreground">Última resposta do cliente</p>
+                              <p className="text-sm font-medium">
+                                {formatDistanceToNow(new Date(contact.last_customer_message_at), {
+                                  addSuffix: true,
+                                  locale: ptBR,
+                                })}
+                              </p>
+                            </>
+                          ) : (
+                            <Badge variant="outline" className="text-muted-foreground">
+                              Cliente nunca respondeu
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+
+                      {!isRenaming && !contact.is_group && (
+                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="Editar nome"
+                            onClick={() => handleStartRename(contact)}
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            title="Remover da tag"
+                            onClick={() => handleRemoveContactFromTag(contact)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </ScrollArea>
           )}

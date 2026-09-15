@@ -38,6 +38,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   CheckCircle,
   Edit2,
   FileSpreadsheet,
@@ -49,16 +57,25 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Tag as TagIcon,
   Trash2,
   Upload,
   Users,
+  X,
   XCircle,
 } from "lucide-react";
+import { CreateTagDialog } from "@/components/chat/ChatDialogs";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ExcelImportDialog } from "@/components/contatos/ExcelImportDialog";
+
+interface ContactTag {
+  id: string;
+  name: string;
+  color: string;
+}
 
 interface ChatContact {
   id: string;
@@ -68,6 +85,7 @@ interface ChatContact {
   connection_id: string;
   connection_name: string | null;
   has_conversation: boolean;
+  tags: ContactTag[];
   created_at: string | null;
 }
 
@@ -154,7 +172,11 @@ const ContatosChat = () => {
   const [deletingBulk, setDeletingBulk] = useState(false);
   const [contactToDelete, setContactToDelete] = useState<ChatContact | null>(null);
   const [deletingContact, setDeletingContact] = useState(false);
-  
+
+  // Tags
+  const [allTags, setAllTags] = useState<ContactTag[]>([]);
+  const [showCreateTagDialog, setShowCreateTagDialog] = useState(false);
+
   // Pagination for chat contacts
   const [visibleCount, setVisibleCount] = useState(100);
 
@@ -184,18 +206,54 @@ const ContatosChat = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [contactsData, connectionsData] = await Promise.all([
+      const [contactsData, connectionsData, tagsData] = await Promise.all([
         api<ChatContact[]>("/api/chat/contacts"),
         // Agora respeita os grupos de acesso ao não usar scope=organization
         api<Connection[]>("/api/connections"),
+        api<ContactTag[]>("/api/chat/tags"),
       ]);
       setChatContacts(contactsData);
       setConnections(connectionsData);
+      setAllTags(tagsData);
     } catch (error) {
       console.error("Error loading data:", error);
       toast.error("Erro ao carregar contatos");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddTagToContact = async (contactId: string, tagId: string) => {
+    try {
+      await api(`/api/chat/contacts/${contactId}/tags`, {
+        method: "POST",
+        body: { tag_id: tagId },
+      });
+      loadData();
+    } catch (err) {
+      toast.error("Erro ao adicionar tag");
+    }
+  };
+
+  const handleRemoveTagFromContact = async (contactId: string, tagId: string) => {
+    try {
+      await api(`/api/chat/contacts/${contactId}/tags/${tagId}`, { method: "DELETE" });
+      loadData();
+    } catch (err) {
+      toast.error("Erro ao remover tag");
+    }
+  };
+
+  const handleCreateTag = async (name: string, color: string) => {
+    try {
+      const newTag = await api<ContactTag>("/api/chat/tags", {
+        method: "POST",
+        body: { name, color },
+      });
+      setAllTags(prev => [...prev, newTag]);
+      toast.success("Tag criada");
+    } catch (err) {
+      toast.error("Erro ao criar tag");
     }
   };
 
@@ -831,12 +889,57 @@ const ContatosChat = () => {
                               <Phone className="h-3 w-3" />
                               <span>{contact.phone || "Sem telefone"}</span>
                             </div>
-                            <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                              {contact.connection_name || "Sem conexão"}
-                            </span>
+                            <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                                {contact.connection_name || "Sem conexão"}
+                              </span>
+                              {(contact.tags || []).map(tag => (
+                                <Badge
+                                  key={tag.id}
+                                  variant="outline"
+                                  className="text-xs"
+                                  style={{ borderColor: tag.color, color: tag.color }}
+                                >
+                                  {tag.name}
+                                </Badge>
+                              ))}
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" title="Tags">
+                                  <TagIcon className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="max-h-[60vh] overflow-y-auto">
+                                {allTags.filter(t => !(contact.tags || []).some(ct => ct.id === t.id)).map(tag => (
+                                  <DropdownMenuItem key={tag.id} onClick={() => handleAddTagToContact(contact.id, tag.id)}>
+                                    <div className="w-3 h-3 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: tag.color }} />
+                                    {tag.name}
+                                  </DropdownMenuItem>
+                                ))}
+                                {(contact.tags || []).length > 0 && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuLabel className="text-[10px] text-muted-foreground">Remover tag</DropdownMenuLabel>
+                                    {contact.tags.map(tag => (
+                                      <DropdownMenuItem key={tag.id} onClick={() => handleRemoveTagFromContact(contact.id, tag.id)}>
+                                        <div className="w-3 h-3 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: tag.color }} />
+                                        {tag.name}
+                                        <X className="h-3 w-3 ml-auto text-muted-foreground" />
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => setShowCreateTagDialog(true)}>
+                                  <Plus className="h-4 w-4 mr-2" />
+                                  Nova tag
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1046,6 +1149,12 @@ const ContatosChat = () => {
                 )}
               </DialogContent>
             </Dialog>
+
+            <CreateTagDialog
+              open={showCreateTagDialog}
+              onOpenChange={setShowCreateTagDialog}
+              onCreateTag={handleCreateTag}
+            />
           </TabsContent>
 
           {/* Contact Lists Tab */}

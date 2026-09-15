@@ -140,6 +140,35 @@ async function deleteConversationsForContact(connectionId, phone, jid) {
   return convResult.rows.length;
 }
 
+// Resolve an agenda contact id (which may live in chat_contacts or, for
+// campaign-list-only contacts, in contacts/contact_lists) to its underlying
+// connection/phone/jid, plus whether it's a chat_contacts row (required for
+// contact_tag_links, since that table's FK points at chat_contacts.id).
+async function resolveContactRef(id, connectionIds) {
+  const chatContactLookup = await query(
+    `SELECT id, connection_id, phone, jid FROM chat_contacts WHERE id = $1 AND connection_id = ANY($2)`,
+    [id, connectionIds]
+  );
+  if (chatContactLookup.rows.length > 0) {
+    const row = chatContactLookup.rows[0];
+    return { chatContactId: row.id, connectionId: row.connection_id, phone: row.phone, jid: row.jid };
+  }
+
+  const listContactLookup = await query(
+    `SELECT cl.connection_id, ct.phone
+     FROM contacts ct
+     JOIN contact_lists cl ON cl.id = ct.list_id
+     WHERE ct.id = $1 AND cl.connection_id = ANY($2)`,
+    [id, connectionIds]
+  );
+  if (listContactLookup.rows.length > 0) {
+    const row = listContactLookup.rows[0];
+    return { chatContactId: null, connectionId: row.connection_id, phone: row.phone, jid: null };
+  }
+
+  return null;
+}
+
 // ==========================================
 // CONVERSATIONS
 // ==========================================
@@ -2723,7 +2752,8 @@ router.get('/tags/:id/contacts', authenticate, async (req, res) => {
     }
 
     const result = await query(
-      `SELECT conv.id as conversation_id, conv.contact_name, conv.contact_phone,
+      `SELECT conv.id as conversation_id, NULL::uuid as contact_id, 'conversation' as type,
+        conv.connection_id, conv.contact_name, conv.contact_phone,
         (COALESCE(conv.is_group, false) OR conv.remote_jid LIKE '%@g.us') AS is_group,
         conv.group_name, conv.attendance_status, conv.is_archived,
         conn.name as connection_name, u.name as assigned_name,
@@ -2752,10 +2782,103 @@ router.get('/tags/:id/contacts', authenticate, async (req, res) => {
       params
     );
 
-    res.json(result.rows);
+    // Also include agenda contacts (chat_contacts) tagged directly via
+    // contact_tag_links — these don't have a conversation yet, so the query
+    // above can't reach them. Skip any phone already returned above so a
+    // contact that *does* have a conversation isn't shown twice.
+    const alreadyPhones = new Set(
+      result.rows.map(r => `${r.connection_id}:${r.contact_phone}`)
+    );
+
+    const contactTagResult = await query(
+      `SELECT cc.id as contact_id, cc.connection_id, cc.name as contact_name, cc.phone as contact_phone,
+        conn.name as connection_name
+       FROM chat_contacts cc
+       JOIN contact_tag_links ctl ON ctl.contact_id = cc.id
+       JOIN connections conn ON conn.id = cc.connection_id
+       WHERE ctl.tag_id = $1
+         AND cc.connection_id = ANY($2)
+         AND COALESCE(cc.is_deleted, false) = false
+       ORDER BY cc.name ASC NULLS LAST`,
+      [id, connectionIds]
+    );
+
+    const contactOnlyRows = contactTagResult.rows
+      .filter(r => !alreadyPhones.has(`${r.connection_id}:${r.contact_phone}`))
+      .map(r => ({
+        conversation_id: null,
+        contact_id: r.contact_id,
+        type: 'contact',
+        connection_id: r.connection_id,
+        contact_name: r.contact_name,
+        contact_phone: r.contact_phone,
+        is_group: false,
+        group_name: null,
+        attendance_status: null,
+        is_archived: false,
+        connection_name: r.connection_name,
+        assigned_name: null,
+        last_message: null,
+        last_message_at: null,
+        last_customer_message: null,
+        last_customer_message_at: null,
+      }));
+
+    res.json([...result.rows, ...contactOnlyRows]);
   } catch (error) {
     console.error('Get tag contacts error:', error);
     res.status(500).json({ error: 'Erro ao buscar contatos da tag' });
+  }
+});
+
+// Add an agenda contact to a tag (search-and-attach from the Tags page).
+router.post('/tags/:id/contacts', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { contact_id } = req.body;
+
+    if (!contact_id) {
+      return res.status(400).json({ error: 'contact_id é obrigatório' });
+    }
+
+    const userOrg = await getUserOrganization(req.userId);
+    const tagResult = await query(
+      `SELECT id FROM conversation_tags WHERE id = $1 AND organization_id = $2`,
+      [id, userOrg?.organization_id]
+    );
+    if (tagResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Tag não encontrada' });
+    }
+
+    const connectionIds = await getUserConnections(req.userId);
+    const ref = await resolveContactRef(contact_id, connectionIds);
+    if (!ref || !ref.connectionId || !ref.phone) {
+      return res.status(404).json({ error: 'Contato não encontrado' });
+    }
+
+    const convResult = await query(
+      `SELECT id FROM conversations WHERE connection_id = $1 AND (contact_phone = $2 OR remote_jid = $3) LIMIT 1`,
+      [ref.connectionId, ref.phone, ref.jid || null]
+    );
+
+    if (convResult.rows.length > 0) {
+      await query(
+        `INSERT INTO conversation_tag_links (conversation_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [convResult.rows[0].id, id]
+      );
+    } else if (ref.chatContactId) {
+      await query(
+        `INSERT INTO contact_tag_links (contact_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [ref.chatContactId, id]
+      );
+    } else {
+      return res.status(400).json({ error: 'Este contato ainda não está na agenda de conversas' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Add contact to tag error:', error);
+    res.status(500).json({ error: 'Erro ao adicionar contato à tag' });
   }
 });
 
@@ -4034,7 +4157,7 @@ router.get('/contacts', authenticate, async (req, res) => {
         combined.*
       FROM (
         -- Source 1: chat_contacts (from conversations auto-populate + manual adds)
-        SELECT 
+        SELECT
           cc.id,
           cc.name,
           cc.phone,
@@ -4042,10 +4165,24 @@ router.get('/contacts', authenticate, async (req, res) => {
           cc.connection_id,
           c.name as connection_name,
           EXISTS (
-            SELECT 1 FROM conversations conv 
+            SELECT 1 FROM conversations conv
             WHERE conv.connection_id = cc.connection_id
               AND (conv.contact_phone = cc.phone OR conv.remote_jid = cc.jid)
           ) as has_conversation,
+          COALESCE(
+            (SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color))
+             FROM (
+               SELECT tag_id FROM contact_tag_links WHERE contact_id = cc.id
+               UNION
+               SELECT ctl.tag_id
+               FROM conversations conv
+               JOIN conversation_tag_links ctl ON ctl.conversation_id = conv.id
+               WHERE conv.connection_id = cc.connection_id
+                 AND (conv.contact_phone = cc.phone OR conv.remote_jid = cc.jid)
+             ) merged_tags
+             JOIN conversation_tags t ON t.id = merged_tags.tag_id
+            ), '[]'::json
+          ) as tags,
           cc.created_at
         FROM chat_contacts cc
         JOIN connections c ON c.id = cc.connection_id
@@ -4066,10 +4203,11 @@ router.get('/contacts', authenticate, async (req, res) => {
           cl.connection_id,
           cn.name as connection_name,
           EXISTS (
-            SELECT 1 FROM conversations conv 
+            SELECT 1 FROM conversations conv
             WHERE conv.connection_id = cl.connection_id
               AND conv.contact_phone = ct.phone
           ) as has_conversation,
+          '[]'::json as tags,
           ct.created_at
         FROM contacts ct
         JOIN contact_lists cl ON cl.id = ct.list_id
@@ -4216,34 +4354,11 @@ router.delete('/contacts/:id', authenticate, async (req, res) => {
     const { id } = req.params;
     const connectionIds = await getUserConnections(req.userId);
 
-    // Resolve the contact's phone/jid/connection, whichever table it lives in.
-    let connectionId = null;
-    let phone = null;
-    let jid = null;
-
-    const chatContactLookup = await query(
-      `SELECT connection_id, phone, jid FROM chat_contacts WHERE id = $1 AND connection_id = ANY($2)`,
-      [id, connectionIds]
-    );
-    if (chatContactLookup.rows.length > 0) {
-      ({ connection_id: connectionId, phone, jid } = chatContactLookup.rows[0]);
-    } else {
-      const listContactLookup = await query(
-        `SELECT cl.connection_id, ct.phone
-         FROM contacts ct
-         JOIN contact_lists cl ON cl.id = ct.list_id
-         WHERE ct.id = $1 AND cl.connection_id = ANY($2)`,
-        [id, connectionIds]
-      );
-      if (listContactLookup.rows.length > 0) {
-        connectionId = listContactLookup.rows[0].connection_id;
-        phone = listContactLookup.rows[0].phone;
-      }
-    }
-
-    if (!connectionId || !phone) {
+    const ref = await resolveContactRef(id, connectionIds);
+    if (!ref || !ref.connectionId || !ref.phone) {
       return res.status(404).json({ error: 'Contato não encontrado' });
     }
+    const { connectionId, phone, jid } = ref;
 
     const conversationsDeleted = await deleteConversationsForContact(connectionId, phone, jid);
 
@@ -4274,6 +4389,99 @@ router.delete('/contacts/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Delete chat contact error:', error);
     res.status(500).json({ error: 'Erro ao excluir contato' });
+  }
+});
+
+// Add a tag to an agenda contact.
+// If the contact currently has a matching conversation, the tag is stored on
+// conversation_tag_links (same place the Chat UI reads from, so it stays in
+// sync automatically). Otherwise it's stored on contact_tag_links, which
+// requires the id to be a chat_contacts row (campaign-list-only contacts
+// can't be tagged yet).
+router.post('/contacts/:id/tags', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tag_id } = req.body;
+
+    if (!tag_id) {
+      return res.status(400).json({ error: 'tag_id é obrigatório' });
+    }
+
+    const connectionIds = await getUserConnections(req.userId);
+    const ref = await resolveContactRef(id, connectionIds);
+    if (!ref || !ref.connectionId || !ref.phone) {
+      return res.status(404).json({ error: 'Contato não encontrado' });
+    }
+
+    const userOrg = await getUserOrganization(req.userId);
+    const tagResult = await query(
+      `SELECT id FROM conversation_tags WHERE id = $1 AND organization_id = $2`,
+      [tag_id, userOrg?.organization_id]
+    );
+    if (tagResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Tag não encontrada' });
+    }
+
+    const convResult = await query(
+      `SELECT id FROM conversations WHERE connection_id = $1 AND (contact_phone = $2 OR remote_jid = $3) LIMIT 1`,
+      [ref.connectionId, ref.phone, ref.jid || null]
+    );
+
+    if (convResult.rows.length > 0) {
+      await query(
+        `INSERT INTO conversation_tag_links (conversation_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [convResult.rows[0].id, tag_id]
+      );
+    } else if (ref.chatContactId) {
+      await query(
+        `INSERT INTO contact_tag_links (contact_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [ref.chatContactId, tag_id]
+      );
+    } else {
+      return res.status(400).json({ error: 'Este contato ainda não está na agenda de conversas' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Add tag to contact error:', error);
+    res.status(500).json({ error: 'Erro ao adicionar tag ao contato' });
+  }
+});
+
+// Remove a tag from an agenda contact — removes it wherever it's stored
+// (contact_tag_links and/or a matching conversation's conversation_tag_links).
+router.delete('/contacts/:id/tags/:tagId', authenticate, async (req, res) => {
+  try {
+    const { id, tagId } = req.params;
+    const connectionIds = await getUserConnections(req.userId);
+
+    const ref = await resolveContactRef(id, connectionIds);
+    if (!ref || !ref.connectionId || !ref.phone) {
+      return res.status(404).json({ error: 'Contato não encontrado' });
+    }
+
+    if (ref.chatContactId) {
+      await query(
+        `DELETE FROM contact_tag_links WHERE contact_id = $1 AND tag_id = $2`,
+        [ref.chatContactId, tagId]
+      );
+    }
+
+    const convResult = await query(
+      `SELECT id FROM conversations WHERE connection_id = $1 AND (contact_phone = $2 OR remote_jid = $3)`,
+      [ref.connectionId, ref.phone, ref.jid || null]
+    );
+    for (const conv of convResult.rows) {
+      await query(
+        `DELETE FROM conversation_tag_links WHERE conversation_id = $1 AND tag_id = $2`,
+        [conv.id, tagId]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Remove tag from contact error:', error);
+    res.status(500).json({ error: 'Erro ao remover tag do contato' });
   }
 });
 

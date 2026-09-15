@@ -1013,6 +1013,17 @@ CREATE TABLE IF NOT EXISTS chat_contacts (
     UNIQUE (connection_id, phone)
 );
 
+-- Contact Tag Links (tags aplicadas direto a um contato da agenda, usado
+-- quando o contato ainda não tem uma conversa para guardar a tag em
+-- conversation_tag_links). Reaproveita o catálogo conversation_tags.
+CREATE TABLE IF NOT EXISTS contact_tag_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    contact_id UUID REFERENCES chat_contacts(id) ON DELETE CASCADE NOT NULL,
+    tag_id UUID REFERENCES conversation_tags(id) ON DELETE CASCADE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (contact_id, tag_id)
+);
+
 -- Backward-compatible column adds for chat_contacts
 DO $$ BEGIN
     ALTER TABLE chat_contacts ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
