@@ -1105,6 +1105,13 @@ router.post('/public/:slug/submit', async (req, res) => {
 
     // Route lead to prospect or directly into CRM
     const shouldCreateCrmDeal = normalizeLeadTarget(form.lead_target) === 'crm' && !!form.crm_funnel_id;
+    logInfo('External form lead routing decision', {
+      formId: form.id,
+      formLeadTarget: form.lead_target,
+      formCrmFunnelId: form.crm_funnel_id,
+      formUseRoundRobin: form.use_round_robin,
+      shouldCreateCrmDeal,
+    });
     if (shouldCreateCrmDeal || phone) {
       try {
         if (shouldCreateCrmDeal) {
@@ -1265,7 +1272,10 @@ router.post('/public/:slug/submit', async (req, res) => {
         }
 
       } catch (prospectError) {
-        logError('Error creating prospect from form:', prospectError);
+        logError(
+          shouldCreateCrmDeal ? 'Error creating CRM deal from form:' : 'Error creating prospect from form:',
+          prospectError
+        );
         // Don't fail the submission, just log the error
       }
     }
