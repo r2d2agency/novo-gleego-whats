@@ -378,7 +378,7 @@ function SurveyItem({
                   {safeResults.map((res: any, idx: number) => {
                     const data = res?.data && typeof res.data === "object" ? res.data : {};
                     return (
-                      <div key={res?.id || idx} className="p-4 border rounded-lg bg-slate-50">
+                      <div key={res?.id || idx} className="p-4 border rounded-lg bg-muted/40 text-foreground">
                         <div className="flex justify-between mb-2">
                           <span className="text-sm font-bold">
                             {res?.name ? res.name : `Resposta #${safeResults.length - idx}`}
