@@ -12,11 +12,18 @@ import crypto from 'crypto';
 const router = Router();
 
 // Get user's organization with role
+// Same priority order as crm.js's getUserOrg (owner > admin > other, oldest
+// membership as tiebreaker) -- must match across files. This is the org
+// resolution behind the whole Chat module (conversations, messages,
+// contacts, tags); a multi-org user resolving a different org here than in
+// flows.js/crm.js/etc surfaces as conversations that "exist" on screen but
+// come back "not found" from other routes.
 async function getUserOrganization(userId) {
   const result = await query(
-    `SELECT om.organization_id, om.role 
-     FROM organization_members om 
-     WHERE om.user_id = $1 
+    `SELECT om.organization_id, om.role
+     FROM organization_members om
+     WHERE om.user_id = $1
+     ORDER BY (CASE WHEN om.role = 'owner' THEN 0 WHEN om.role = 'admin' THEN 1 ELSE 2 END), om.created_at ASC
      LIMIT 1`,
     [userId]
   );

@@ -7,11 +7,16 @@ const router = Router();
 router.use(authenticate);
 
 // Helper to get user's organization
+// Same priority order as crm.js's getUserOrg (owner > admin > other, oldest
+// membership as tiebreaker) -- must match across files, or a multi-org user
+// gets scoped to a different org here than wherever the conversation/flow
+// they're looking at actually lives, surfacing as a false "not found".
 async function getUserOrganization(userId) {
   const result = await query(
-    `SELECT om.organization_id, om.role 
-     FROM organization_members om 
-     WHERE om.user_id = $1 
+    `SELECT om.organization_id, om.role
+     FROM organization_members om
+     WHERE om.user_id = $1
+     ORDER BY (CASE WHEN om.role = 'owner' THEN 0 WHEN om.role = 'admin' THEN 1 ELSE 2 END), om.created_at ASC
      LIMIT 1`,
     [userId]
   );
