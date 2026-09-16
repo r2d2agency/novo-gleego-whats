@@ -37,6 +37,10 @@ const VALID_FIELD_TYPES = ['text', 'phone', 'whatsapp', 'email', 'select', 'text
     `CREATE INDEX IF NOT EXISTS idx_external_form_referrals_form ON external_form_referrals(form_id)`,
     `ALTER TABLE external_form_submissions ADD COLUMN IF NOT EXISTS deal_id UUID REFERENCES crm_deals(id) ON DELETE SET NULL`,
     `ALTER TABLE external_form_submissions ADD COLUMN IF NOT EXISTS routing_error TEXT`,
+    // findOrCreateCrmContact() below writes city/state onto "contacts" (the
+    // campaign contact-list table) when linking a form lead to a CRM deal.
+    `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS city VARCHAR(100)`,
+    `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS state VARCHAR(50)`,
   ];
 
   for (const statement of ddl) {
