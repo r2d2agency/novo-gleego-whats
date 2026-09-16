@@ -2987,6 +2987,7 @@ DO $$ BEGIN
     ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS google_ads_conversion_id VARCHAR(50);
     ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS google_ads_conversion_label VARCHAR(100);
     ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS round_robin_user_flows JSONB DEFAULT '{}'::jsonb;
+    ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS deal_title_template VARCHAR(255);
 EXCEPTION WHEN duplicate_column THEN null; END $$;
 `;
 

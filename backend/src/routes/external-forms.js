@@ -51,6 +51,10 @@ const VALID_FIELD_TYPES = ['text', 'phone', 'whatsapp', 'email', 'select', 'text
     // round_robin_user_ids (a native UUID[]) to avoid rewriting
     // resolveRoundRobinOwnerId()'s array_position()-based SQL.
     `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS round_robin_user_flows JSONB DEFAULT '{}'::jsonb`,
+    // Template for the CRM deal's title, e.g. "{name} - {city}". {key} can be
+    // any standard extracted field (name/phone/email/city/state) or a raw
+    // form field_key. Falls back to name/phone when empty.
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS deal_title_template VARCHAR(255)`,
   ];
 
   for (const statement of ddl) {
@@ -124,6 +128,20 @@ function normalizeDisplayMode(value) {
 
 function normalizeLeadTarget(value) {
   return value === 'crm' ? 'crm' : 'prospect';
+}
+
+// Resolves a CRM deal title from an admin-configured template like
+// "{name} - {city}", where {key} pulls from the submission's extracted
+// standard fields (name/phone/email/city/state) or any raw form field_key.
+// Falls back to null (caller decides the default) if there's no template or
+// it resolves to nothing usable.
+function resolveDealTitle(template, values) {
+  if (!template || !String(template).trim()) return null;
+  const resolved = String(template).replace(/\{(\w+)\}/g, (match, key) => {
+    const val = values?.[key];
+    return val !== undefined && val !== null && String(val).trim() !== '' ? String(val).trim() : '';
+  }).replace(/\s+/g, ' ').trim();
+  return resolved || null;
 }
 
 function mapExternalFieldTypeToCrm(fieldType) {
@@ -550,6 +568,7 @@ router.post('/', authenticate, async (req, res) => {
       google_ads_conversion_id,
       google_ads_conversion_label,
       round_robin_user_flows,
+      deal_title_template,
       fields
     } = req.body;
 
@@ -570,8 +589,8 @@ router.post('/', authenticate, async (req, res) => {
         lead_target, crm_funnel_id, use_round_robin, round_robin_user_ids,
         referral_enabled, referral_message,
         redirect_delay_seconds, fb_pixel_id, google_ads_conversion_id, google_ads_conversion_label,
-        round_robin_user_flows
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
+        round_robin_user_flows, deal_title_template
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
       RETURNING *`,
       [
         org.organization_id, name, slug, description, logo_url, logo_size || 48,
@@ -588,7 +607,8 @@ router.post('/', authenticate, async (req, res) => {
         !!referral_enabled, referral_message || null,
         Number.isFinite(Number(redirect_delay_seconds)) ? Number(redirect_delay_seconds) : 3,
         fb_pixel_id || null, google_ads_conversion_id || null, google_ads_conversion_label || null,
-        JSON.stringify(round_robin_user_flows && typeof round_robin_user_flows === 'object' ? round_robin_user_flows : {})
+        JSON.stringify(round_robin_user_flows && typeof round_robin_user_flows === 'object' ? round_robin_user_flows : {}),
+        deal_title_template || null
       ]
     );
 
@@ -786,6 +806,7 @@ router.put('/:id', authenticate, async (req, res) => {
       google_ads_conversion_id,
       google_ads_conversion_label,
       round_robin_user_flows,
+      deal_title_template,
       fields
     } = req.body;
 
@@ -838,6 +859,7 @@ router.put('/:id', authenticate, async (req, res) => {
         google_ads_conversion_id = $32,
         google_ads_conversion_label = $33,
         round_robin_user_flows = COALESCE($34, round_robin_user_flows),
+        deal_title_template = $35,
         updated_at = NOW()
        WHERE id = $14 AND organization_id = ANY($15)
        RETURNING *`,
@@ -865,6 +887,7 @@ router.put('/:id', authenticate, async (req, res) => {
         google_ads_conversion_id ?? null,
         google_ads_conversion_label ?? null,
         normalizedRoundRobinUserFlows,
+        deal_title_template ?? null,
       ]
     );
 
@@ -1266,6 +1289,8 @@ router.post('/public/:slug/submit', async (req, res) => {
           );
           const nextPosition = Number(maxPosResult.rows[0]?.new_position ?? 0);
 
+          const dealTitle = resolveDealTitle(form.deal_title_template, { name, phone, email, city, state, ...data }) || name || phone;
+
           const dealResult = await query(
             `INSERT INTO crm_deals (
               organization_id, funnel_id, stage_id, position, company_id, title,
@@ -1278,7 +1303,7 @@ router.post('/public/:slug/submit', async (req, res) => {
               stageResult.rows[0].id,
               nextPosition,
               companyId,
-              name || phone,
+              dealTitle,
               `Lead recebido pelo formulário "${form.name}"`,
               ownerId,
               createdByUserId,

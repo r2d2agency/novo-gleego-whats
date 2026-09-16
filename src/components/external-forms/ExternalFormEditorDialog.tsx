@@ -115,8 +115,9 @@ export function ExternalFormEditorDialog({
     fb_pixel_id: "",
     google_ads_conversion_id: "",
     google_ads_conversion_label: "",
+    deal_title_template: "",
   });
-  
+
   const [fields, setFields] = useState<FormField[]>(DEFAULT_FIELDS);
 
   const { createForm, updateForm, getForm } = useExternalForms();
@@ -201,6 +202,7 @@ export function ExternalFormEditorDialog({
         fb_pixel_id: fullForm.fb_pixel_id || "",
         google_ads_conversion_id: fullForm.google_ads_conversion_id || "",
         google_ads_conversion_label: fullForm.google_ads_conversion_label || "",
+        deal_title_template: fullForm.deal_title_template || "",
       });
       setFields(fullForm.fields || DEFAULT_FIELDS);
     }
@@ -237,6 +239,7 @@ export function ExternalFormEditorDialog({
       fb_pixel_id: "",
       google_ads_conversion_id: "",
       google_ads_conversion_label: "",
+      deal_title_template: "",
     });
     setFields(DEFAULT_FIELDS);
     setActiveTab("fields");
@@ -1018,6 +1021,37 @@ export function ExternalFormEditorDialog({
                         </Select>
                         <p className="text-xs text-muted-foreground">
                           O lead será criado na primeira etapa desse funil.
+                        </p>
+                      </div>
+
+                      <div className="grid gap-2">
+                        <Label>Nome do card no CRM (opcional)</Label>
+                        <Input
+                          value={formData.deal_title_template}
+                          onChange={(e) => setFormData({ ...formData, deal_title_template: e.target.value })}
+                          placeholder="Ex: {name} - {city}"
+                        />
+                        <div className="flex flex-wrap gap-1.5">
+                          {fields.map((f) => (
+                            <button
+                              key={f.field_key}
+                              type="button"
+                              className="text-xs px-2 py-1 rounded-full border bg-muted hover:bg-accent transition-colors"
+                              onClick={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  deal_title_template: `${prev.deal_title_template}${prev.deal_title_template ? " " : ""}{${f.field_key}}`,
+                                }))
+                              }
+                            >
+                              {f.field_label || f.field_key}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Clique numa pergunta acima pra inserir a variável, ou digite {"{"}
+                          <code>chave_do_campo</code>
+                          {"}"}. Se deixar em branco, usa o nome (ou telefone) do lead.
                         </p>
                       </div>
 

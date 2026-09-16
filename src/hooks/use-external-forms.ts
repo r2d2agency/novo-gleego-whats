@@ -61,6 +61,10 @@ export interface ExternalForm {
   // Optional per-seller welcome flow for the round robin: {user_id: flow_id}
   round_robin_user_flows?: Record<string, string>;
 
+  // Template for the CRM deal title, e.g. "{name} - {city}". Falls back to
+  // name/phone when empty.
+  deal_title_template?: string;
+
   // Stats
   views_count: number;
   submissions_count: number;
