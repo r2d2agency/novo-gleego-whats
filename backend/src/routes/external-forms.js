@@ -900,9 +900,14 @@ router.get('/:id/submissions', authenticate, async (req, res) => {
     const { limit = 100, offset = 0 } = req.query;
 
     const result = await query(
-      `SELECT s.*, p.name as prospect_name, p.converted_at as prospect_converted_at
+      `SELECT s.*, p.name as prospect_name, p.converted_at as prospect_converted_at,
+        f.name as funnel_name, st.name as stage_name, u.name as deal_owner_name
        FROM external_form_submissions s
        LEFT JOIN crm_prospects p ON p.id = s.prospect_id
+       LEFT JOIN crm_deals d ON d.id = s.deal_id
+       LEFT JOIN crm_funnels f ON f.id = d.funnel_id
+       LEFT JOIN crm_stages st ON st.id = d.stage_id
+       LEFT JOIN users u ON u.id = d.owner_id
        WHERE s.form_id = $1 AND s.organization_id = $2
        ORDER BY s.created_at DESC
        LIMIT $3 OFFSET $4`,

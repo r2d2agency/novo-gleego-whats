@@ -121,10 +121,21 @@ export function FormSubmissionsDialog({
                       </TableCell>
                       <TableCell>
                         {sub.deal_id ? (
-                          <Badge className="bg-blue-600">
-                            <Briefcase className="h-3 w-3 mr-1" />
-                            Criado no CRM
-                          </Badge>
+                          <>
+                            <Badge className="bg-blue-600">
+                              <Briefcase className="h-3 w-3 mr-1" />
+                              Criado no CRM
+                            </Badge>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {sub.funnel_name || "—"} · {sub.stage_name || "—"}
+                              {sub.deal_owner_name && (
+                                <>
+                                  <br />
+                                  Dono: {sub.deal_owner_name}
+                                </>
+                              )}
+                            </p>
+                          </>
                         ) : sub.routing_error ? (
                           <Badge variant="destructive" className="cursor-help" title={sub.routing_error}>
                             <AlertTriangle className="h-3 w-3 mr-1" />
