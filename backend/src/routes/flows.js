@@ -27,17 +27,31 @@ function isAdmin(role) {
   return ['owner', 'admin', 'manager'].includes(role);
 }
 
+// Every organization the user belongs to. Used for READING flows/categories
+// so nothing a user actually owns stays hidden just because it lives in an
+// organization other than whichever one getUserOrganization's single-org
+// guess currently picks (e.g. older flows created under a second
+// membership). Writes still use getUserOrganization (a new flow has to be
+// created under one specific org).
+async function getUserOrganizationIds(userId) {
+  const result = await query(
+    `SELECT organization_id FROM organization_members WHERE user_id = $1`,
+    [userId]
+  );
+  return result.rows.map((r) => r.organization_id);
+}
+
 // ============================================
 // FLOW CATEGORIES
 // ============================================
 
 router.get('/categories', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org) return res.status(403).json({ error: 'Acesso negado' });
+    const orgIds = await getUserOrganizationIds(req.userId);
+    if (orgIds.length === 0) return res.status(403).json({ error: 'Acesso negado' });
     const result = await query(
-      'SELECT * FROM flow_categories WHERE organization_id = $1 ORDER BY sort_order, name',
-      [org.organization_id]
+      'SELECT * FROM flow_categories WHERE organization_id = ANY($1) ORDER BY sort_order, name',
+      [orgIds]
     );
     res.json(result.rows);
   } catch (error) {
@@ -138,20 +152,23 @@ router.put('/:id/members', async (req, res) => {
 // FLOWS CRUD
 // ============================================
 
-// List all flows
+// List all flows -- across every organization the user belongs to, so a
+// flow never goes missing from this list just because it lives under a
+// different membership than whichever org getUserOrganization would guess.
 router.get('/', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org) {
+    const orgIds = await getUserOrganizationIds(req.userId);
+    if (orgIds.length === 0) {
       return res.status(403).json({ error: 'Usuário não pertence a uma organização' });
     }
 
     const result = await query(
-      `SELECT 
+      `SELECT
         f.*,
         u.name as last_edited_by_name,
         fc.name as category_name,
         fc.color as category_color,
+        o.name as organization_name,
         (SELECT COUNT(*) FROM flow_nodes WHERE flow_id = f.id) as node_count,
         COALESCE(
           (SELECT array_agg(fm.user_id) FROM flow_members fm WHERE fm.flow_id = f.id),
@@ -160,9 +177,10 @@ router.get('/', async (req, res) => {
        FROM flows f
        LEFT JOIN users u ON u.id = f.last_edited_by
        LEFT JOIN flow_categories fc ON fc.id = f.category_id
-       WHERE f.organization_id = $1
+       LEFT JOIN organizations o ON o.id = f.organization_id
+       WHERE f.organization_id = ANY($1)
        ORDER BY f.updated_at DESC`,
-      [org.organization_id]
+      [orgIds]
     );
 
     res.json(result.rows);
@@ -175,14 +193,14 @@ router.get('/', async (req, res) => {
 // Get flow by ID
 router.get('/:id', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org) {
+    const orgIds = await getUserOrganizationIds(req.userId);
+    if (orgIds.length === 0) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
 
     const result = await query(
-      `SELECT * FROM flows WHERE id = $1 AND organization_id = $2`,
-      [req.params.id, org.organization_id]
+      `SELECT * FROM flows WHERE id = $1 AND organization_id = ANY($2)`,
+      [req.params.id, orgIds]
     );
 
     if (result.rows.length === 0) {
