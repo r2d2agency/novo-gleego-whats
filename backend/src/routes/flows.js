@@ -41,6 +41,39 @@ async function getUserOrganizationIds(userId) {
   return result.rows.map((r) => r.organization_id);
 }
 
+// Resolves an EXISTING flow's real organization_id and the caller's role in
+// THAT organization (which can differ from their "primary" org) -- used by
+// every write operation on a specific flow (update/delete/toggle/duplicate/
+// canvas), so a flow the user can see (via the multi-org list above) can
+// also be managed, regardless of which org getUserOrganization would guess.
+// Returns null if the flow doesn't exist in any org the user belongs to.
+async function resolveFlowOrgRole(flowId, userId) {
+  const orgIds = await getUserOrganizationIds(userId);
+  if (orgIds.length === 0) return null;
+  const result = await query(
+    `SELECT f.organization_id, om.role
+     FROM flows f
+     JOIN organization_members om ON om.organization_id = f.organization_id AND om.user_id = $2
+     WHERE f.id = $1 AND f.organization_id = ANY($3)`,
+    [flowId, userId, orgIds]
+  );
+  return result.rows[0] || null;
+}
+
+// Same idea for a flow_categories row.
+async function resolveCategoryOrgRole(categoryId, userId) {
+  const orgIds = await getUserOrganizationIds(userId);
+  if (orgIds.length === 0) return null;
+  const result = await query(
+    `SELECT fc.organization_id, om.role
+     FROM flow_categories fc
+     JOIN organization_members om ON om.organization_id = fc.organization_id AND om.user_id = $2
+     WHERE fc.id = $1 AND fc.organization_id = ANY($3)`,
+    [categoryId, userId, orgIds]
+  );
+  return result.rows[0] || null;
+}
+
 // ============================================
 // FLOW CATEGORIES
 // ============================================
@@ -79,12 +112,13 @@ router.post('/categories', async (req, res) => {
 
 router.patch('/categories/:id', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org || !isAdmin(org.role)) return res.status(403).json({ error: 'Sem permissão' });
+    const catOrg = await resolveCategoryOrgRole(req.params.id, req.userId);
+    if (!catOrg) return res.status(404).json({ error: 'Categoria não encontrada' });
+    if (!isAdmin(catOrg.role)) return res.status(403).json({ error: 'Sem permissão' });
     const { name, color } = req.body;
     const result = await query(
       'UPDATE flow_categories SET name = COALESCE($1, name), color = COALESCE($2, color) WHERE id = $3 AND organization_id = $4 RETURNING *',
-      [name, color, req.params.id, org.organization_id]
+      [name, color, req.params.id, catOrg.organization_id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Categoria não encontrada' });
     res.json(result.rows[0]);
@@ -96,10 +130,11 @@ router.patch('/categories/:id', async (req, res) => {
 
 router.delete('/categories/:id', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org || !isAdmin(org.role)) return res.status(403).json({ error: 'Sem permissão' });
+    const catOrg = await resolveCategoryOrgRole(req.params.id, req.userId);
+    if (!catOrg) return res.status(404).json({ error: 'Categoria não encontrada' });
+    if (!isAdmin(catOrg.role)) return res.status(403).json({ error: 'Sem permissão' });
     await query('UPDATE flows SET category_id = NULL WHERE category_id = $1', [req.params.id]);
-    await query('DELETE FROM flow_categories WHERE id = $1 AND organization_id = $2', [req.params.id, org.organization_id]);
+    await query('DELETE FROM flow_categories WHERE id = $1 AND organization_id = $2', [req.params.id, catOrg.organization_id]);
     res.json({ success: true });
   } catch (error) {
     console.error('Delete flow category error:', error);
@@ -265,18 +300,12 @@ router.post('/', async (req, res) => {
 // Update flow
 router.patch('/:id', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org || !isAdmin(org.role)) {
-      return res.status(403).json({ error: 'Sem permissão' });
-    }
-
-    const existing = await query(
-      'SELECT id FROM flows WHERE id = $1 AND organization_id = $2',
-      [req.params.id, org.organization_id]
-    );
-
-    if (existing.rows.length === 0) {
+    const flowOrg = await resolveFlowOrgRole(req.params.id, req.userId);
+    if (!flowOrg) {
       return res.status(404).json({ error: 'Fluxo não encontrado' });
+    }
+    if (!isAdmin(flowOrg.role)) {
+      return res.status(403).json({ error: 'Sem permissão' });
     }
 
     const allowedFields = [
@@ -310,10 +339,10 @@ router.patch('/:id', async (req, res) => {
     updates.push('updated_at = NOW()');
 
     values.push(req.params.id);
-    values.push(org.organization_id);
+    values.push(flowOrg.organization_id);
 
     const result = await query(
-      `UPDATE flows SET ${updates.join(', ')} 
+      `UPDATE flows SET ${updates.join(', ')}
        WHERE id = $${paramCount} AND organization_id = $${paramCount + 1}
        RETURNING *`,
       values
@@ -329,14 +358,17 @@ router.patch('/:id', async (req, res) => {
 // Delete flow
 router.delete('/:id', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org || !isAdmin(org.role)) {
+    const flowOrg = await resolveFlowOrgRole(req.params.id, req.userId);
+    if (!flowOrg) {
+      return res.status(404).json({ error: 'Fluxo não encontrado' });
+    }
+    if (!isAdmin(flowOrg.role)) {
       return res.status(403).json({ error: 'Sem permissão' });
     }
 
     const result = await query(
       'DELETE FROM flows WHERE id = $1 AND organization_id = $2 RETURNING id',
-      [req.params.id, org.organization_id]
+      [req.params.id, flowOrg.organization_id]
     );
 
     if (result.rows.length === 0) {
@@ -353,19 +385,22 @@ router.delete('/:id', async (req, res) => {
 // Toggle flow active state
 router.post('/:id/toggle', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org || !isAdmin(org.role)) {
+    const flowOrg = await resolveFlowOrgRole(req.params.id, req.userId);
+    if (!flowOrg) {
+      return res.status(404).json({ error: 'Fluxo não encontrado' });
+    }
+    if (!isAdmin(flowOrg.role)) {
       return res.status(403).json({ error: 'Sem permissão' });
     }
 
     const result = await query(
-      `UPDATE flows SET 
+      `UPDATE flows SET
         is_active = NOT is_active,
         updated_at = NOW(),
         last_edited_by = $1
        WHERE id = $2 AND organization_id = $3
        RETURNING *`,
-      [req.userId, req.params.id, org.organization_id]
+      [req.userId, req.params.id, flowOrg.organization_id]
     );
 
     if (result.rows.length === 0) {
@@ -386,17 +421,8 @@ router.post('/:id/toggle', async (req, res) => {
 // Get nodes and edges for a flow
 router.get('/:id/canvas', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org) {
-      return res.status(403).json({ error: 'Acesso negado' });
-    }
-
-    const flow = await query(
-      'SELECT id FROM flows WHERE id = $1 AND organization_id = $2',
-      [req.params.id, org.organization_id]
-    );
-
-    if (flow.rows.length === 0) {
+    const flowOrg = await resolveFlowOrgRole(req.params.id, req.userId);
+    if (!flowOrg) {
       return res.status(404).json({ error: 'Fluxo não encontrado' });
     }
 
@@ -424,8 +450,11 @@ router.get('/:id/canvas', async (req, res) => {
 // Save nodes and edges (full replacement)
 router.put('/:id/canvas', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org || !isAdmin(org.role)) {
+    const flowOrg = await resolveFlowOrgRole(req.params.id, req.userId);
+    if (!flowOrg) {
+      return res.status(404).json({ error: 'Fluxo não encontrado' });
+    }
+    if (!isAdmin(flowOrg.role)) {
       return res.status(403).json({ error: 'Sem permissão' });
     }
 
@@ -433,7 +462,7 @@ router.put('/:id/canvas', async (req, res) => {
 
     const flow = await query(
       'SELECT id, version FROM flows WHERE id = $1 AND organization_id = $2',
-      [req.params.id, org.organization_id]
+      [req.params.id, flowOrg.organization_id]
     );
 
     if (flow.rows.length === 0) {
@@ -513,14 +542,17 @@ router.put('/:id/canvas', async (req, res) => {
 // Duplicate flow
 router.post('/:id/duplicate', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org || !isAdmin(org.role)) {
+    const flowOrg = await resolveFlowOrgRole(req.params.id, req.userId);
+    if (!flowOrg) {
+      return res.status(404).json({ error: 'Fluxo não encontrado' });
+    }
+    if (!isAdmin(flowOrg.role)) {
       return res.status(403).json({ error: 'Sem permissão' });
     }
 
     const original = await query(
       'SELECT * FROM flows WHERE id = $1 AND organization_id = $2',
-      [req.params.id, org.organization_id]
+      [req.params.id, flowOrg.organization_id]
     );
 
     if (original.rows.length === 0) {
@@ -529,16 +561,17 @@ router.post('/:id/duplicate', async (req, res) => {
 
     const flow = original.rows[0];
 
-    // Create copy
+    // Create copy in the SAME organization as the original (not the user's
+    // "primary" org, which could differ).
     const copy = await query(
       `INSERT INTO flows (
-        organization_id, name, description, 
+        organization_id, name, description,
         trigger_enabled, trigger_keywords, trigger_match_mode,
         connection_ids, is_draft, last_edited_by
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8)
       RETURNING *`,
       [
-        org.organization_id,
+        flow.organization_id,
         `${flow.name} (cópia)`,
         flow.description,
         false, // disabled by default
