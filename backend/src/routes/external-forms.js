@@ -5,6 +5,7 @@ import { logInfo, logError } from '../logger.js';
 import { onDealStageChanged } from '../crm-automation-scheduler.js';
 import { emitLeadEvent } from '../lib/event-bus.js';
 import { executeFlow } from '../lib/flow-executor.js';
+import * as whatsappProvider from '../lib/whatsapp-provider.js';
 
 const router = express.Router();
 const VALID_DISPLAY_MODES = ['chat', 'typeform', 'standard', 'survey'];
@@ -41,6 +42,15 @@ const VALID_FIELD_TYPES = ['text', 'phone', 'whatsapp', 'email', 'select', 'text
     // campaign contact-list table) when linking a form lead to a CRM deal.
     `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS city VARCHAR(100)`,
     `ALTER TABLE contacts ADD COLUMN IF NOT EXISTS state VARCHAR(50)`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS redirect_delay_seconds INTEGER DEFAULT 3`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS fb_pixel_id VARCHAR(50)`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS google_ads_conversion_id VARCHAR(50)`,
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS google_ads_conversion_label VARCHAR(100)`,
+    // Maps {user_id: flow_id} -- an optional per-seller welcome flow for the
+    // round robin. Kept as a separate additive column instead of changing
+    // round_robin_user_ids (a native UUID[]) to avoid rewriting
+    // resolveRoundRobinOwnerId()'s array_position()-based SQL.
+    `ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS round_robin_user_flows JSONB DEFAULT '{}'::jsonb`,
   ];
 
   for (const statement of ddl) {
@@ -535,6 +545,11 @@ router.post('/', authenticate, async (req, res) => {
       transition_type,
       referral_enabled,
       referral_message,
+      redirect_delay_seconds,
+      fb_pixel_id,
+      google_ads_conversion_id,
+      google_ads_conversion_label,
+      round_robin_user_flows,
       fields
     } = req.body;
 
@@ -553,8 +568,10 @@ router.post('/', authenticate, async (req, res) => {
         welcome_message, thank_you_message, redirect_url,
         trigger_flow_id, connection_id, created_by, display_mode, transition_type,
         lead_target, crm_funnel_id, use_round_robin, round_robin_user_ids,
-        referral_enabled, referral_message
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+        referral_enabled, referral_message,
+        redirect_delay_seconds, fb_pixel_id, google_ads_conversion_id, google_ads_conversion_label,
+        round_robin_user_flows
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34)
       RETURNING *`,
       [
         org.organization_id, name, slug, description, logo_url, logo_size || 48,
@@ -568,7 +585,10 @@ router.post('/', authenticate, async (req, res) => {
         normalizeDisplayMode(display_mode), transition_type || 'slide-right',
         normalizeLeadTarget(lead_target), crm_funnel_id || null,
         !!use_round_robin, normalizeUuidArray(round_robin_user_ids),
-        !!referral_enabled, referral_message || null
+        !!referral_enabled, referral_message || null,
+        Number.isFinite(Number(redirect_delay_seconds)) ? Number(redirect_delay_seconds) : 3,
+        fb_pixel_id || null, google_ads_conversion_id || null, google_ads_conversion_label || null,
+        JSON.stringify(round_robin_user_flows && typeof round_robin_user_flows === 'object' ? round_robin_user_flows : {})
       ]
     );
 
@@ -761,6 +781,11 @@ router.put('/:id', authenticate, async (req, res) => {
       transition_type,
       referral_enabled,
       referral_message,
+      redirect_delay_seconds,
+      fb_pixel_id,
+      google_ads_conversion_id,
+      google_ads_conversion_label,
+      round_robin_user_flows,
       fields
     } = req.body;
 
@@ -773,6 +798,10 @@ router.put('/:id', authenticate, async (req, res) => {
     const normalizedCrmFunnelId = crm_funnel_id === undefined ? null : (crm_funnel_id || null);
     const normalizedTriggerFlowId = trigger_flow_id === undefined ? null : (trigger_flow_id || null);
     const normalizedConnectionId = connection_id === undefined ? null : (connection_id || null);
+    const normalizedRedirectDelay = Number.isFinite(Number(redirect_delay_seconds)) ? Number(redirect_delay_seconds) : null;
+    const normalizedRoundRobinUserFlows = round_robin_user_flows && typeof round_robin_user_flows === 'object'
+      ? JSON.stringify(round_robin_user_flows)
+      : null;
 
     // Update form
     const updateResult = await query(
@@ -804,6 +833,11 @@ router.put('/:id', authenticate, async (req, res) => {
         round_robin_user_ids = COALESCE($27, round_robin_user_ids),
         referral_enabled = COALESCE($28, referral_enabled),
         referral_message = COALESCE($29, referral_message),
+        redirect_delay_seconds = COALESCE($30, redirect_delay_seconds),
+        fb_pixel_id = $31,
+        google_ads_conversion_id = $32,
+        google_ads_conversion_label = $33,
+        round_robin_user_flows = COALESCE($34, round_robin_user_flows),
         updated_at = NOW()
        WHERE id = $14 AND organization_id = ANY($15)
        RETURNING *`,
@@ -826,6 +860,11 @@ router.put('/:id', authenticate, async (req, res) => {
         normalizedRoundRobinUserIds,
         typeof referral_enabled === 'boolean' ? referral_enabled : null,
         referral_message ?? null,
+        normalizedRedirectDelay,
+        fb_pixel_id ?? null,
+        google_ads_conversion_id ?? null,
+        google_ads_conversion_label ?? null,
+        normalizedRoundRobinUserFlows,
       ]
     );
 
@@ -969,6 +1008,7 @@ router.get('/public/:slug', async (req, res) => {
         f.field_text_color, f.label_color, f.welcome_message, f.is_active, f.display_mode,
         f.transition_type, f.redirect_url, f.thank_you_message,
         f.referral_enabled, f.referral_message,
+        f.redirect_delay_seconds, f.fb_pixel_id, f.google_ads_conversion_id, f.google_ads_conversion_label,
         o.name as organization_name
        FROM external_forms f
        JOIN organizations o ON o.id = f.organization_id
@@ -1019,6 +1059,51 @@ router.get('/public/:slug', async (req, res) => {
   } catch (error) {
     logError('Error fetching public form:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Validate that a phone number is a real, registered WhatsApp account before
+// the visitor moves on (not just a format check). Resolves the form's own
+// connection internally -- the visitor never sees/supplies a connection_id.
+// Meta Cloud API connections have no such check (checkNumber always returns
+// true for them), so `checked: false` tells the frontend not to treat this
+// as a real negative/positive and simply not block on it.
+router.post('/public/:slug/validate-phone', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone || !String(phone).trim()) {
+      return res.status(400).json({ error: 'Telefone é obrigatório' });
+    }
+
+    const formResult = await query(
+      `SELECT id, organization_id, connection_id
+       FROM external_forms
+       WHERE (LOWER(slug) = LOWER($1) OR id::text = $1 OR id = (CASE WHEN $1 ~ '^[0-9a-fA-F-]{36}$' THEN $1::uuid ELSE NULL END))`,
+      [req.params.slug]
+    );
+
+    if (!formResult.rows[0]) {
+      return res.status(404).json({ error: 'Formulário não encontrado' });
+    }
+
+    const form = formResult.rows[0];
+    const connection = await resolveDefaultConnectionForUser(form.organization_id, null, form.connection_id || null);
+
+    if (!connection) {
+      return res.json({ valid: true, checked: false });
+    }
+
+    const provider = whatsappProvider.detectProvider(connection);
+    if (provider === 'meta') {
+      return res.json({ valid: true, checked: false });
+    }
+
+    const valid = await whatsappProvider.checkNumber(connection, phone);
+    res.json({ valid: !!valid, checked: true });
+  } catch (error) {
+    logError('Error validating phone for external form:', error);
+    // Don't block the visitor over an infra hiccup on our side.
+    res.json({ valid: true, checked: false });
   }
 });
 
@@ -1341,8 +1426,15 @@ router.post('/public/:slug/submit', async (req, res) => {
       [form.id]
     );
 
-    // Trigger flow using the assigned seller default connection when possible
-    if (form.trigger_flow_id && phone) {
+    // Trigger flow using the assigned seller default connection when possible.
+    // If the round-robin winner has their own welcome flow configured
+    // (round_robin_user_flows[assignedUserId]), use that instead of the
+    // form's generic trigger_flow_id, so the message can be tailored per
+    // salesperson (e.g. "Hi, I'm João, thanks for signing up...").
+    const sellerFlowId = form.round_robin_user_flows?.[assignedUserId] || null;
+    const flowIdToTrigger = sellerFlowId || form.trigger_flow_id;
+
+    if (flowIdToTrigger && phone) {
       try {
         const flowConnection = await resolveDefaultConnectionForUser(
           form.organization_id,
@@ -1368,7 +1460,7 @@ router.post('/public/:slug/submit', async (req, res) => {
         };
 
         const execResult = await executeFlow(
-          form.trigger_flow_id,
+          flowIdToTrigger,
           conversationId,
           'start',
           initialVariables
@@ -1386,7 +1478,7 @@ router.post('/public/:slug/submit', async (req, res) => {
               AND is_active = true
             ORDER BY started_at DESC
             LIMIT 1`,
-          [conversationId, form.trigger_flow_id]
+          [conversationId, flowIdToTrigger]
         );
 
         await query(
@@ -1396,7 +1488,8 @@ router.post('/public/:slug/submit', async (req, res) => {
 
         logInfo('Flow triggered from external form', {
           formId: form.id,
-          flowId: form.trigger_flow_id,
+          flowId: flowIdToTrigger,
+          usedSellerFlow: !!sellerFlowId,
           phone,
           connectionId: flowConnection.id,
           assignedUserId,
@@ -1416,7 +1509,8 @@ router.post('/public/:slug/submit', async (req, res) => {
     res.json({
       success: true,
       thank_you_message: form.thank_you_message,
-      redirect_url: form.redirect_url
+      redirect_url: form.redirect_url,
+      redirect_delay_seconds: form.redirect_delay_seconds
     });
   } catch (error) {
     logError('Error submitting form:', error);

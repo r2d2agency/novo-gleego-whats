@@ -108,8 +108,13 @@ export function ExternalFormEditorDialog({
     crm_funnel_id: "",
     use_round_robin: false,
     round_robin_user_ids: [] as string[],
+    round_robin_user_flows: {} as Record<string, string>,
     display_mode: "typeform" as "chat" | "typeform" | "standard",
     transition_type: "slide-right" as "slide-right" | "slide-left",
+    redirect_delay_seconds: 3,
+    fb_pixel_id: "",
+    google_ads_conversion_id: "",
+    google_ads_conversion_label: "",
   });
   
   const [fields, setFields] = useState<FormField[]>(DEFAULT_FIELDS);
@@ -189,8 +194,13 @@ export function ExternalFormEditorDialog({
         crm_funnel_id: fullForm.crm_funnel_id || "",
         use_round_robin: !!fullForm.use_round_robin,
         round_robin_user_ids: fullForm.round_robin_user_ids || [],
+        round_robin_user_flows: fullForm.round_robin_user_flows || {},
         display_mode: (fullForm.display_mode as "chat" | "typeform" | "standard") || "typeform",
         transition_type: (fullForm.transition_type as "slide-right" | "slide-left") || "slide-right",
+        redirect_delay_seconds: fullForm.redirect_delay_seconds ?? 3,
+        fb_pixel_id: fullForm.fb_pixel_id || "",
+        google_ads_conversion_id: fullForm.google_ads_conversion_id || "",
+        google_ads_conversion_label: fullForm.google_ads_conversion_label || "",
       });
       setFields(fullForm.fields || DEFAULT_FIELDS);
     }
@@ -220,8 +230,13 @@ export function ExternalFormEditorDialog({
       crm_funnel_id: "",
       use_round_robin: false,
       round_robin_user_ids: [],
+      round_robin_user_flows: {},
       display_mode: "typeform",
       transition_type: "slide-right",
+      redirect_delay_seconds: 3,
+      fb_pixel_id: "",
+      google_ads_conversion_id: "",
+      google_ads_conversion_label: "",
     });
     setFields(DEFAULT_FIELDS);
     setActiveTab("fields");
@@ -303,12 +318,30 @@ export function ExternalFormEditorDialog({
   };
 
   const toggleRoundRobinUser = (userId: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      round_robin_user_ids: prev.round_robin_user_ids.includes(userId)
-        ? prev.round_robin_user_ids.filter((id) => id !== userId)
-        : [...prev.round_robin_user_ids, userId],
-    }));
+    setFormData((prev) => {
+      const isRemoving = prev.round_robin_user_ids.includes(userId);
+      const nextFlows = { ...prev.round_robin_user_flows };
+      if (isRemoving) delete nextFlows[userId];
+      return {
+        ...prev,
+        round_robin_user_ids: isRemoving
+          ? prev.round_robin_user_ids.filter((id) => id !== userId)
+          : [...prev.round_robin_user_ids, userId],
+        round_robin_user_flows: nextFlows,
+      };
+    });
+  };
+
+  const setRoundRobinUserFlow = (userId: string, flowId: string) => {
+    setFormData((prev) => {
+      const nextFlows = { ...prev.round_robin_user_flows };
+      if (flowId) {
+        nextFlows[userId] = flowId;
+      } else {
+        delete nextFlows[userId];
+      }
+      return { ...prev, round_robin_user_flows: nextFlows };
+    });
   };
 
   return (
@@ -810,6 +843,60 @@ export function ExternalFormEditorDialog({
                     Se preenchido, redireciona o visitante após a mensagem de agradecimento
                   </p>
                 </div>
+
+                {formData.redirect_url && (
+                  <div className="grid gap-2 max-w-[200px]">
+                    <Label>Redirecionar após (segundos)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={60}
+                      value={formData.redirect_delay_seconds}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          redirect_delay_seconds: Math.max(0, Number(e.target.value) || 0),
+                        })
+                      }
+                    />
+                  </div>
+                )}
+
+                <div className="grid gap-3 border rounded-lg p-4">
+                  <div>
+                    <Label className="text-sm font-medium">Rastreamento de conversão</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Dispara ao concluir o formulário com sucesso. UTM (utm_source/medium/campaign) já é
+                      capturado automaticamente em toda submissão, sem precisar configurar nada aqui.
+                    </p>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label className="text-xs">Facebook Pixel ID</Label>
+                    <Input
+                      value={formData.fb_pixel_id}
+                      onChange={(e) => setFormData({ ...formData, fb_pixel_id: e.target.value })}
+                      placeholder="Ex: 123456789012345"
+                    />
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div className="grid gap-2">
+                      <Label className="text-xs">Google Ads Conversion ID</Label>
+                      <Input
+                        value={formData.google_ads_conversion_id}
+                        onChange={(e) => setFormData({ ...formData, google_ads_conversion_id: e.target.value })}
+                        placeholder="Ex: AW-123456789"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label className="text-xs">Conversion Label</Label>
+                      <Input
+                        value={formData.google_ads_conversion_label}
+                        onChange={(e) => setFormData({ ...formData, google_ads_conversion_label: e.target.value })}
+                        placeholder="Ex: AbC-D1efG2h3i4"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </ScrollArea>
           </TabsContent>
@@ -887,6 +974,7 @@ export function ExternalFormEditorDialog({
                           crm_funnel_id: value === "crm" ? formData.crm_funnel_id : "",
                           use_round_robin: value === "crm" ? formData.use_round_robin : false,
                           round_robin_user_ids: value === "crm" ? formData.round_robin_user_ids : [],
+                          round_robin_user_flows: value === "crm" ? formData.round_robin_user_flows : {},
                         })
                       }
                     >
@@ -961,23 +1049,53 @@ export function ExternalFormEditorDialog({
                                 Nenhum membro disponível para distribuição.
                               </div>
                             ) : (
-                              members.map((member) => (
-                                <label
-                                  key={member.user_id}
-                                  className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/50"
-                                >
-                                  <Checkbox
-                                    checked={formData.round_robin_user_ids.includes(member.user_id)}
-                                    onCheckedChange={() => toggleRoundRobinUser(member.user_id)}
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium truncate">{member.name}</p>
-                                    <p className="text-xs text-muted-foreground truncate">
-                                      {member.email} • {member.role}
-                                    </p>
+                              members.map((member) => {
+                                const isChecked = formData.round_robin_user_ids.includes(member.user_id);
+                                return (
+                                  <div key={member.user_id} className="p-3 hover:bg-muted/50">
+                                    <label className="flex items-center gap-3 cursor-pointer">
+                                      <Checkbox
+                                        checked={isChecked}
+                                        onCheckedChange={() => toggleRoundRobinUser(member.user_id)}
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{member.name}</p>
+                                        <p className="text-xs text-muted-foreground truncate">
+                                          {member.email} • {member.role}
+                                        </p>
+                                      </div>
+                                    </label>
+                                    {isChecked && (
+                                      <div className="mt-2 pl-7" onClick={(e) => e.stopPropagation()}>
+                                        <Label className="text-xs text-muted-foreground">
+                                          Fluxo de boas-vindas (opcional)
+                                        </Label>
+                                        <Select
+                                          value={formData.round_robin_user_flows[member.user_id] || "__none__"}
+                                          onValueChange={(value) =>
+                                            setRoundRobinUserFlow(member.user_id, value === "__none__" ? "" : value)
+                                          }
+                                        >
+                                          <SelectTrigger className="h-8 text-xs">
+                                            <SelectValue placeholder="Usar fluxo padrão do formulário" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="__none__">Usar fluxo padrão do formulário</SelectItem>
+                                            {flows.map((flow) => (
+                                              <SelectItem key={flow.id} value={flow.id}>
+                                                {flow.name}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                        <p className="text-[11px] text-muted-foreground mt-1">
+                                          Disparado no WhatsApp desse vendedor quando ele receber o lead.
+                                        </p>
+                                      </div>
+                                    )}
                                   </div>
-                                </label>
-                              ))
+                                );
+                              })
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground">

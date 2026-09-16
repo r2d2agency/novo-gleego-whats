@@ -2977,6 +2977,17 @@ DO $$ BEGIN
     ALTER TABLE external_form_submissions ADD COLUMN IF NOT EXISTS deal_id UUID REFERENCES crm_deals(id) ON DELETE SET NULL;
     ALTER TABLE external_form_submissions ADD COLUMN IF NOT EXISTS routing_error TEXT;
 EXCEPTION WHEN duplicate_column THEN null; END $$;
+
+-- Configurable post-submit redirect delay, ad-tracking pixels, and an
+-- optional per-seller welcome flow for the round robin (kept as a separate
+-- JSONB map instead of changing round_robin_user_ids's UUID[] type).
+DO $$ BEGIN
+    ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS redirect_delay_seconds INTEGER DEFAULT 3;
+    ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS fb_pixel_id VARCHAR(50);
+    ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS google_ads_conversion_id VARCHAR(50);
+    ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS google_ads_conversion_label VARCHAR(100);
+    ALTER TABLE external_forms ADD COLUMN IF NOT EXISTS round_robin_user_flows JSONB DEFAULT '{}'::jsonb;
+EXCEPTION WHEN duplicate_column THEN null; END $$;
 `;
 
 // ============================================

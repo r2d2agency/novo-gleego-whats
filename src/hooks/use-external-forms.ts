@@ -52,6 +52,15 @@ export interface ExternalForm {
   referral_enabled?: boolean;
   referral_message?: string;
 
+  // Post-submit redirect delay (seconds) and ad-tracking pixels
+  redirect_delay_seconds?: number;
+  fb_pixel_id?: string;
+  google_ads_conversion_id?: string;
+  google_ads_conversion_label?: string;
+
+  // Optional per-seller welcome flow for the round robin: {user_id: flow_id}
+  round_robin_user_flows?: Record<string, string>;
+
   // Stats
   views_count: number;
   submissions_count: number;
@@ -191,6 +200,33 @@ export async function getPublicForm(slug: string): Promise<ExternalForm | null> 
   return null;
 }
 
+// Checks whether a phone number is a real, registered WhatsApp account
+// (not just format) using the form's own connection, resolved server-side.
+// `checked: false` means the provider can't really verify (e.g. Meta Cloud
+// API) — callers should not block the visitor in that case.
+export async function validatePublicPhone(
+  slug: string,
+  phone: string
+): Promise<{ valid: boolean; checked: boolean }> {
+  const baseUrls = [API_URL, window.location.origin].filter(Boolean);
+  const uniqueUrls = Array.from(new Set(baseUrls));
+
+  for (const base of uniqueUrls) {
+    try {
+      const res = await fetch(`${base}/api/external-forms/public/${slug}/validate-phone`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      if (res.ok) return res.json();
+    } catch {
+      // try next base
+    }
+  }
+  // Infra hiccup on our side -- never block the visitor over it.
+  return { valid: true, checked: false };
+}
+
 export async function submitPublicForm(
   slug: string,
   data: Record<string, string>,
@@ -201,7 +237,7 @@ export async function submitPublicForm(
     referrer?: string;
     referrals?: { name: string; phone: string }[];
   }
-): Promise<{ success: boolean; thank_you_message?: string; redirect_url?: string }> {
+): Promise<{ success: boolean; thank_you_message?: string; redirect_url?: string; redirect_delay_seconds?: number }> {
   const baseUrls = [API_URL, window.location.origin].filter(Boolean);
   const uniqueUrls = Array.from(new Set(baseUrls));
   let lastError: Error | null = null;

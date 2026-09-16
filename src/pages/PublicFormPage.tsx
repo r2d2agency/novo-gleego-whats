@@ -11,7 +11,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2, Send, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, Star, Plus, X, MessageCircle } from "lucide-react";
-import { getPublicForm, submitPublicForm, ExternalForm, FormField } from "@/hooks/use-external-forms";
+import { getPublicForm, submitPublicForm, validatePublicPhone, ExternalForm, FormField } from "@/hooks/use-external-forms";
+
+declare global {
+  interface Window {
+    fbq?: (...args: any[]) => void;
+    gtag?: (...args: any[]) => void;
+    dataLayer?: any[];
+  }
+}
 
 interface ChatMessage {
   id: string;
@@ -57,7 +65,9 @@ export default function PublicFormPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [thankYouMessage, setThankYouMessage] = useState("");
-  
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -66,6 +76,49 @@ export default function PublicFormPage() {
       loadForm();
     }
   }, [slug]);
+
+  // Ad-tracking pixels: load the base scripts once the form (and its
+  // optional pixel/conversion ids) is known. The actual Lead/conversion
+  // event only fires after a successful submit (see doSubmit), not here --
+  // otherwise every page view would count as a conversion.
+  useEffect(() => {
+    if (form?.fb_pixel_id && !window.fbq) {
+      const s = document.createElement("script");
+      s.innerHTML = `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+        n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+        document,'script','https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init', '${form.fb_pixel_id}');
+        fbq('track', 'PageView');`;
+      document.head.appendChild(s);
+    }
+    if (form?.google_ads_conversion_id && !window.gtag) {
+      const src = document.createElement("script");
+      src.async = true;
+      src.src = `https://www.googletagmanager.com/gtag/js?id=${form.google_ads_conversion_id}`;
+      document.head.appendChild(src);
+
+      const inline = document.createElement("script");
+      inline.innerHTML = `window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        window.gtag = gtag;
+        gtag('js', new Date());
+        gtag('config', '${form.google_ads_conversion_id}');`;
+      document.head.appendChild(inline);
+    }
+  }, [form?.fb_pixel_id, form?.google_ads_conversion_id]);
+
+  // Redirect countdown: ticks every second and navigates away at 0.
+  useEffect(() => {
+    if (redirectCountdown === null || !redirectUrl) return;
+    if (redirectCountdown <= 0) {
+      window.location.href = redirectUrl;
+      return;
+    }
+    const t = setTimeout(() => setRedirectCountdown((c) => (c !== null ? c - 1 : null)), 1000);
+    return () => clearTimeout(t);
+  }, [redirectCountdown, redirectUrl]);
 
   useEffect(() => {
     scrollToBottom();
@@ -363,8 +416,19 @@ export default function PublicFormPage() {
       });
       setSubmitted(true);
       setThankYouMessage(result.thank_you_message || form.thank_you_message || "Obrigado!");
+
+      if (form.fb_pixel_id && window.fbq) window.fbq("track", "Lead");
+      if (form.google_ads_conversion_id && window.gtag) {
+        window.gtag("event", "conversion", {
+          send_to: form.google_ads_conversion_label
+            ? `${form.google_ads_conversion_id}/${form.google_ads_conversion_label}`
+            : form.google_ads_conversion_id,
+        });
+      }
+
       if (result.redirect_url) {
-        setTimeout(() => { window.location.href = result.redirect_url!; }, 2000);
+        setRedirectUrl(result.redirect_url);
+        setRedirectCountdown(result.redirect_delay_seconds ?? form.redirect_delay_seconds ?? 3);
       }
       return result;
     } catch (err: any) {
@@ -379,6 +443,7 @@ export default function PublicFormPage() {
     return (
       <TypeformView
         form={form}
+        slug={slug || ""}
         primaryColor={primaryColor}
         bgColor={bgColor}
         textColor={textColor}
@@ -390,6 +455,7 @@ export default function PublicFormPage() {
         submitted={submitted}
         submitting={submitting}
         thankYouMessage={thankYouMessage}
+        redirectCountdown={redirectCountdown}
         onSubmit={doSubmit}
         renderRatingStars={renderRatingStars}
         userInput={userInput}
@@ -402,6 +468,7 @@ export default function PublicFormPage() {
     return (
       <StandardView
         form={form}
+        slug={slug || ""}
         primaryColor={primaryColor}
         bgColor={bgColor}
         textColor={textColor}
@@ -413,6 +480,7 @@ export default function PublicFormPage() {
         submitted={submitted}
         submitting={submitting}
         thankYouMessage={thankYouMessage}
+        redirectCountdown={redirectCountdown}
         onSubmit={doSubmit}
         renderRatingStars={renderRatingStars}
         userInput={userInput}
@@ -425,6 +493,7 @@ export default function PublicFormPage() {
     return (
       <TypeformView
         form={form}
+        slug={slug || ""}
         primaryColor={primaryColor}
         bgColor={bgColor}
         textColor={textColor}
@@ -436,6 +505,7 @@ export default function PublicFormPage() {
         submitted={submitted}
         submitting={submitting}
         thankYouMessage={thankYouMessage}
+        redirectCountdown={redirectCountdown}
         onSubmit={doSubmit}
         renderRatingStars={renderRatingStars}
         userInput={userInput}
@@ -664,6 +734,8 @@ interface ViewProps {
   submitted: boolean;
   submitting: boolean;
   thankYouMessage: string;
+  redirectCountdown?: number | null;
+  slug: string;
   onSubmit: (data: Record<string, string>, referrals?: { name: string; phone: string }[]) => Promise<any>;
   isSurvey?: boolean;
   renderRatingStars: (value: string | undefined, onChange: (val: string) => void, userInput: string, setUserInput: (v: string) => void) => React.ReactNode;
@@ -672,7 +744,7 @@ interface ViewProps {
 }
 
 // ============ TYPEFORM VIEW ============
-function TypeformView({ form, primaryColor, bgColor, textColor, buttonTextColor, fieldBackgroundColor, fieldBorderColor, fieldTextColor, labelColor, submitted, submitting, thankYouMessage, onSubmit, isSurvey, renderRatingStars, userInput, setUserInput }: ViewProps) {
+function TypeformView({ form, slug, primaryColor, bgColor, textColor, buttonTextColor, fieldBackgroundColor, fieldBorderColor, fieldTextColor, labelColor, submitted, submitting, thankYouMessage, redirectCountdown, onSubmit, isSurvey, renderRatingStars, userInput, setUserInput }: ViewProps) {
   const fields = form.fields || [];
   const [index, setIndex] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -681,6 +753,7 @@ function TypeformView({ form, primaryColor, bgColor, textColor, buttonTextColor,
   const [direction, setDirection] = useState<"next" | "prev">("next");
   const [showReferralScreen, setShowReferralScreen] = useState(false);
   const [submittedReferrals, setSubmittedReferrals] = useState<{ name: string; phone: string }[]>([]);
+  const [checkingPhone, setCheckingPhone] = useState(false);
 
   const referralEnabled = !!isSurvey && !!form.referral_enabled;
 
@@ -703,6 +776,17 @@ function TypeformView({ form, primaryColor, bgColor, textColor, buttonTextColor,
     const val = values[current.field_key] || "";
     const err = validateField(val, current);
     if (err) { setError(err); return; }
+
+    if (current.field_type === "whatsapp" && val.trim()) {
+      setCheckingPhone(true);
+      const result = await validatePublicPhone(slug, val);
+      setCheckingPhone(false);
+      if (result.checked && !result.valid) {
+        setError("Esse número não é um WhatsApp válido. Digite um número de WhatsApp válido.");
+        return;
+      }
+    }
+
     if (index + 1 >= total) {
       if (referralEnabled) {
         setShowReferralScreen(true);
@@ -725,6 +809,10 @@ function TypeformView({ form, primaryColor, bgColor, textColor, buttonTextColor,
       <div className="min-h-screen flex flex-col items-center justify-center p-8" style={{ backgroundColor: bgColor, color: textColor }}>
         <CheckCircle2 className="h-16 w-16 mb-4" style={{ color: primaryColor }} />
         <p className="text-xl text-center max-w-md">{thankYouMessage}</p>
+
+        {redirectCountdown !== null && redirectCountdown !== undefined && (
+          <p className="text-sm opacity-60 mt-2">Redirecionando em {redirectCountdown}s...</p>
+        )}
 
         {submittedReferrals.length > 0 && form.referral_message && (
           <div className="mt-8 w-full max-w-md space-y-3">
@@ -903,11 +991,11 @@ function TypeformView({ form, primaryColor, bgColor, textColor, buttonTextColor,
             </Button>
             <Button
               onClick={goNext}
-              disabled={submitting}
+              disabled={submitting || checkingPhone}
               style={{ backgroundColor: primaryColor, color: buttonTextColor }}
               className="gap-2"
             >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (
+              {submitting || checkingPhone ? <Loader2 className="h-4 w-4 animate-spin" /> : (
                 <>
                   {index + 1 >= total ? (form.button_text || "Enviar") : "Próximo"}
                   <ArrowRight className="h-4 w-4" />
@@ -1046,10 +1134,11 @@ function ReferralCollectionScreen({
 }
 
 // ============ STANDARD FORM VIEW (embed-friendly) ============
-function StandardView({ form, primaryColor, bgColor, textColor, buttonTextColor, fieldBackgroundColor, fieldBorderColor, fieldTextColor, labelColor, submitted, submitting, thankYouMessage, onSubmit, renderRatingStars, userInput, setUserInput }: ViewProps) {
+function StandardView({ form, slug, primaryColor, bgColor, textColor, buttonTextColor, fieldBackgroundColor, fieldBorderColor, fieldTextColor, labelColor, submitted, submitting, thankYouMessage, redirectCountdown, onSubmit, renderRatingStars, userInput, setUserInput }: ViewProps) {
   const fields = form.fields || [];
   const [values, setValues] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [checkingPhone, setCheckingPhone] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1060,6 +1149,24 @@ function StandardView({ form, primaryColor, bgColor, textColor, buttonTextColor,
     }
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
+
+    const whatsappFields = fields.filter((f) => f.field_type === "whatsapp" && (values[f.field_key] || "").trim());
+    if (whatsappFields.length > 0) {
+      setCheckingPhone(true);
+      const invalidErrs: Record<string, string> = {};
+      for (const f of whatsappFields) {
+        const result = await validatePublicPhone(slug, values[f.field_key]);
+        if (result.checked && !result.valid) {
+          invalidErrs[f.field_key] = "Esse número não é um WhatsApp válido.";
+        }
+      }
+      setCheckingPhone(false);
+      if (Object.keys(invalidErrs).length > 0) {
+        setErrors((prev) => ({ ...prev, ...invalidErrs }));
+        return;
+      }
+    }
+
     await onSubmit(values);
   };
 
@@ -1068,6 +1175,9 @@ function StandardView({ form, primaryColor, bgColor, textColor, buttonTextColor,
       <div className="min-h-screen flex flex-col items-center justify-center p-8" style={{ backgroundColor: bgColor, color: textColor }}>
         <CheckCircle2 className="h-16 w-16 mb-4" style={{ color: primaryColor }} />
         <p className="text-lg text-center max-w-md">{thankYouMessage}</p>
+        {redirectCountdown !== null && redirectCountdown !== undefined && (
+          <p className="text-sm opacity-60 mt-2">Redirecionando em {redirectCountdown}s...</p>
+        )}
       </div>
     );
   }
@@ -1134,11 +1244,11 @@ function StandardView({ form, primaryColor, bgColor, textColor, buttonTextColor,
 
           <Button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || checkingPhone}
             className="w-full"
             style={{ backgroundColor: primaryColor, color: buttonTextColor }}
           >
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (form.button_text || "Enviar")}
+            {submitting || checkingPhone ? <Loader2 className="h-4 w-4 animate-spin" /> : (form.button_text || "Enviar")}
           </Button>
         </form>
 
