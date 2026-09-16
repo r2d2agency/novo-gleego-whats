@@ -23,6 +23,20 @@ async function getUserOrganization(userId) {
   return result.rows[0];
 }
 
+// Every organization the user belongs to. A single "primary org" guess
+// (getUserOrganization above) only works when the resource being accessed
+// happens to live in that org -- a conversation/flow can live in ANY
+// organization the user has a role in (e.g. they're just an agent there, not
+// owner), so routes that look up a specific conversation/flow by id should
+// check membership across all of them instead of guessing one.
+async function getUserOrganizationIds(userId) {
+  const result = await query(
+    `SELECT organization_id FROM organization_members WHERE user_id = $1`,
+    [userId]
+  );
+  return result.rows.map((r) => r.organization_id);
+}
+
 function isAdmin(role) {
   return ['owner', 'admin', 'manager'].includes(role);
 }
@@ -567,12 +581,24 @@ router.post('/:id/duplicate', async (req, res) => {
 // Listar fluxos disponíveis para uma conexão específica (filtrado por membro)
 router.get('/available/:connectionId', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org) {
+    const { connectionId } = req.params;
+
+    // Resolve qual organização do usuário é dona dessa conexão -- não uma
+    // única organização "principal" adivinhada, já que a conexão pode
+    // pertencer a qualquer organização da qual ele participa.
+    const membershipResult = await query(
+      `SELECT conn.organization_id, om.role
+       FROM connections conn
+       JOIN organization_members om ON om.organization_id = conn.organization_id AND om.user_id = $2
+       WHERE conn.id = $1`,
+      [connectionId, req.userId]
+    );
+
+    if (membershipResult.rows.length === 0) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
 
-    const { connectionId } = req.params;
+    const org = { organization_id: membershipResult.rows[0].organization_id, role: membershipResult.rows[0].role };
     const isAdminUser = isAdmin(org.role);
 
     // Buscar fluxos ativos, filtrados por conexão e por membro (se não admin)
@@ -616,8 +642,8 @@ router.get('/available/:connectionId', async (req, res) => {
 // Iniciar um fluxo em uma conversa específica
 router.post('/conversation/:conversationId/start', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org) {
+    const orgIds = await getUserOrganizationIds(req.userId);
+    if (orgIds.length === 0) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
 
@@ -628,23 +654,28 @@ router.post('/conversation/:conversationId/start', async (req, res) => {
       return res.status(400).json({ error: 'flow_id é obrigatório' });
     }
 
-    // Verificar se a conversa pertence à organização
+    // Verificar se a conversa pertence a alguma organização do usuário
+    // (não uma única "organização principal" adivinhada -- a conversa pode
+    // estar em qualquer organização da qual ele participa).
     const conversation = await query(
-      `SELECT c.id, c.contact_phone, c.connection_id
+      `SELECT c.id, c.contact_phone, c.connection_id, conn.organization_id
        FROM conversations c
        JOIN connections conn ON conn.id = c.connection_id
-       WHERE c.id = $1 AND conn.organization_id = $2`,
-      [conversationId, org.organization_id]
+       WHERE c.id = $1 AND conn.organization_id = ANY($2)`,
+      [conversationId, orgIds]
     );
 
     if (conversation.rows.length === 0) {
       return res.status(404).json({ error: 'Conversa não encontrada' });
     }
 
-    // Verificar se o fluxo pertence à organização e está ativo
+    // O fluxo precisa pertencer à MESMA organização da conversa, não à
+    // organização "principal" do usuário (podem ser diferentes).
+    const conversationOrgId = conversation.rows[0].organization_id;
+
     const flow = await query(
       `SELECT id, name FROM flows WHERE id = $1 AND organization_id = $2 AND is_active = true`,
-      [flow_id, org.organization_id]
+      [flow_id, conversationOrgId]
     );
 
     if (flow.rows.length === 0) {
@@ -699,20 +730,20 @@ router.post('/conversation/:conversationId/start', async (req, res) => {
 // Cancelar fluxo ativo em uma conversa
 router.post('/conversation/:conversationId/cancel', async (req, res) => {
   try {
-    const org = await getUserOrganization(req.userId);
-    if (!org) {
+    const orgIds = await getUserOrganizationIds(req.userId);
+    if (orgIds.length === 0) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
 
     const { conversationId } = req.params;
 
-    // Verificar se a conversa pertence à organização
+    // Verificar se a conversa pertence a alguma organização do usuário
     const conversation = await query(
       `SELECT c.id
        FROM conversations c
        JOIN connections conn ON conn.id = c.connection_id
-       WHERE c.id = $1 AND conn.organization_id = $2`,
-      [conversationId, org.organization_id]
+       WHERE c.id = $1 AND conn.organization_id = ANY($2)`,
+      [conversationId, orgIds]
     );
 
     if (conversation.rows.length === 0) {
