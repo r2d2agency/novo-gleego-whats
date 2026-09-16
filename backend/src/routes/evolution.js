@@ -1807,12 +1807,16 @@ async function handleMessageUpsert(connection, data) {
       // requiring 'pending'/'temp_%' would never find the row, inserting a
       // duplicate below. sender_id IS NOT NULL is the reliable signal that this
       // row was created by the web chat (webhook-inserted rows never set it).
+      // message_id LIKE 'flow_%' is the same signal for rows saved by the flow
+      // executor's saveSentMessage() fallback (flow-executor.js), which also
+      // never sets sender_id -- without this, flow-sent messages get inserted
+      // a second time when Evolution's webhook echo arrives.
       const pendingMsg = await query(
         `SELECT id, media_url, message_type, media_mimetype, status, message_id, content
          FROM chat_messages
          WHERE conversation_id = $1
            AND from_me = true
-           AND sender_id IS NOT NULL
+           AND (sender_id IS NOT NULL OR message_id LIKE 'flow_%')
            AND status IN ('pending', 'sent')
            AND timestamp > NOW() - INTERVAL '60 seconds'
          ORDER BY timestamp DESC

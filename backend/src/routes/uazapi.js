@@ -720,8 +720,14 @@ async function persistIncomingMessage(connection, payload) {
              AND timestamp > NOW() - INTERVAL '180 seconds'
              AND message_type = $2
              AND (
-               -- ONLY optimistic rows created by the web chat can be reconciled
-               -- (sender_id is only ever set by the web chat send endpoint).
+               -- ONLY optimistic rows created by the web chat, or rows saved by the
+               -- flow executor with its synthetic placeholder id, can be reconciled
+               -- (sender_id is only ever set by the web chat send endpoint;
+               -- message_id LIKE 'flow_%' is only ever set by
+               -- saveSentMessage()'s fallback in flow-executor.js when the send
+               -- API response had no messageId yet — that prefix is never
+               -- swapped elsewhere, unlike temp_ below, so it's still safe to
+               -- match here).
                -- message_id IS NULL rows come from the phone/provider itself and are
                -- REAL distinct messages (e.g. several files sent from WhatsApp) —
                -- collapsing them made only the first file show up in the chat.
@@ -732,7 +738,7 @@ async function persistIncomingMessage(connection, payload) {
                -- starts with temp_ and this check would fail to match it, causing
                -- a duplicate row to be inserted below. The exact message_id match
                -- above already ruled out this being the very same id.
-               sender_id IS NOT NULL
+               (sender_id IS NOT NULL OR message_id LIKE 'flow_%')
                AND status IN ('pending','sent')
                AND (
                  -- Text: match by exact content (safe: distinct texts don't collide)

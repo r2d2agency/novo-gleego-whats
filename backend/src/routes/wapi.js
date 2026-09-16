@@ -1997,18 +1997,23 @@ async function handleIncomingMessage(connection, payload) {
       return;
     }
 
-    // Reconcile with a pending optimistic message sent via the web chat.
-    // W-API's webhook messageId can differ from what the initial send response
-    // returned, so the exact message_id match above can miss it — without this,
-    // messages (especially media) sent from the web chat get inserted a second
-    // time below. sender_id IS NOT NULL is only ever set by the web chat send
-    // endpoint, so it safely excludes real distinct messages echoed from the phone.
+    // Reconcile with a pending optimistic message sent via the web chat, OR a
+    // message just saved by the flow executor with a synthetic placeholder id
+    // (saveSentMessage() in flow-executor.js falls back to `flow_<ts>_<rand>`
+    // when the send API response has no messageId yet). W-API's webhook
+    // messageId can differ from what the initial send response returned, so
+    // the exact message_id match above can miss it — without this, messages
+    // (especially media, or ones sent by a flow) get inserted a second time
+    // below. sender_id IS NOT NULL is only ever set by the web chat send
+    // endpoint; message_id LIKE 'flow_%' is only ever set by the flow
+    // executor's fallback id — together they safely exclude real distinct
+    // messages echoed from the phone.
     if (payload.fromMe === true) {
       const pendingMsg = await query(
         `SELECT id FROM chat_messages
          WHERE conversation_id = $1
            AND from_me = true
-           AND sender_id IS NOT NULL
+           AND (sender_id IS NOT NULL OR message_id LIKE 'flow_%')
            AND status IN ('pending', 'sent')
            AND message_type = $2
            AND timestamp > NOW() - INTERVAL '60 seconds'
