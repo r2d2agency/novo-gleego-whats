@@ -21,22 +21,30 @@ async function getUserOrg(userId) {
   return result.rows[0];
 }
 
-// List surveys
+// List surveys. Uses every organization the user belongs to (not just the
+// "primary" one from getUserOrg) so a survey never silently disappears from
+// this list just because a user is a member of more than one organization
+// and their primary org resolution changes or differs from wherever the
+// survey was originally created under.
 router.get('/', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const orgIdsResult = await query(
+      `SELECT organization_id FROM organization_members WHERE user_id = $1`,
+      [req.userId]
+    );
+    const orgIds = orgIdsResult.rows.map((r) => r.organization_id);
+    if (orgIds.length === 0) return res.status(403).json({ error: 'No organization' });
 
     const result = await query(
       `SELECT s.*, u.name as created_by_name,
         (SELECT COUNT(*) FROM external_form_fields WHERE form_id = s.id) as question_count
        FROM external_forms s
        LEFT JOIN users u ON u.id = s.created_by
-       WHERE s.organization_id = $1 AND s.display_mode = 'survey'
+       WHERE s.organization_id = ANY($1) AND s.display_mode = 'survey'
        ORDER BY s.created_at DESC`,
-      [org.organization_id]
+      [orgIds]
     );
-    
+
     res.json(result.rows);
   } catch (error) {
     logError('Error fetching surveys:', error);

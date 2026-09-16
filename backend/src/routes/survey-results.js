@@ -5,24 +5,21 @@ import { logError } from '../logger.js';
 
 const router = express.Router();
 
-// Same priority order as crm.js's getUserOrg (owner > admin > other, oldest
-// membership as tiebreaker) -- must match across files, or a multi-org user
-// can get scoped to a different org than the one that owns the survey.
-async function getUserOrg(userId) {
+// Every organization the user belongs to -- a survey's results must be
+// reachable regardless of which org getUserOrg-style logic elsewhere would
+// have guessed as "primary" for a user who's a member of more than one.
+async function getUserOrgIds(userId) {
   const result = await query(
-    `SELECT om.organization_id FROM organization_members om
-     WHERE om.user_id = $1
-     ORDER BY (CASE WHEN om.role = 'owner' THEN 0 WHEN om.role = 'admin' THEN 1 ELSE 2 END), om.created_at ASC
-     LIMIT 1`,
+    `SELECT organization_id FROM organization_members WHERE user_id = $1`,
     [userId]
   );
-  return result.rows[0];
+  return result.rows.map((r) => r.organization_id);
 }
 
 router.get('/:id/stats', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const orgIds = await getUserOrgIds(req.userId);
+    if (orgIds.length === 0) return res.status(403).json({ error: 'No organization' });
 
     const submissions = await query(
       `SELECT s.*,
@@ -32,9 +29,9 @@ router.get('/:id/stats', authenticate, async (req, res) => {
           '[]'::json
         ) as referrals
        FROM external_form_submissions s
-       WHERE s.form_id = $1 AND s.organization_id = $2
+       WHERE s.form_id = $1 AND s.organization_id = ANY($2)
        ORDER BY s.created_at DESC`,
-      [req.params.id, org.organization_id]
+      [req.params.id, orgIds]
     );
 
     res.json(submissions.rows);

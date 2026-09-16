@@ -69,6 +69,18 @@ async function getUserOrg(userId) {
   return result.rows[0];
 }
 
+// Every organization the user belongs to. Used to look up/edit/delete a
+// specific form by id without depending on which single org getUserOrg
+// happens to guess as "primary" -- a user in more than one org must still be
+// able to reach a form that lives in any of them.
+async function getUserOrgIds(userId) {
+  const result = await query(
+    `SELECT organization_id FROM organization_members WHERE user_id = $1`,
+    [userId]
+  );
+  return result.rows.map((r) => r.organization_id);
+}
+
 // Helper: Generate unique slug
 async function generateSlug(orgId, baseName) {
   const base = baseName
@@ -429,22 +441,30 @@ async function ensureConversationForConnection(connectionId, phone, name) {
 // AUTHENTICATED ROUTES (Management)
 // ============================================
 
-// List forms for organization
+// List forms for organization. Uses every organization the user belongs to
+// (not just the "primary" one from getUserOrg) so a form never silently
+// disappears from this list just because a user is a member of more than one
+// organization and their primary org resolution differs from wherever the
+// form was originally created under.
 router.get('/', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const orgIdsResult = await query(
+      `SELECT organization_id FROM organization_members WHERE user_id = $1`,
+      [req.userId]
+    );
+    const orgIds = orgIdsResult.rows.map((r) => r.organization_id);
+    if (orgIds.length === 0) return res.status(403).json({ error: 'No organization' });
 
     const result = await query(
       `SELECT f.*, u.name as created_by_name,
         (SELECT COUNT(*) FROM external_form_fields WHERE form_id = f.id) as field_count
        FROM external_forms f
        LEFT JOIN users u ON u.id = f.created_by
-       WHERE f.organization_id = $1
+       WHERE f.organization_id = ANY($1)
        ORDER BY f.created_at DESC`,
-      [org.organization_id]
+      [orgIds]
     );
-    
+
     res.json(result.rows);
   } catch (error) {
     logError('Error fetching external forms:', error);
@@ -455,12 +475,12 @@ router.get('/', authenticate, async (req, res) => {
 // Get single form with fields
 router.get('/:id', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const orgIds = await getUserOrgIds(req.userId);
+    if (orgIds.length === 0) return res.status(403).json({ error: 'No organization' });
 
     const formResult = await query(
-      `SELECT * FROM external_forms WHERE id = $1 AND organization_id = $2`,
-      [req.params.id, org.organization_id]
+      `SELECT * FROM external_forms WHERE id = $1 AND organization_id = ANY($2)`,
+      [req.params.id, orgIds]
     );
     
     if (!formResult.rows[0]) {
@@ -598,12 +618,13 @@ router.post('/:id/duplicate', authenticate, async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
     if (!org) return res.status(403).json({ error: 'No organization' });
+    const orgIds = await getUserOrgIds(req.userId);
 
     const formResult = await query(
       `SELECT *
        FROM external_forms
-       WHERE id = $1 AND organization_id = $2`,
-      [req.params.id, org.organization_id]
+       WHERE id = $1 AND organization_id = ANY($2)`,
+      [req.params.id, orgIds]
     );
 
     const sourceForm = formResult.rows[0];
@@ -709,8 +730,8 @@ router.post('/:id/duplicate', authenticate, async (req, res) => {
 // Update form
 router.put('/:id', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const orgIds = await getUserOrgIds(req.userId);
+    if (orgIds.length === 0) return res.status(403).json({ error: 'No organization' });
 
     const {
       name,
@@ -784,13 +805,13 @@ router.put('/:id', authenticate, async (req, res) => {
         referral_enabled = COALESCE($28, referral_enabled),
         referral_message = COALESCE($29, referral_message),
         updated_at = NOW()
-       WHERE id = $14 AND organization_id = $15
+       WHERE id = $14 AND organization_id = ANY($15)
        RETURNING *`,
       [
         name, description, is_active, logo_url, primary_color,
         background_color, text_color, button_text, welcome_message,
         thank_you_message, redirect_url, normalizedTriggerFlowId,
-        normalizedConnectionId, req.params.id, org.organization_id,
+        normalizedConnectionId, req.params.id, orgIds,
         normalizedDisplayMode,
         logo_size,
         normalizedTransitionType,
@@ -880,12 +901,12 @@ router.put('/:id', authenticate, async (req, res) => {
 // Delete form
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const orgIds = await getUserOrgIds(req.userId);
+    if (orgIds.length === 0) return res.status(403).json({ error: 'No organization' });
 
     await query(
-      `DELETE FROM external_forms WHERE id = $1 AND organization_id = $2`,
-      [req.params.id, org.organization_id]
+      `DELETE FROM external_forms WHERE id = $1 AND organization_id = ANY($2)`,
+      [req.params.id, orgIds]
     );
     
     res.json({ success: true });
@@ -898,8 +919,8 @@ router.delete('/:id', authenticate, async (req, res) => {
 // Get form submissions
 router.get('/:id/submissions', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const orgIds = await getUserOrgIds(req.userId);
+    if (orgIds.length === 0) return res.status(403).json({ error: 'No organization' });
 
     const { limit = 100, offset = 0 } = req.query;
 
@@ -912,10 +933,10 @@ router.get('/:id/submissions', authenticate, async (req, res) => {
        LEFT JOIN crm_funnels f ON f.id = d.funnel_id
        LEFT JOIN crm_stages st ON st.id = d.stage_id
        LEFT JOIN users u ON u.id = d.owner_id
-       WHERE s.form_id = $1 AND s.organization_id = $2
+       WHERE s.form_id = $1 AND s.organization_id = ANY($2)
        ORDER BY s.created_at DESC
        LIMIT $3 OFFSET $4`,
-      [req.params.id, org.organization_id, limit, offset]
+      [req.params.id, orgIds, limit, offset]
     );
 
     res.json(result.rows);
