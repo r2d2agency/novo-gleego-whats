@@ -53,12 +53,16 @@ const VALID_FIELD_TYPES = ['text', 'phone', 'whatsapp', 'email', 'select', 'text
 })();
 
 // Helper: Get user's organization
+// Same priority order as crm.js's getUserOrg (owner > admin > other, oldest
+// membership as tiebreaker). Must match across files: a user in more than
+// one organization needs the same "home" org resolved everywhere, or a form
+// can end up created under a different org than the one they see in the CRM.
 async function getUserOrg(userId) {
   const result = await query(
     `SELECT om.organization_id, om.role
      FROM organization_members om
      WHERE om.user_id = $1
-     ORDER BY om.created_at ASC, om.id ASC
+     ORDER BY (CASE WHEN om.role = 'owner' THEN 0 WHEN om.role = 'admin' THEN 1 ELSE 2 END), om.created_at ASC
      LIMIT 1`,
     [userId]
   );

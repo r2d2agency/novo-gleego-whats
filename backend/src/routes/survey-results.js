@@ -5,11 +5,14 @@ import { logError } from '../logger.js';
 
 const router = express.Router();
 
+// Same priority order as crm.js's getUserOrg (owner > admin > other, oldest
+// membership as tiebreaker) -- must match across files, or a multi-org user
+// can get scoped to a different org than the one that owns the survey.
 async function getUserOrg(userId) {
   const result = await query(
     `SELECT om.organization_id FROM organization_members om
      WHERE om.user_id = $1
-     ORDER BY om.created_at ASC, om.id ASC
+     ORDER BY (CASE WHEN om.role = 'owner' THEN 0 WHEN om.role = 'admin' THEN 1 ELSE 2 END), om.created_at ASC
      LIMIT 1`,
     [userId]
   );
