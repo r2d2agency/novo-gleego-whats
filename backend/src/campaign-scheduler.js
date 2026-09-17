@@ -3,6 +3,7 @@ import * as whatsappProvider from './lib/whatsapp-provider.js';
 import * as uazapiProvider from './lib/uazapi-provider.js';
 import { executeFlow } from './lib/flow-executor.js';
 import { sendMetaTemplate } from './lib/meta-template-send.js';
+import { logDispatch } from './lib/campaign-dispatch-log.js';
 // Translation map for common Evolution API errors
 const errorTranslations = {
   'not a whatsapp number': 'Número não é WhatsApp',
@@ -155,9 +156,33 @@ export async function executeCampaignMessages() {
     failed: 0,
     campaignsStarted: 0,
     connectionLost: 0,
+    stuckRecovered: 0,
+    campaignsCompleted: 0,
+    durationMs: 0,
   };
+  const startedAt = Date.now();
 
   try {
+    // ---------- Recovery: messages stuck in 'processing' ----------
+    // If a cycle crashed mid-dispatch (deploy, OOM, exception between lock and
+    // final status), messages would stay 'processing' forever and the campaign
+    // could never complete. Anything stuck for over 15 minutes goes back to
+    // 'pending' so it can be retried, with the incident noted in the log.
+    const stuckResult = await query(`
+      UPDATE campaign_messages
+      SET status = 'pending', updated_at = NOW()
+      WHERE status = 'processing'
+        AND updated_at < NOW() - INTERVAL '15 minutes'
+      RETURNING id, campaign_id
+    `).catch(async (err) => {
+      if (err.message.includes('updated_at')) return { rows: [] };
+      throw err;
+    });
+    if (stuckResult.rows.length > 0) {
+      stats.stuckRecovered = stuckResult.rows.length;
+      console.log(`  ♻ [CAMPAIGN] Recovered ${stuckResult.rows.length} stuck 'processing' message(s) back to 'pending'`);
+    }
+
     // Check running campaigns for offline connections and auto-pause them
     const runningCampaigns = await query(`
       SELECT DISTINCT c.id, c.name, c.connection_id, 
@@ -239,7 +264,7 @@ export async function executeCampaignMessages() {
     // NOTE: Some deployments may not have contacts.email yet; we fallback gracefully.
     // For W-API, accept connections with instance_id/wapi_token even if status not 'connected'
     const pendingMessagesSqlBase = `
-      SELECT 
+      SELECT
         cm.id,
         cm.campaign_id,
         cm.contact_id,
@@ -247,14 +272,17 @@ export async function executeCampaignMessages() {
         cm.message_id,
         cm.scheduled_at,
         c.status as campaign_status,
-        c.connection_id,
+        c.user_id as campaign_user_id,
+        c.organization_id as campaign_organization_id,
         c.flow_id,
+        c.connection_id,
         c.meta_template_id,
         c.meta_template_name,
         c.meta_template_language,
         c.meta_template_components,
         c.meta_template_params,
         conn.provider,
+        conn.organization_id as connection_organization_id,
         conn.api_url,
         conn.api_key,
         conn.instance_name,
@@ -313,6 +341,7 @@ export async function executeCampaignMessages() {
       if (stats.campaignsStarted > 0) {
         console.log(`📤 [CAMPAIGN] ${stats.campaignsStarted} campaign(s) started, processing on next cycle.`);
       }
+      stats.durationMs = Date.now() - startedAt;
       return stats;
     }
 
@@ -435,6 +464,19 @@ export async function executeCampaignMessages() {
             );
             stats.sent++;
             console.log(`  ✓ [${msg.phone}] Template "${msg.meta_template_name}" enviado`);
+            await logDispatch({
+              campaignId: msg.campaign_id,
+              campaignMessageId: msg.id,
+              organizationId: msg.campaign_organization_id || msg.connection_organization_id,
+              userId: msg.campaign_user_id,
+              contactId: msg.contact_id,
+              phone: msg.phone,
+              channel: 'template',
+              provider: 'meta',
+              status: 'sent',
+              whatsappMessageId: metaMessageId,
+              metadata: { template: msg.meta_template_name },
+            });
           } catch (tplErr) {
             const errorMsg = translateError(tplErr.message || 'Erro ao enviar template');
             const isDefinitiveError = 
@@ -472,6 +514,19 @@ export async function executeCampaignMessages() {
 
             stats.failed++;
             console.log(`  ✗ [${msg.phone}] ${errorMsg}`);
+            await logDispatch({
+              campaignId: msg.campaign_id,
+              campaignMessageId: msg.id,
+              organizationId: msg.campaign_organization_id || msg.connection_organization_id,
+              userId: msg.campaign_user_id,
+              contactId: msg.contact_id,
+              phone: msg.phone,
+              channel: 'template',
+              provider: 'meta',
+              status: 'failed',
+              errorMessage: errorMsg,
+              metadata: { template: msg.meta_template_name },
+            });
           }
           continue;
         }
@@ -526,10 +581,23 @@ export async function executeCampaignMessages() {
               `UPDATE campaigns SET sent_count = sent_count + 1, updated_at = NOW() WHERE id = $1`,
               [msg.campaign_id]
             );
+
+            await logDispatch({
+              campaignId: msg.campaign_id,
+              campaignMessageId: msg.id,
+              organizationId: msg.campaign_organization_id || msg.connection_organization_id,
+              userId: msg.campaign_user_id,
+              contactId: msg.contact_id,
+              phone: msg.phone,
+              channel: 'flow',
+              provider: msg.provider,
+              status: 'sent',
+              metadata: { flow_id: msg.flow_id },
+            });
           } else {
             const errorMsg = flowResult.error || 'Erro ao executar fluxo';
             await query(
-              `UPDATE campaign_messages 
+              `UPDATE campaign_messages
                SET status = 'failed', error_message = $1, sent_at = NOW()
                WHERE id = $2`,
               [errorMsg, msg.id]
@@ -541,23 +609,49 @@ export async function executeCampaignMessages() {
               `UPDATE campaigns SET failed_count = failed_count + 1, updated_at = NOW() WHERE id = $1`,
               [msg.campaign_id]
             );
+
+            await logDispatch({
+              campaignId: msg.campaign_id,
+              campaignMessageId: msg.id,
+              organizationId: msg.campaign_organization_id || msg.connection_organization_id,
+              userId: msg.campaign_user_id,
+              contactId: msg.contact_id,
+              phone: msg.phone,
+              channel: 'flow',
+              provider: msg.provider,
+              status: 'failed',
+              errorMessage: errorMsg,
+              metadata: { flow_id: msg.flow_id },
+            });
           }
           continue;
         }
 
         // Regular message-based campaign
         const messageItems = msg.message_items || [];
-        
+
         if (messageItems.length === 0) {
           // Mark as failed - no content
           await query(
-            `UPDATE campaign_messages 
+            `UPDATE campaign_messages
              SET status = 'failed', error_message = 'Mensagem sem conteúdo', sent_at = NOW()
              WHERE id = $1`,
             [msg.id]
           );
           stats.failed++;
           console.log(`  ✗ [${msg.phone}] Mensagem sem conteúdo`);
+          await logDispatch({
+            campaignId: msg.campaign_id,
+            campaignMessageId: msg.id,
+            organizationId: msg.campaign_organization_id || msg.connection_organization_id,
+            userId: msg.campaign_user_id,
+            contactId: msg.contact_id,
+            phone: msg.phone,
+            channel: 'text',
+            provider: msg.provider,
+            status: 'failed',
+            errorMessage: 'Mensagem sem conteúdo',
+          });
           continue;
         }
 
@@ -654,6 +748,20 @@ export async function executeCampaignMessages() {
             `UPDATE conversations SET last_message_at = NOW(), updated_at = NOW() WHERE id = $1`,
             [conversationId]
           );
+
+          await logDispatch({
+            campaignId: msg.campaign_id,
+            campaignMessageId: msg.id,
+            organizationId: msg.campaign_organization_id || msg.connection_organization_id,
+            userId: msg.campaign_user_id,
+            contactId: msg.contact_id,
+            phone: msg.phone,
+            channel: messageItems.some(i => i.mediaUrl || i.media_url) ? 'media' : 'text',
+            provider: msg.provider,
+            status: 'sent',
+            whatsappMessageId: firstMessageId,
+            metadata: { items: messageItems.length },
+          });
         } else {
           const translatedError = translateError(result.error);
           const isDefinitiveError = 
@@ -689,13 +797,27 @@ export async function executeCampaignMessages() {
             `UPDATE campaigns SET failed_count = failed_count + 1, updated_at = NOW() WHERE id = $1`,
             [msg.campaign_id]
           );
+
+          await logDispatch({
+            campaignId: msg.campaign_id,
+            campaignMessageId: msg.id,
+            organizationId: msg.campaign_organization_id || msg.connection_organization_id,
+            userId: msg.campaign_user_id,
+            contactId: msg.contact_id,
+            phone: msg.phone,
+            channel: messageItems.some(i => i.mediaUrl || i.media_url) ? 'media' : 'text',
+            provider: msg.provider,
+            status: 'failed',
+            errorMessage: translatedError,
+            metadata: { items: messageItems.length },
+          });
         }
       } catch (error) {
         console.error(`  ✗ [${msg.phone}] Error:`, error);
         const translatedError = translateError(error.message);
-        
+
         await query(
-          `UPDATE campaign_messages 
+          `UPDATE campaign_messages
            SET status = 'failed', error_message = $1, sent_at = NOW()
            WHERE id = $2`,
           [translatedError, msg.id]
@@ -706,22 +828,48 @@ export async function executeCampaignMessages() {
           `UPDATE campaigns SET failed_count = failed_count + 1, updated_at = NOW() WHERE id = $1`,
           [msg.campaign_id]
         );
+
+        await logDispatch({
+          campaignId: msg.campaign_id,
+          campaignMessageId: msg.id,
+          organizationId: msg.campaign_organization_id || msg.connection_organization_id,
+          userId: msg.campaign_user_id,
+          contactId: msg.contact_id,
+          phone: msg.phone,
+          channel: 'text',
+          provider: msg.provider,
+          status: 'failed',
+          errorMessage: translatedError,
+        });
       }
     }
 
-    // Check if any campaigns are now complete
-    await query(`
-      UPDATE campaigns 
+    // Check if any running campaigns are now complete.
+    // A campaign is complete only when it has NO message left in a
+    // non-terminal state ('pending' or 'processing'). Messages stuck in
+    // 'processing' longer than 15 minutes were already recovered to 'pending'
+    // at the start of this cycle, so they cannot block completion forever.
+    // Campaigns with zero messages at all are ignored (nothing to complete).
+    const completeResult = await query(`
+      UPDATE campaigns
       SET status = 'completed', updated_at = NOW()
       WHERE status = 'running'
         AND id IN (
-          SELECT campaign_id 
-          FROM campaign_messages 
-          GROUP BY campaign_id 
-          HAVING COUNT(*) FILTER (WHERE status = 'pending') = 0
+          SELECT cm.campaign_id
+          FROM campaign_messages cm
+          GROUP BY cm.campaign_id
+          HAVING COUNT(*) FILTER (WHERE cm.status = 'pending') = 0
+             AND COUNT(*) FILTER (WHERE cm.status = 'processing') = 0
+             AND COUNT(*) > 0
         )
+      RETURNING id, name
     `);
+    stats.campaignsCompleted = completeResult.rows.length;
+    for (const done of completeResult.rows) {
+      console.log(`📤 [CAMPAIGN] Campaign completed: ${done.name} (${done.id})`);
+    }
 
+    stats.durationMs = Date.now() - startedAt;
     console.log(`📤 [CAMPAIGN] Execution complete:`, stats);
     return stats;
   } catch (error) {

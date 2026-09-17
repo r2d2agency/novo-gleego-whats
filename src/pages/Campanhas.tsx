@@ -64,6 +64,7 @@ import { CampaignDetailModal } from "@/components/campanhas/CampaignDetailModal"
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useConnections } from "@/hooks/use-connections";
 import { TemplateHeaderMediaField } from "@/components/campanhas/TemplateHeaderMediaField";
+import { CampaignLogsPanel } from "@/components/campanhas/CampaignLogsPanel";
 
 interface Connection {
   id: string;
@@ -604,6 +605,10 @@ const Campanhas = () => {
             <TabsTrigger value="reports">
               <BarChart3 className="h-4 w-4 mr-1" />
               Relatórios
+            </TabsTrigger>
+            <TabsTrigger value="logs">
+              <FileText className="h-4 w-4 mr-1" />
+              Logs de Envio
             </TabsTrigger>
             <TabsTrigger value="create">Criar Campanha</TabsTrigger>
           </TabsList>
@@ -1160,6 +1165,10 @@ const Campanhas = () => {
                 <p>Nenhum dado disponível</p>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="logs" className="mt-6">
+            <CampaignLogsPanel />
           </TabsContent>
 
           <TabsContent value="create" className="mt-6">

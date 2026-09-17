@@ -469,6 +469,8 @@ DO $$ BEGIN
     ALTER TABLE contacts ADD COLUMN IF NOT EXISTS source VARCHAR(255);
     ALTER TABLE contacts ADD COLUMN IF NOT EXISTS city VARCHAR(100);
     ALTER TABLE contacts ADD COLUMN IF NOT EXISTS state VARCHAR(50);
+    -- Tenant scope, used for tenant-scoped campaign dispatch log queries
+    ALTER TABLE contacts ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
 EXCEPTION
     WHEN duplicate_column THEN null;
 END $$;
@@ -492,6 +494,7 @@ const step7Campaigns = `
 CREATE TABLE IF NOT EXISTS campaigns (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+    organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
     name VARCHAR(255) NOT NULL,
     connection_id UUID REFERENCES connections(id) ON DELETE SET NULL,
     list_id UUID REFERENCES contact_lists(id) ON DELETE SET NULL,
@@ -528,6 +531,8 @@ DO $$ BEGIN
     ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS meta_template_language VARCHAR(20);
     ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS meta_template_components JSONB;
     ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS meta_template_params JSONB DEFAULT '{}'::jsonb;
+    -- Tenant scope, denormalized for tenant-scoped campaign queries and logs
+    ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL;
 EXCEPTION
     WHEN duplicate_column THEN null;
 END $$;
@@ -547,6 +552,7 @@ END $$;
 
 -- Create index for flow-based campaigns
 CREATE INDEX IF NOT EXISTS idx_campaigns_flow_id ON campaigns(flow_id);
+CREATE INDEX IF NOT EXISTS idx_campaigns_organization_id ON campaigns(organization_id);
 
 -- Campaign Messages Log
 CREATE TABLE IF NOT EXISTS campaign_messages (
@@ -575,6 +581,38 @@ EXCEPTION
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_campaign_messages_wamid ON campaign_messages(whatsapp_message_id);
+`;
+
+// ============================================
+// STEP 7b: CAMPAIGN DISPATCH LOGS (append-only audit trail)
+// One row per dispatch attempt, written by the scheduler. Distinct from
+// campaign_messages, which is mutable operational state (retries, pause/resume,
+// duplicate-cancellation all overwrite status there).
+// ============================================
+const step7bCampaignDispatchLogs = `
+CREATE TABLE IF NOT EXISTS campaign_dispatch_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    campaign_id UUID REFERENCES campaigns(id) ON DELETE CASCADE NOT NULL,
+    campaign_message_id UUID REFERENCES campaign_messages(id) ON DELETE SET NULL,
+    organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
+    phone VARCHAR(50) NOT NULL,
+    channel VARCHAR(20) DEFAULT 'text',
+    provider VARCHAR(30),
+    status VARCHAR(20) NOT NULL,
+    error_message TEXT,
+    whatsapp_message_id VARCHAR(100),
+    metadata JSONB DEFAULT '{}'::jsonb,
+    dispatched_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_campaign_dispatch_logs_campaign
+    ON campaign_dispatch_logs(campaign_id, dispatched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_campaign_dispatch_logs_org
+    ON campaign_dispatch_logs(organization_id, dispatched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_campaign_dispatch_logs_status
+    ON campaign_dispatch_logs(status);
 `;
 
 // ============================================
@@ -3897,6 +3935,7 @@ const migrationSteps = [
   { name: 'Connections', sql: step5Connections, critical: true },
   { name: 'Contacts & Messages', sql: step6ContactsMessages, critical: false },
   { name: 'Campaigns', sql: step7Campaigns, critical: false },
+  { name: 'Campaign Dispatch Logs', sql: step7bCampaignDispatchLogs, critical: false },
   { name: 'Asaas Integration', sql: step8Asaas, critical: false },
   { name: 'Chat System', sql: step9Chat, critical: false },
   { name: 'System Settings', sql: step10Settings, critical: false },
@@ -4181,6 +4220,25 @@ export async function initDatabase() {
     }
   } catch (e) {
     console.error('  ⚠️ Failed to fix orphaned users:', e.message);
+  }
+
+  // Backfill campaigns.organization_id (tenant scope for dispatch logs / reports)
+  // from the campaign owner's organization or the campaign's connection.
+  try {
+    const backfill = await pool.query(`
+      UPDATE campaigns c
+      SET organization_id = COALESCE(
+        c.organization_id,
+        (SELECT conn.organization_id FROM connections conn WHERE conn.id = c.connection_id),
+        (SELECT om.organization_id FROM organization_members om WHERE om.user_id = c.user_id LIMIT 1)
+      )
+      WHERE c.organization_id IS NULL
+    `);
+    if (backfill.rowCount > 0) {
+      console.log(`  🏢 Backfilled organization_id for ${backfill.rowCount} campaign(s)`);
+    }
+  } catch (e) {
+    console.error('  ⚠️ Failed to backfill campaigns.organization_id:', e.message);
   }
 
   // ============================================================

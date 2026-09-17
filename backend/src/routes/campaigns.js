@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query } from '../db.js';
 import { authenticate } from '../middleware/auth.js';
+import { getDispatchLogs } from '../lib/campaign-dispatch-log.js';
 
 const router = Router();
 router.use(authenticate);
@@ -377,15 +378,17 @@ router.post('/', async (req, res) => {
 
     // Create campaign
     const campaignResult = await query(
-      `INSERT INTO campaigns 
-       (user_id, name, connection_id, list_id, message_id, flow_id, status, scheduled_at, 
+      `INSERT INTO campaigns
+       (user_id, organization_id, name, connection_id, list_id, message_id, flow_id, status, scheduled_at,
         start_date, end_date, start_time, end_time,
         min_delay, max_delay, pause_after_messages, pause_duration, random_order,
         meta_template_id, meta_template_name, meta_template_language, meta_template_components, meta_template_params)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
        RETURNING *`,
       [
-        req.userId, 
+        req.userId,
+        org ? org.organization_id : null,
+
         name, 
         connection_id, 
         list_id, 
@@ -681,6 +684,84 @@ router.get('/:id/stats', async (req, res) => {
   } catch (error) {
     console.error('Get campaign stats error:', error);
     res.status(500).json({ error: 'Erro ao buscar estatísticas' });
+  }
+});
+
+// List all dispatch logs visible to the current tenant/user.
+router.get('/logs', async (req, res) => {
+  try {
+    const { campaignId, status, channel, search, limit, offset } = req.query;
+    const org = await getUserOrganization(req.userId);
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500);
+    const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
+    const params = [req.userId];
+    const where = ['(c.user_id = $1 OR ($2::uuid IS NOT NULL AND conn.organization_id = $2))'];
+    params.push(org?.organization_id || null);
+
+    if (campaignId) { params.push(campaignId); where.push(`l.campaign_id = $${params.length}`); }
+    if (status && ['sent', 'failed'].includes(status)) { params.push(status); where.push(`l.status = $${params.length}`); }
+    if (channel && ['text', 'media', 'template', 'flow'].includes(channel)) { params.push(channel); where.push(`l.channel = $${params.length}`); }
+    if (search) { params.push(`%${String(search).slice(0, 100)}%`); where.push(`(l.phone ILIKE $${params.length} OR c.name ILIKE $${params.length})`); }
+
+    const from = `FROM campaign_dispatch_logs l JOIN campaigns c ON c.id = l.campaign_id LEFT JOIN connections conn ON conn.id = c.connection_id WHERE ${where.join(' AND ')}`;
+    const rows = await query(`SELECT l.id, l.campaign_id, c.name AS campaign_name, l.organization_id, l.phone,
+      l.channel, l.provider, l.status, l.error_message AS error, l.whatsapp_message_id,
+      l.metadata, l.dispatched_at AS created_at ${from} ORDER BY l.dispatched_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, safeLimit, safeOffset]);
+    const total = await query(`SELECT COUNT(*)::int AS total ${from}`, params);
+    res.json({ logs: rows.rows, total: total.rows[0]?.total || 0, limit: safeLimit, offset: safeOffset });
+  } catch (error) {
+    console.error('List campaign dispatch logs error:', error);
+    res.status(500).json({ error: 'Erro ao buscar logs de disparo' });
+  }
+});
+
+// Get campaign dispatch logs (durable, append-only audit trail).
+// Tenant-scoped: the caller must have access to the campaign through
+// ownership or the campaign's connection's organization.
+router.get('/:id/logs', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, channel, limit, offset } = req.query;
+
+    const org = await getUserOrganization(req.userId);
+
+    let whereClause = 'id = $1 AND user_id = $2';
+    let params = [id, req.userId];
+
+    if (org) {
+      whereClause = `id = $1 AND (user_id = $2 OR connection_id IN (
+        SELECT id FROM connections WHERE organization_id = $3
+      ))`;
+      params = [id, req.userId, org.organization_id];
+    }
+
+    // Access check first — 404 (not 403) so we don't leak campaign existence
+    const campaign = await query(
+      `SELECT id, organization_id FROM campaigns WHERE ${whereClause}`,
+      params
+    );
+
+    if (campaign.rows.length === 0) {
+      return res.status(404).json({ error: 'Campanha não encontrada' });
+    }
+
+    // Defense in depth: also scope the log rows to the campaign's tenant
+    const campaignRow = campaign.rows[0];
+
+    const { rows, total } = await getDispatchLogs({
+      campaignId: id,
+      organizationId: campaignRow.organization_id,
+      status,
+      channel,
+      limit: limit ? parseInt(limit, 10) : 100,
+      offset: offset ? parseInt(offset, 10) : 0,
+    });
+
+    res.json({ logs: rows, total, limit: limit ? parseInt(limit, 10) : 100, offset: offset ? parseInt(offset, 10) : 0 });
+  } catch (error) {
+    console.error('Get campaign logs error:', error);
+    res.status(500).json({ error: 'Erro ao buscar logs de disparo' });
   }
 });
 
