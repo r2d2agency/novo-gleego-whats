@@ -2006,14 +2006,15 @@ async function handleIncomingMessage(connection, payload) {
     // (especially media, or ones sent by a flow) get inserted a second time
     // below. sender_id IS NOT NULL is only ever set by the web chat send
     // endpoint; message_id LIKE 'flow_%' is only ever set by the flow
-    // executor's fallback id — together they safely exclude real distinct
+    // executor's fallback id, and 'camp_%' only by the campaign scheduler's
+    // fallback id — together they safely exclude real distinct
     // messages echoed from the phone.
     if (payload.fromMe === true) {
       const pendingMsg = await query(
         `SELECT id FROM chat_messages
          WHERE conversation_id = $1
            AND from_me = true
-           AND (sender_id IS NOT NULL OR message_id LIKE 'flow_%')
+           AND (sender_id IS NOT NULL OR message_id LIKE 'flow_%' OR message_id LIKE 'camp_%')
            AND status IN ('pending', 'sent')
            AND message_type = $2
            AND timestamp > NOW() - INTERVAL '60 seconds'

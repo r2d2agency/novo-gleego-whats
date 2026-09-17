@@ -728,14 +728,19 @@ export async function executeCampaignMessages() {
             const processedContent = replaceVariables(item.content || item.caption || '', contact);
             const mediaUrl = item.mediaUrl || item.media_url || null;
             const msgType = item.type || 'text';
+            // Use the provider message id when available so the webhook echo
+            // (fromMe) reconciles this row instead of inserting a duplicate.
+            // Without it, fall back to a synthetic camp_ id that webhook
+            // reconciliation recognizes (same strategy as flow_ for flows).
+            const localMessageId = r.messageId || `camp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
             await query(
-              `INSERT INTO chat_messages 
+              `INSERT INTO chat_messages
                 (conversation_id, message_id, from_me, content, message_type, media_url, status, timestamp)
                VALUES ($1, $2, true, $3, $4, $5, 'sent', NOW())`,
               [
                 conversationId,
-                r.messageId || null,
+                localMessageId,
                 processedContent,
                 msgType,
                 mediaUrl,

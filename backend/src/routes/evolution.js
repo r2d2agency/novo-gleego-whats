@@ -1810,13 +1810,15 @@ async function handleMessageUpsert(connection, data) {
       // message_id LIKE 'flow_%' is the same signal for rows saved by the flow
       // executor's saveSentMessage() fallback (flow-executor.js), which also
       // never sets sender_id -- without this, flow-sent messages get inserted
-      // a second time when Evolution's webhook echo arrives.
+      // a second time when Evolution's webhook echo arrives. message_id LIKE
+      // 'camp_%' covers rows saved by the campaign scheduler when the provider
+      // send response had no messageId yet (campaign-scheduler.js).
       const pendingMsg = await query(
         `SELECT id, media_url, message_type, media_mimetype, status, message_id, content
          FROM chat_messages
          WHERE conversation_id = $1
            AND from_me = true
-           AND (sender_id IS NOT NULL OR message_id LIKE 'flow_%')
+           AND (sender_id IS NOT NULL OR message_id LIKE 'flow_%' OR message_id LIKE 'camp_%')
            AND status IN ('pending', 'sent')
            AND timestamp > NOW() - INTERVAL '60 seconds'
          ORDER BY timestamp DESC

@@ -738,7 +738,7 @@ async function persistIncomingMessage(connection, payload) {
                -- starts with temp_ and this check would fail to match it, causing
                -- a duplicate row to be inserted below. The exact message_id match
                -- above already ruled out this being the very same id.
-               (sender_id IS NOT NULL OR message_id LIKE 'flow_%')
+               (sender_id IS NOT NULL OR message_id LIKE 'flow_%' OR message_id LIKE 'camp_%')
                AND status IN ('pending','sent')
                AND (
                  -- Text: match by exact content (safe: distinct texts don't collide)
