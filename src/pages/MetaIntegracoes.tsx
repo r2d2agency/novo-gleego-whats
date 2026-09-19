@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -120,6 +121,10 @@ export default function MetaIntegracoes() {
           <p className="text-muted-foreground">
             Conecte as contas Meta da sua empresa: Página do Facebook (Messenger), Instagram Business e WhatsApp Business Cloud API.
           </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline"><Link to="/meta-lead-ads">Ver formulários e leads</Link></Button>
         </div>
 
         <Card>

@@ -124,6 +124,7 @@ const getNavSections = (hasConnections: boolean): NavSection[] => [
       { name: "Sequências", href: "/sequencias", icon: RefreshCw, pageKey: 'sequencias', adminOnly: true },
       { name: "Fluxos Externos", href: "/fluxos-externos", icon: FileText, pageKey: 'fluxos_externos', adminOnly: true },
       { name: "Pesquisas", href: "/pesquisas", icon: Star, pageKey: 'pesquisas' },
+      { name: "Integrações Meta", href: "/integracoes-meta", icon: Facebook, pageKey: 'integracoes_meta', adminOnly: true },
       { name: "Meta Lead Ads", href: "/meta-lead-ads", icon: Facebook, pageKey: 'meta_lead_ads', adminOnly: true },
       { name: "Webhooks", href: "/lead-webhooks", icon: Webhook, pageKey: 'webhooks', adminOnly: true },
       { name: "API Integração", href: "/api-docs", icon: Code, pageKey: 'api_docs', adminOnly: true },
