@@ -4362,6 +4362,18 @@ export async function initDatabase() {
   // Roda em todo boot. Nunca derruba nada do fluxo Meta API antigo.
   // ============================================================
   try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS meta_oauth_states (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      state_hash TEXT NOT NULL UNIQUE,
+      organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL CHECK (provider IN ('facebook','instagram','whatsapp')),
+      redirect_uri TEXT,
+      expires_at TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_meta_oauth_states_expiry ON meta_oauth_states(expires_at)`);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS meta_oauth_connections (
         id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),

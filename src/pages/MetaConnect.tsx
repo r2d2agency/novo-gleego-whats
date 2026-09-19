@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Facebook, Instagram, Phone, Wrench, CheckCircle2, AlertTriangle, Loader2, ArrowRight } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, API_URL } from "@/lib/api";
 
 const META_SAAS_ENABLED = import.meta.env.VITE_META_SAAS_ENABLED === "true";
 
@@ -33,11 +33,39 @@ export default function MetaConnect() {
   const { user } = useAuth();
   const [starting, setStarting] = useState<string | null>(null);
   const [currentOrgId, setCurrentOrgId] = useState<string>("");
+  const [connections, setConnections] = useState<any[]>([]);
+  const [assets, setAssets] = useState<any[]>([]);
+  const [syncing, setSyncing] = useState<string | null>(null);
 
   useEffect(() => {
     const orgId = user?.organization_id || sessionStorage.getItem("user_org_id") || "";
     setCurrentOrgId(orgId);
   }, [user]);
+
+  useEffect(() => {
+    if (!META_SAAS_ENABLED || !currentOrgId) return;
+    Promise.all([
+      api<{ connections: any[] }>(`/api/meta/oauth/connections?organization_id=${encodeURIComponent(currentOrgId)}`),
+      api<{ assets: any[] }>(`/api/meta/oauth/assets?organization_id=${encodeURIComponent(currentOrgId)}`),
+    ]).then(([connectionData, assetData]) => {
+      setConnections(connectionData.connections || []);
+      setAssets(assetData.assets || []);
+    }).catch(() => undefined);
+  }, [currentOrgId]);
+
+  const syncAssets = async (connectionId: string) => {
+    setSyncing(connectionId);
+    try {
+      await api('/api/meta/oauth/assets/sync', { method: 'POST', body: { organization_id: currentOrgId, connection_id: connectionId } });
+      const data = await api<{ assets: any[] }>(`/api/meta/oauth/assets?organization_id=${encodeURIComponent(currentOrgId)}`);
+      setAssets(data.assets || []);
+      toast.success('Ativos Meta sincronizados');
+    } catch (e: any) {
+      toast.error(e.message || 'Não foi possível sincronizar ativos');
+    } finally {
+      setSyncing(null);
+    }
+  };
 
   const startOAuth = async (provider: "facebook" | "instagram" | "whatsapp") => {
     if (!currentOrgId) {
@@ -45,7 +73,7 @@ export default function MetaConnect() {
       return;
     }
     if (!META_SAAS_ENABLED) {
-      toast.info("A conexão simplificada ainda está em desenvolvimento.");
+      toast.info("Ative VITE_META_SAAS_ENABLED para habilitar a conexão Meta.");
       return;
     }
 
@@ -56,7 +84,7 @@ export default function MetaConnect() {
         body: {
           provider,
           organization_id: currentOrgId,
-          redirect_uri: `${window.location.origin}/api/meta/oauth/callback`,
+          redirect_uri: `${API_URL}/api/meta/oauth/callback`,
         },
       });
       if (data.url) window.location.href = data.url;
@@ -117,7 +145,29 @@ export default function MetaConnect() {
         </Card>
 
         {META_SAAS_ENABLED && (
-          <Tabs defaultValue="whatsapp" className="space-y-4">
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle>Ativos conectados</CardTitle>
+                <CardDescription>As Pages e contas Instagram ficam isoladas nesta organização.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {connections.map((connection) => (
+                  <div key={connection.id} className="flex items-center justify-between rounded-lg border p-3">
+                    <div>
+                      <p className="font-medium">{connection.provider}</p>
+                      <p className="text-xs text-muted-foreground">{connection.fb_user_id || 'Conta Meta'} · {connection.token_expires_at ? `expira em ${new Date(connection.token_expires_at).toLocaleDateString()}` : 'sem expiração informada'}</p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => syncAssets(connection.id)} disabled={syncing === connection.id}>
+                      {syncing === connection.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Sincronizar
+                    </Button>
+                  </div>
+                ))}
+                {connections.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma conexão Meta nesta organização.</p>}
+                {assets.length > 0 && <div className="grid gap-2 pt-2 md:grid-cols-2">{assets.map((asset) => <div key={asset.id} className="rounded-lg bg-muted/50 p-3 text-sm"><p className="font-medium">{asset.external_name || asset.external_id}</p><p className="text-xs text-muted-foreground">{asset.kind} · {asset.status}</p></div>)}</div>}
+              </CardContent>
+            </Card>
+            <Tabs defaultValue="whatsapp" className="space-y-4">
             <TabsList>
               <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
               <TabsTrigger value="facebook">Facebook / Messenger</TabsTrigger>
@@ -151,7 +201,8 @@ export default function MetaConnect() {
                 loading={starting === "instagram"}
               />
             </TabsContent>
-          </Tabs>
+            </Tabs>
+          </>
         )}
       </div>
     </MainLayout>
