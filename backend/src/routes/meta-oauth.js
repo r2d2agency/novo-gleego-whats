@@ -201,6 +201,28 @@ router.post('/assets/sync', authenticate, async (req, res) => {
   }
 });
 
+router.patch('/assets/:id', authenticate, async (req, res) => {
+  try {
+    const organizationId = String(req.body?.organization_id || '').trim();
+    const status = String(req.body?.status || '').trim();
+    if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
+    if (!['active', 'paused'].includes(status)) return res.status(400).json({ error: 'status deve ser active ou paused' });
+    const membership = await getMembership(req.userId, organizationId);
+    if (!membership || (!membership.is_superadmin && !CONNECT_ROLES.has(membership.role))) return res.status(403).json({ error: 'Sem permissão para alterar ativos' });
+    const result = await query(
+      `UPDATE meta_pages SET status = $1, updated_at = NOW()
+        WHERE id = $2 AND organization_id = $3
+        RETURNING id, kind, external_id, external_name, status`,
+      [status, req.params.id, organizationId]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Ativo não encontrado' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('[Meta OAuth] asset update failed:', error.message);
+    res.status(500).json({ error: 'Não foi possível atualizar o ativo' });
+  }
+});
+
 router.get('/connections', authenticate, async (req, res) => {
   const organizationId = String(req.query.organization_id || '').trim();
   if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });

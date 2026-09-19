@@ -29,6 +29,13 @@ const kindLabel: Record<string, string> = {
   whatsapp_number: "WhatsApp Business",
 };
 
+async function toggleAsset(orgId: string, asset: MetaAsset, setActive: boolean) {
+  return api(`/api/meta/oauth/assets/${asset.id}`, {
+    method: "PATCH",
+    body: { organization_id: orgId, status: setActive ? "active" : "paused" },
+  });
+}
+
 export default function MetaIntegracoes() {
   const { user } = useAuth();
   const [orgId, setOrgId] = useState<string>("");
@@ -199,11 +206,28 @@ export default function MetaIntegracoes() {
             {assets.length > 0 && (
               <div className="grid gap-2 md:grid-cols-2">
                 {assets.map((asset) => (
-                  <div key={asset.id} className="rounded-lg bg-muted/50 p-3 text-sm">
-                    <p className="font-medium">{asset.external_name || asset.external_id}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {kindLabel[asset.kind] || asset.kind} · {asset.status}
-                    </p>
+                  <div key={asset.id} className="flex items-center justify-between rounded-lg bg-muted/50 p-3 text-sm gap-3">
+                    <div>
+                      <p className="font-medium">{asset.external_name || asset.external_id}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {kindLabel[asset.kind] || asset.kind} · {asset.status === "active" ? "ativo para integração" : "pausado"}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={asset.status === "active" ? "outline" : "default"}
+                      onClick={async () => {
+                        try {
+                          await toggleAsset(orgId, asset, asset.status !== "active");
+                          await loadState(orgId);
+                          toast.success(asset.status === "active" ? "Ativo pausado" : "Ativo habilitado");
+                        } catch (e: any) {
+                          toast.error(e.message || "Não foi possível alterar o ativo");
+                        }
+                      }}
+                    >
+                      {asset.status === "active" ? "Pausar" : "Habilitar"}
+                    </Button>
                   </div>
                 ))}
               </div>
