@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useMetaPages, useMetaLeadForms, useMetaLeadEvents, type MetaLeadForm } from "@/hooks/use-meta-lead-ads";
 import { useConnections } from "@/hooks/use-connections";
+import { useCRMFunnels, useCRMFunnel } from "@/hooks/use-crm";
 import { Facebook, RefreshCw, Trash2, Plus, RotateCw, CheckCircle2, AlertCircle, Clock, Inbox } from "lucide-react";
 
 function StatusBadge({ status }: { status: string }) {
@@ -85,9 +86,13 @@ function AddPageDialog() {
 function FormConfigDialog({ form, onClose }: { form: MetaLeadForm; onClose: () => void }) {
   const { updateForm } = useMetaLeadForms();
   const { data: connections = [] } = useConnections();
+  const { data: funnels = [] } = useCRMFunnels();
   const [isActive, setIsActive] = useState(form.is_active);
   const [openChat, setOpenChat] = useState(form.open_chat);
   const [connectionId, setConnectionId] = useState<string>(form.connection_id || "none");
+  const [funnelId, setFunnelId] = useState<string>(form.funnel_id || "none");
+  const [stageId, setStageId] = useState<string>(form.stage_id || "none");
+  const { data: selectedFunnel } = useCRMFunnel(funnelId === "none" ? null : funnelId);
   const [mappingText, setMappingText] = useState(JSON.stringify(form.field_mapping || {}, null, 2));
 
   return (
@@ -112,6 +117,29 @@ function FormConfigDialog({ form, onClose }: { form: MetaLeadForm; onClose: () =
               <p className="text-xs text-muted-foreground">Cria contato no chat ao receber</p>
             </div>
             <Switch checked={openChat} onCheckedChange={setOpenChat} />
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>Funil CRM de destino</Label>
+            <Select value={funnelId} onValueChange={(value) => { setFunnelId(value); setStageId("none"); }}>
+              <SelectTrigger><SelectValue placeholder="Selecione o funil" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sem funil</SelectItem>
+                {(funnels as any[]).map((f: any) => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Etapa inicial</Label>
+            <Select value={stageId} onValueChange={setStageId} disabled={funnelId === "none"}>
+              <SelectTrigger><SelectValue placeholder="Selecione a etapa" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Primeira etapa automática</SelectItem>
+                {(selectedFunnel?.stages || []).map((stage: any) => <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -154,6 +182,8 @@ function FormConfigDialog({ form, onClose }: { form: MetaLeadForm; onClose: () =
                 is_active: isActive,
                 open_chat: openChat,
                 connection_id: connectionId === "none" ? null : connectionId,
+                funnel_id: funnelId === "none" ? null : funnelId,
+                stage_id: stageId === "none" ? null : stageId,
                 field_mapping: mapping,
               });
               onClose();
