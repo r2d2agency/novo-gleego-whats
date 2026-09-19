@@ -176,7 +176,7 @@ router.post('/assets/sync', authenticate, async (req, res) => {
          VALUES ($1, $2, 'facebook_page', $3, $4, $5, $6::jsonb, 'active')
          ON CONFLICT (organization_id, kind, external_id) DO UPDATE SET
            oauth_connection_id = EXCLUDED.oauth_connection_id, external_name = EXCLUDED.external_name,
-           page_access_token = EXCLUDED.page_access_token, metadata = EXCLUDED.metadata, status = 'active', updated_at = NOW()
+           page_access_token = EXCLUDED.page_access_token, metadata = EXCLUDED.metadata, updated_at = NOW()
          RETURNING id`,
         [organizationId, connection.id, String(page.id), page.name || null, page.access_token || null, JSON.stringify({ source: 'oauth', provider: connection.provider })]
       );
@@ -188,7 +188,7 @@ router.post('/assets/sync', authenticate, async (req, res) => {
            VALUES ($1, $2, 'instagram_account', $3, $4, $5, $6::jsonb, 'active')
            ON CONFLICT (organization_id, kind, external_id) DO UPDATE SET
              oauth_connection_id = EXCLUDED.oauth_connection_id, external_name = EXCLUDED.external_name,
-             page_access_token = EXCLUDED.page_access_token, metadata = EXCLUDED.metadata, status = 'active', updated_at = NOW()`,
+             page_access_token = EXCLUDED.page_access_token, metadata = EXCLUDED.metadata, updated_at = NOW()`,
           [organizationId, connection.id, String(instagram.id), instagram.username ? `@${instagram.username}` : (instagram.name || null), page.access_token || null, JSON.stringify({ source: 'oauth', page_id: String(page.id), provider: connection.provider })]
         );
         synced += 1;
