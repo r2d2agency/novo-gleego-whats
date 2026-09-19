@@ -26,6 +26,7 @@ const Organizacoes = lazy(() => import("./pages/Organizacoes"));
 const Admin = lazy(() => import("./pages/Admin"));
 const AdminMetaSaas = lazy(() => import("./pages/AdminMetaSaas"));
 const MetaConnect = lazy(() => import("./pages/MetaConnect"));
+const MetaIntegracoes = lazy(() => import("./pages/MetaIntegracoes"));
 const MetaLeadAds = lazy(() => import("./pages/MetaLeadAds"));
 const MetaOnboarding = lazy(() => import("./pages/MetaOnboarding"));
 const Configuracoes = lazy(() => import("./pages/Configuracoes"));
@@ -157,6 +158,7 @@ const App = () => (
             <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
             <Route path="/admin/meta-saas" element={<ProtectedRoute><AdminMetaSaas /></ProtectedRoute>} />
             <Route path="/conectar-meta" element={<ProtectedRoute><MetaConnect /></ProtectedRoute>} />
+            <Route path="/integracoes-meta" element={<ProtectedRoute><MetaIntegracoes /></ProtectedRoute>} />
             <Route path="/meta-lead-ads" element={<ProtectedRoute><MetaLeadAds /></ProtectedRoute>} />
             <Route path="/onboarding-meta" element={<ProtectedRoute><MetaOnboarding /></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
