@@ -170,7 +170,12 @@ router.post('/assets/sync', authenticate, async (req, res) => {
     const graphBody = await graphResponse.json().catch(() => ({}));
     if (!graphResponse.ok) return res.status(502).json({ error: graphBody?.error?.message || 'Falha ao consultar ativos Meta' });
     let synced = 0;
+    const seenByKind = {
+      facebook_page: [],
+      instagram_account: [],
+    };
     for (const page of graphBody.data || []) {
+      seenByKind.facebook_page.push(String(page.id));
       const pageResult = await query(
         `INSERT INTO meta_pages (organization_id, oauth_connection_id, kind, external_id, external_name, page_access_token, metadata, status)
          VALUES ($1, $2, 'facebook_page', $3, $4, $5, $6::jsonb, 'active')
@@ -183,6 +188,7 @@ router.post('/assets/sync', authenticate, async (req, res) => {
       synced += 1;
       const instagram = page.instagram_business_account;
       if (instagram?.id) {
+        seenByKind.instagram_account.push(String(instagram.id));
         await query(
           `INSERT INTO meta_pages (organization_id, oauth_connection_id, kind, external_id, external_name, page_access_token, metadata, status)
            VALUES ($1, $2, 'instagram_account', $3, $4, $5, $6::jsonb, 'active')
@@ -192,6 +198,23 @@ router.post('/assets/sync', authenticate, async (req, res) => {
           [organizationId, connection.id, String(instagram.id), instagram.username ? `@${instagram.username}` : (instagram.name || null), page.access_token || null, JSON.stringify({ source: 'oauth', page_id: String(page.id), provider: connection.provider })]
         );
         synced += 1;
+      }
+    }
+    // Reconcile with Meta: assets no longer granted remain in history but cannot be used.
+    for (const [kind, ids] of Object.entries(seenByKind)) {
+      if (ids.length > 0) {
+        await query(
+          `UPDATE meta_pages SET status = 'paused', updated_at = NOW()
+             WHERE organization_id = $1 AND oauth_connection_id = $2 AND kind = $3
+               AND NOT (external_id = ANY($4::text[]))`,
+          [organizationId, connection.id, kind, ids]
+        );
+      } else {
+        await query(
+          `UPDATE meta_pages SET status = 'paused', updated_at = NOW()
+             WHERE organization_id = $1 AND oauth_connection_id = $2 AND kind = $3`,
+          [organizationId, connection.id, kind]
+        );
       }
     }
     res.json({ success: true, synced });
