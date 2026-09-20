@@ -38,7 +38,7 @@ function scopesFor(provider) {
   if (provider === 'whatsapp') {
     return ['business_management', 'whatsapp_business_management', 'whatsapp_business_messaging'];
   }
-  return ['pages_show_list', 'pages_read_engagement', 'pages_manage_metadata', 'pages_messaging', 'leads_retrieval', 'instagram_basic', 'instagram_manage_messages'];
+  return ['pages_show_list', 'pages_read_engagement', 'pages_manage_metadata', 'pages_manage_ads', 'pages_messaging', 'leads_retrieval', 'instagram_basic', 'instagram_manage_messages'];
 }
 
 router.post('/start', authenticate, async (req, res) => {
