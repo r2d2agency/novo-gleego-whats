@@ -4469,6 +4469,45 @@ export async function initDatabase() {
   } catch (e) {
     console.error('  ⚠️ Failed meta-saas schema:', e.message);
   }
+  // ============================================================
+  // Instagram Automation — additive, idempotent schema
+  // ============================================================
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS instagram_comment_automations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        instagram_account_id UUID REFERENCES meta_pages(id) ON DELETE SET NULL, name TEXT NOT NULL,
+        trigger_type TEXT NOT NULL DEFAULT 'any_comment', trigger_value TEXT, reply_text TEXT, dm_text TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT true, settings JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_by UUID REFERENCES users(id) ON DELETE SET NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ig_comment_automations_org ON instagram_comment_automations(organization_id);
+      CREATE INDEX IF NOT EXISTS idx_ig_comment_automations_account ON instagram_comment_automations(instagram_account_id);
+      CREATE TABLE IF NOT EXISTS instagram_publications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        automation_id UUID REFERENCES instagram_comment_automations(id) ON DELETE SET NULL, instagram_account_id UUID REFERENCES meta_pages(id) ON DELETE SET NULL,
+        external_media_id TEXT, external_comment_id TEXT, action TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+        response_payload JSONB NOT NULL DEFAULT '{}'::jsonb, error_message TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ig_publications_idempotency ON instagram_publications(organization_id, external_comment_id, action) WHERE external_comment_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_ig_publications_org ON instagram_publications(organization_id, created_at DESC);
+      CREATE TABLE IF NOT EXISTS instagram_webhook_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+        event_key TEXT NOT NULL UNIQUE, external_account_id TEXT, payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        status TEXT NOT NULL DEFAULT 'received', error_message TEXT, received_at TIMESTAMPTZ NOT NULL DEFAULT now(), processed_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_ig_webhook_events_org ON instagram_webhook_events(organization_id, received_at DESC);
+      CREATE TABLE IF NOT EXISTS instagram_automation_runs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(), organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        automation_id UUID REFERENCES instagram_comment_automations(id) ON DELETE SET NULL, webhook_event_id UUID REFERENCES instagram_webhook_events(id) ON DELETE SET NULL,
+        status TEXT NOT NULL DEFAULT 'running', input_payload JSONB NOT NULL DEFAULT '{}'::jsonb, output_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+        error_message TEXT, started_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS idx_ig_runs_org ON instagram_automation_runs(organization_id, started_at DESC);
+    `);
+    console.log('  ✅ Instagram Automation schema ready');
+  } catch (e) { console.error('  ⚠️ Failed Instagram Automation schema:', e.message); }
+
   // Fix missing campaign recovery columns
   try {
     await pool.query(`
