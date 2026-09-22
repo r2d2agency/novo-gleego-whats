@@ -478,11 +478,14 @@ async function processNode(node, connection, phone, variables, conversationId) {
  */
 async function saveSentMessage(conversationId, content, messageType, mediaUrl = null, messageId = null) {
   try {
-    const dbMessageId = messageId || `flow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // Flow sends are persisted optimistically and reconciled with the provider webhook.
+    // Mark the synthetic ID as temp and set sender_id so W-API can replace it with
+    // the real provider ID instead of inserting a second bubble.
+    const dbMessageId = messageId || `temp_flow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     await query(
-      `INSERT INTO chat_messages 
-        (conversation_id, message_id, from_me, content, message_type, media_url, status, timestamp)
-       VALUES ($1, $2, true, $3, $4, $5, 'sent', NOW())`,
+      `INSERT INTO chat_messages
+        (conversation_id, message_id, from_me, content, message_type, media_url, sender_id, status, timestamp)
+       VALUES ($1, $2, true, $3, $4, $5, 'flow', 'sent', NOW())`,
       [conversationId, dbMessageId, content, messageType, mediaUrl]
     );
     
