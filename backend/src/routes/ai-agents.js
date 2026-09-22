@@ -2804,4 +2804,62 @@ router.post('/:agentId/appbarber-payment-types/sync', authenticate, async (req, 
   }
 });
 
+// ==================== APPBARBER COMMERCIAL CONFIGURATION ====================
+const commercialResources = {
+  'freight-types': { table: 'appbarber_freight_types', label: 'frete' },
+  'payment-terms': { table: 'appbarber_payment_terms', label: 'condição de pagamento' },
+  'billing-types': { table: 'appbarber_billing_types', label: 'tipo de faturamento' },
+};
+
+for (const [resource, definition] of Object.entries(commercialResources)) {
+  router.get(`/commercial/${resource}`, authenticate, async (req, res) => {
+    try {
+      const ctx = await getUserContext(req.userId);
+      if (!ctx?.organization_id) return res.status(403).json({ error: 'Sem organização' });
+      const result = await query(`SELECT * FROM ${definition.table} WHERE organization_id = $1 ORDER BY name`, [ctx.organization_id]);
+      res.json(result.rows);
+    } catch (error) { logError(`appbarber_commercial.${resource}.list_error`, error); res.status(500).json({ error: `Erro ao listar ${definition.label}` }); }
+  });
+
+  router.post(`/commercial/${resource}`, authenticate, async (req, res) => {
+    try {
+      const ctx = await getUserContext(req.userId);
+      if (!ctx?.organization_id) return res.status(403).json({ error: 'Sem organização' });
+      const { code, name, days, is_active = true } = req.body;
+      if (!code || !name) return res.status(400).json({ error: 'code e name são obrigatórios' });
+      const hasDays = definition.table === 'appbarber_payment_terms';
+      const result = await query(
+        `INSERT INTO ${definition.table} (organization_id, code, name${hasDays ? ', days' : ''}, is_active) VALUES ($1, $2, $3${hasDays ? ', $4' : ''}, $${hasDays ? 5 : 4})
+         ON CONFLICT (organization_id, code) DO UPDATE SET name = EXCLUDED.name${hasDays ? ', days = EXCLUDED.days' : ''}, is_active = EXCLUDED.is_active, updated_at = NOW() RETURNING *`,
+        hasDays ? [ctx.organization_id, code, name, days ?? null, is_active] : [ctx.organization_id, code, name, is_active]
+      );
+      res.status(200).json(result.rows[0]);
+    } catch (error) { logError(`appbarber_commercial.${resource}.save_error`, error); res.status(500).json({ error: `Erro ao salvar ${definition.label}` }); }
+  });
+}
+
+router.get('/:agentId/commercial-config', authenticate, async (req, res) => {
+  try {
+    const ctx = await getUserContext(req.userId);
+    if (!ctx?.organization_id) return res.status(403).json({ error: 'Sem organização' });
+    const result = await query('SELECT * FROM appbarber_agent_commercial_config WHERE agent_id = $1 AND organization_id = $2', [req.params.agentId, ctx.organization_id]);
+    res.json(result.rows[0] || null);
+  } catch (error) { logError('appbarber_commercial.config_get_error', error); res.status(500).json({ error: 'Erro ao buscar configuração comercial' }); }
+});
+
+router.put('/:agentId/commercial-config', authenticate, async (req, res) => {
+  try {
+    const ctx = await getUserContext(req.userId);
+    if (!ctx?.organization_id) return res.status(403).json({ error: 'Sem organização' });
+    const { freight_type_id = null, payment_term_id = null, billing_type_id = null, billing_mode = 'venda', is_active = true } = req.body;
+    if (billing_mode === 'faturamento' && !billing_type_id) return res.status(400).json({ error: 'billing_type_id é obrigatório para faturamento' });
+    const agent = await query('SELECT id FROM ai_agents WHERE id = $1 AND organization_id = $2', [req.params.agentId, ctx.organization_id]);
+    if (!agent.rows.length) return res.status(404).json({ error: 'Agente não encontrado' });
+    const result = await query(`INSERT INTO appbarber_agent_commercial_config (agent_id, organization_id, freight_type_id, payment_term_id, billing_type_id, billing_mode, is_active)
+      VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (agent_id) DO UPDATE SET freight_type_id=EXCLUDED.freight_type_id, payment_term_id=EXCLUDED.payment_term_id, billing_type_id=EXCLUDED.billing_type_id, billing_mode=EXCLUDED.billing_mode, is_active=EXCLUDED.is_active, updated_at=NOW() RETURNING *`,
+      [req.params.agentId, ctx.organization_id, freight_type_id, payment_term_id, billing_type_id, billing_mode, is_active]);
+    res.json(result.rows[0]);
+  } catch (error) { logError('appbarber_commercial.config_save_error', error); res.status(500).json({ error: 'Erro ao salvar configuração comercial' }); }
+});
+
 export default router;

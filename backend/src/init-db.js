@@ -3161,6 +3161,38 @@ BEGIN
 END $$;
 `;
 
+// Step 30: AppBarber commercial configuration
+const step30AppBarberCommercial = `
+CREATE TABLE IF NOT EXISTS appbarber_freight_types (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  code VARCHAR(100) NOT NULL, name VARCHAR(255) NOT NULL, is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(organization_id, code)
+);
+CREATE TABLE IF NOT EXISTS appbarber_payment_terms (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  code VARCHAR(100) NOT NULL, name VARCHAR(255) NOT NULL, days INTEGER, is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(organization_id, code)
+);
+CREATE TABLE IF NOT EXISTS appbarber_billing_types (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  code VARCHAR(100) NOT NULL, name VARCHAR(255) NOT NULL, is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE(organization_id, code)
+);
+CREATE TABLE IF NOT EXISTS appbarber_agent_commercial_config (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), agent_id UUID NOT NULL UNIQUE REFERENCES ai_agents(id) ON DELETE CASCADE,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  freight_type_id UUID REFERENCES appbarber_freight_types(id) ON DELETE SET NULL,
+  payment_term_id UUID REFERENCES appbarber_payment_terms(id) ON DELETE SET NULL,
+  billing_type_id UUID REFERENCES appbarber_billing_types(id) ON DELETE SET NULL,
+  billing_mode VARCHAR(30) NOT NULL DEFAULT 'venda', is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_appbarber_freight_types_org ON appbarber_freight_types(organization_id);
+CREATE INDEX IF NOT EXISTS idx_appbarber_payment_terms_org ON appbarber_payment_terms(organization_id);
+CREATE INDEX IF NOT EXISTS idx_appbarber_billing_types_org ON appbarber_billing_types(organization_id);
+CREATE INDEX IF NOT EXISTS idx_appbarber_agent_commercial_org ON appbarber_agent_commercial_config(organization_id);
+`;
+
 // Step 29: Conversation Summaries
 const step29ConversationSummaries = `
 -- Conversation summaries (AI-generated)
@@ -3928,6 +3960,7 @@ CREATE INDEX IF NOT EXISTS idx_sales_seo_leads_created ON sales_seo_leads(create
 `;
 
 const migrationSteps = [
+  { name: 'AppBarber Commercial Configuration', sql: step30AppBarberCommercial, critical: false },
   { name: 'Enums', sql: step1Enums, critical: true },
   { name: 'Core Tables (users, plans)', sql: step2CoreTables, critical: true },
   { name: 'Organizations', sql: step3Organizations, critical: true },
