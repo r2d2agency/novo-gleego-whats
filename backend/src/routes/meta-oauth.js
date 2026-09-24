@@ -168,13 +168,31 @@ router.post('/assets/sync', authenticate, async (req, res) => {
     graphUrl.search = new URLSearchParams({ fields: 'id,name,access_token,instagram_business_account{id,username,name}', limit: '100', access_token: connection.access_token });
     const graphResponse = await fetch(graphUrl);
     const graphBody = await graphResponse.json().catch(() => ({}));
-    if (!graphResponse.ok) return res.status(502).json({ error: graphBody?.error?.message || 'Falha ao consultar ativos Meta' });
+    const graphError = graphBody?.error || {};
+    const pages = Array.isArray(graphBody?.data) ? graphBody.data : [];
+    const diagnostic = {
+      provider: connection.provider,
+      graph_status: graphResponse.status,
+      returned_pages: pages.length,
+      has_paging: Boolean(graphBody?.paging),
+      graph_code: graphError.code || null,
+      graph_subcode: graphError.error_subcode || null,
+      fbtrace_id: graphError.fbtrace_id || null,
+      message: pages.length === 0 && graphResponse.ok
+        ? 'A Meta não retornou nenhuma Página para esta autorização. Verifique o acesso à Página, o acesso selecionado na tela da Meta, as permissões pages_show_list/leads_retrieval e o modo do aplicativo.'
+        : null,
+    };
+    if (!graphResponse.ok) {
+      console.error('[Meta OAuth] assets Graph failure', { organization_id: organizationId, connection_id: connection.id, ...diagnostic });
+      return res.status(502).json({ error: graphError.message || 'Falha ao consultar ativos Meta', diagnostic });
+    }
+    console.info('[Meta OAuth] assets Graph result', { organization_id: organizationId, connection_id: connection.id, ...diagnostic });
     let synced = 0;
     const seenByKind = {
       facebook_page: [],
       instagram_account: [],
     };
-    for (const page of graphBody.data || []) {
+    for (const page of pages) {
       seenByKind.facebook_page.push(String(page.id));
       const pageResult = await query(
         `INSERT INTO meta_pages (organization_id, oauth_connection_id, kind, external_id, external_name, page_access_token, metadata, status)
@@ -199,6 +217,11 @@ router.post('/assets/sync', authenticate, async (req, res) => {
         );
         synced += 1;
       }
+    }
+    // Do not pause existing assets on an empty response: an empty result is
+    // usually an authorization/access issue and should not erase a good state.
+    if (pages.length === 0) {
+      return res.json({ success: true, synced: 0, diagnostic });
     }
     // Reconcile with Meta: assets no longer granted remain in history but cannot be used.
     for (const [kind, ids] of Object.entries(seenByKind)) {

@@ -24,6 +24,17 @@ interface MetaAsset {
   status: string;
 }
 
+interface MetaSyncDiagnostic {
+  provider: string;
+  graph_status: number;
+  returned_pages: number;
+  has_paging: boolean;
+  graph_code: number | null;
+  graph_subcode: number | null;
+  fbtrace_id: string | null;
+  message: string | null;
+}
+
 const kindLabel: Record<string, string> = {
   facebook_page: "Página do Facebook",
   instagram_account: "Instagram Business",
@@ -87,8 +98,8 @@ export default function MetaIntegracoes() {
         },
       });
       if (data.url) window.location.href = data.url;
-    } catch (e: any) {
-      toast.error(e.message || "Erro ao iniciar conexão");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Erro ao iniciar conexão");
     } finally {
       setStarting(null);
     }
@@ -97,14 +108,20 @@ export default function MetaIntegracoes() {
   const syncAssets = async (connectionId: string) => {
     setSyncing(connectionId);
     try {
-      const result = await api<{ synced: number }>("/api/meta/oauth/assets/sync", {
+      const result = await api<{ synced: number; diagnostic?: MetaSyncDiagnostic }>("/api/meta/oauth/assets/sync", {
         method: "POST",
         body: { organization_id: orgId, connection_id: connectionId },
       });
-      toast.success(`${result.synced ?? 0} ativo(s) sincronizado(s)`);
+      if (result.synced > 0) {
+        toast.success(`${result.synced} ativo(s) sincronizado(s)`);
+      } else if (result.diagnostic?.returned_pages === 0) {
+        toast.warning(result.diagnostic.message || "A Meta não retornou nenhuma Página. Revise o acesso e as permissões.");
+      } else {
+        toast.info("Nenhum ativo novo foi sincronizado.");
+      }
       await loadState(orgId);
-    } catch (e: any) {
-      toast.error(e.message || "Não foi possível sincronizar ativos");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível sincronizar ativos");
     } finally {
       setSyncing(null);
     }
@@ -226,8 +243,8 @@ export default function MetaIntegracoes() {
                           await toggleAsset(orgId, asset, asset.status !== "active");
                           await loadState(orgId);
                           toast.success(asset.status === "active" ? "Ativo pausado" : "Ativo habilitado");
-                        } catch (e: any) {
-                          toast.error(e.message || "Não foi possível alterar o ativo");
+                        } catch (e: unknown) {
+                          toast.error(e instanceof Error ? e.message : "Não foi possível alterar o ativo");
                         }
                       }}
                     >
