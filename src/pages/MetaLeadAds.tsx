@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,8 +33,8 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function AddPageDialog() {
-  const { createPage } = useMetaPages();
+function AddPageDialog({ organizationId }: { organizationId: string | null }) {
+  const { createPage } = useMetaPages(organizationId);
   const [open, setOpen] = useState(false);
   const [pageId, setPageId] = useState("");
   const [pageName, setPageName] = useState("");
@@ -83,8 +84,8 @@ function AddPageDialog() {
   );
 }
 
-function FormConfigDialog({ form, onClose }: { form: MetaLeadForm; onClose: () => void }) {
-  const { updateForm } = useMetaLeadForms();
+function FormConfigDialog({ form, onClose, organizationId }: { form: MetaLeadForm; onClose: () => void; organizationId: string | null }) {
+  const { updateForm } = useMetaLeadForms(organizationId);
   const { data: connections = [] } = useConnections();
   const { data: funnels = [] } = useCRMFunnels();
   const [isActive, setIsActive] = useState(form.is_active);
@@ -196,9 +197,14 @@ function FormConfigDialog({ form, onClose }: { form: MetaLeadForm; onClose: () =
 }
 
 export default function MetaLeadAds() {
-  const pages = useMetaPages();
-  const forms = useMetaLeadForms();
-  const events = useMetaLeadEvents();
+  const { user } = useAuth();
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  useEffect(() => {
+    setOrganizationId(user?.organization_id || sessionStorage.getItem("user_org_id"));
+  }, [user]);
+  const pages = useMetaPages(organizationId);
+  const forms = useMetaLeadForms(organizationId);
+  const events = useMetaLeadEvents(organizationId);
   const [editing, setEditing] = useState<MetaLeadForm | null>(null);
 
   return (
@@ -223,7 +229,7 @@ export default function MetaLeadAds() {
           </TabsList>
 
           <TabsContent value="pages" className="space-y-3">
-            <div className="flex justify-end"><AddPageDialog /></div>
+            <div className="flex justify-end"><AddPageDialog organizationId={organizationId} /></div>
             {pages.isLoading ? (
               <p className="text-sm text-muted-foreground">Carregando...</p>
             ) : (pages.data?.length ?? 0) === 0 ? (
@@ -328,7 +334,7 @@ export default function MetaLeadAds() {
           </TabsContent>
         </Tabs>
 
-        {editing && <FormConfigDialog form={editing} onClose={() => setEditing(null)} />}
+        {editing && <FormConfigDialog form={editing} organizationId={organizationId} onClose={() => setEditing(null)} />}
       </div>
     </MainLayout>
   );

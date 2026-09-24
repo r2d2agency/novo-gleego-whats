@@ -31,11 +31,10 @@ const STEPS: { id: StepId; label: string }[] = [
 export default function MetaOnboarding() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const pages = useMetaPages();
-
   const [stepIndex, setStepIndex] = useState(0);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [orgId, setOrgId] = useState("");
+  const pages = useMetaPages(orgId || null);
 
   useEffect(() => {
     const saved = sessionStorage.getItem(STORAGE_KEY);

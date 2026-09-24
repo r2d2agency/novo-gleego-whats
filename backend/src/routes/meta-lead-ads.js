@@ -10,12 +10,17 @@ const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v21.0';
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 // ---------- helpers ----------
-async function getUserOrg(userId) {
+function getRequestedOrganizationId(req) {
+  return String(req.query?.organization_id || req.body?.organization_id || '').trim();
+}
+
+async function getUserOrg(userId, organizationId) {
   const r = await query(
     `SELECT om.organization_id, om.role
        FROM organization_members om
-      WHERE om.user_id = $1 LIMIT 1`,
-    [userId]
+      WHERE om.user_id = $1 AND om.organization_id = $2
+      LIMIT 1`,
+    [userId, organizationId]
   );
   return r.rows[0];
 }
@@ -32,8 +37,14 @@ async function graphGet(path, accessToken) {
   const r = await fetchWithTimeout(url);
   const json = await r.json().catch(() => ({}));
   if (!r.ok) {
-    const err = json?.error?.message || `Graph error ${r.status}`;
-    throw new Error(err);
+    const graphError = json?.error || {};
+    const error = new Error(graphError.message || `Graph error ${r.status}`);
+    error.name = 'MetaGraphError';
+    error.status = r.status;
+    error.code = graphError.code;
+    error.subcode = graphError.error_subcode;
+    error.fbtraceId = graphError.fbtrace_id;
+    throw error;
   }
   return json;
 }
@@ -74,8 +85,10 @@ function applyFieldMapping(fieldData, mapping) {
 // ---------- pages ----------
 router.get('/pages', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const organizationId = getRequestedOrganizationId(req);
+    if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
+    const org = await getUserOrg(req.userId, organizationId);
+    if (!org) return res.status(403).json({ error: 'Organização não autorizada' });
     const r = await query(
       `SELECT mp.id, mp.external_id, mp.external_name, mp.kind, mp.status,
               mp.created_at, mp.updated_at,
@@ -92,8 +105,10 @@ router.get('/pages', authenticate, async (req, res) => {
 // Manual page registration (for testing while OAuth flow is not live)
 router.post('/pages', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const organizationId = getRequestedOrganizationId(req);
+    if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
+    const org = await getUserOrg(req.userId, organizationId);
+    if (!org) return res.status(403).json({ error: 'Organização não autorizada' });
     const { page_id, page_name, page_access_token } = req.body || {};
     if (!page_id || !page_access_token) {
       return res.status(400).json({ error: 'page_id e page_access_token são obrigatórios' });
@@ -115,8 +130,10 @@ router.post('/pages', authenticate, async (req, res) => {
 
 router.delete('/pages/:id', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const organizationId = getRequestedOrganizationId(req);
+    if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
+    const org = await getUserOrg(req.userId, organizationId);
+    if (!org) return res.status(403).json({ error: 'Organização não autorizada' });
     await query(`DELETE FROM meta_pages WHERE id = $1 AND organization_id = $2`,
       [req.params.id, org.organization_id]);
     res.json({ success: true });
@@ -126,8 +143,10 @@ router.delete('/pages/:id', authenticate, async (req, res) => {
 // Sync forms from Meta for a page
 router.post('/pages/:id/sync-forms', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const organizationId = getRequestedOrganizationId(req);
+    if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
+    const org = await getUserOrg(req.userId, organizationId);
+    if (!org) return res.status(403).json({ error: 'Organização não autorizada' });
     const pageRes = await query(
       `SELECT id, external_id, page_access_token FROM meta_pages
         WHERE id = $1 AND organization_id = $2 AND kind = 'facebook_page'`,
@@ -154,14 +173,32 @@ router.post('/pages/:id/sync-forms', authenticate, async (req, res) => {
       upserted.push(u.rows[0]);
     }
     res.json({ synced: upserted.length, forms: upserted });
-  } catch (e) { logError('lead-ads sync-forms', e); res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    logError('lead-ads sync-forms', e, {
+      organization_id: organizationId || null,
+      page_id: req.params.id,
+      graph_status: e.status || null,
+      graph_code: e.code || null,
+      graph_subcode: e.subcode || null,
+      fbtrace_id: e.fbtraceId || null,
+    });
+    const graphError = e.name === 'MetaGraphError';
+    res.status(graphError ? 502 : 500).json({
+      error: graphError
+        ? `Meta Graph API recusou a solicitação: ${e.message}`
+        : (e.message || 'Não foi possível sincronizar formulários'),
+      ...(graphError ? { graph_code: e.code || null, graph_subcode: e.subcode || null, fbtrace_id: e.fbtraceId || null } : {}),
+    });
+  }
 });
 
 // ---------- forms ----------
 router.get('/forms', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const organizationId = getRequestedOrganizationId(req);
+    if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
+    const org = await getUserOrg(req.userId, organizationId);
+    if (!org) return res.status(403).json({ error: 'Organização não autorizada' });
     const r = await query(
       `SELECT f.*, mp.external_name AS page_name, mp.external_id AS page_external_id,
               (SELECT COUNT(*) FROM meta_lead_events e WHERE e.meta_lead_form_id = f.id) AS leads_count
@@ -177,8 +214,10 @@ router.get('/forms', authenticate, async (req, res) => {
 
 router.get('/forms/:id', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const organizationId = getRequestedOrganizationId(req);
+    if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
+    const org = await getUserOrg(req.userId, organizationId);
+    if (!org) return res.status(403).json({ error: 'Organização não autorizada' });
     const r = await query(
       `SELECT f.*, mp.external_name AS page_name, mp.external_id AS page_external_id
          FROM meta_lead_forms f
@@ -193,8 +232,10 @@ router.get('/forms/:id', authenticate, async (req, res) => {
 
 router.put('/forms/:id', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const organizationId = getRequestedOrganizationId(req);
+    if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
+    const org = await getUserOrg(req.userId, organizationId);
+    if (!org) return res.status(403).json({ error: 'Organização não autorizada' });
     const {
       is_active, funnel_id, stage_id, assignee_user_id, distribution_rule_id,
       trigger_flow_id, connection_id, field_mapping, default_tags, open_chat
@@ -236,8 +277,10 @@ router.put('/forms/:id', authenticate, async (req, res) => {
 // ---------- events / leads ----------
 router.get('/events', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const organizationId = getRequestedOrganizationId(req);
+    if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
+    const org = await getUserOrg(req.userId, organizationId);
+    if (!org) return res.status(403).json({ error: 'Organização não autorizada' });
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const r = await query(
       `SELECT e.*, f.form_name, mp.external_name AS page_name,
@@ -257,22 +300,27 @@ router.get('/events', authenticate, async (req, res) => {
 
 router.post('/events/:id/reprocess', authenticate, async (req, res) => {
   try {
-    const org = await getUserOrg(req.userId);
-    if (!org) return res.status(403).json({ error: 'No organization' });
+    const organizationId = getRequestedOrganizationId(req);
+    if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
+    const org = await getUserOrg(req.userId, organizationId);
+    if (!org) return res.status(403).json({ error: 'Organização não autorizada' });
     const r = await query(
       `SELECT * FROM meta_lead_events WHERE id = $1 AND organization_id = $2`,
       [req.params.id, org.organization_id]
     );
     const ev = r.rows[0];
     if (!ev) return res.status(404).json({ error: 'Evento não encontrado' });
-    const result = await processLeadEvent(ev.id);
+    const result = await processLeadEvent(ev.id, org.organization_id);
     res.json(result);
   } catch (e) { logError('lead-ads reprocess', e); res.status(500).json({ error: e.message }); }
 });
 
 // ---------- core processor ----------
-async function processLeadEvent(eventId) {
-  const evRes = await query(`SELECT * FROM meta_lead_events WHERE id = $1`, [eventId]);
+async function processLeadEvent(eventId, organizationId = null) {
+  const evRes = await query(
+    `SELECT * FROM meta_lead_events WHERE id = $1 AND ($2::uuid IS NULL OR organization_id = $2)`,
+    [eventId, organizationId]
+  );
   const ev = evRes.rows[0];
   if (!ev) return { status: 'not_found' };
 
@@ -281,8 +329,8 @@ async function processLeadEvent(eventId) {
       `SELECT f.*, mp.page_access_token, mp.external_id AS page_external_id, mp.id AS page_pk
          FROM meta_lead_forms f
          JOIN meta_pages mp ON mp.id = f.meta_page_id
-        WHERE f.id = $1`,
-      [ev.meta_lead_form_id]
+        WHERE f.id = $1 AND f.organization_id = $2 AND mp.organization_id = $2`,
+      [ev.meta_lead_form_id, ev.organization_id]
     );
     const form = formRes.rows[0];
     if (!form) throw new Error('Formulário não configurado');
