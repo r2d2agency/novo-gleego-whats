@@ -70,11 +70,13 @@ function dedupeMessages(messages: ChatMessage[]): ChatMessage[] {
     }
 
     const timestamp = message.timestamp ? new Date(message.timestamp).getTime() : 0;
-    const bucket = timestamp ? Math.floor(timestamp / (3 * 60 * 1000)) : 0;
+    // 10 minute buckets to match the backend webhook reconciliation window —
+    // the provider's echo of a message with a link preview can arrive minutes later.
+    const bucket = timestamp ? Math.floor(timestamp / (10 * 60 * 1000)) : 0;
     const signature = [
       message.conversation_id,
       message.message_type || 'text',
-      (message.content || '').trim(),
+      (message.content || '').replace(/\s+/g, ' ').trim(),
       message.media_url || '',
       bucket,
     ].join('|');

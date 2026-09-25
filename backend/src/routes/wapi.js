@@ -2010,18 +2010,34 @@ async function handleIncomingMessage(connection, payload) {
     // fallback id — together they safely exclude real distinct
     // messages echoed from the phone.
     if (payload.fromMe === true) {
-      const pendingMsg = await query(
-        `SELECT id FROM chat_messages
+      // Widen the reconciliation window: link previews and media can make the
+      // provider's webhook echo arrive well over a minute after the send.
+      // Also fetch content so we can compare it below — with a 10 minute
+      // window, matching on message_type alone could reconcile the wrong
+      // pending message.
+      const pendingCandidates = await query(
+        `SELECT id, content, message_type FROM chat_messages
          WHERE conversation_id = $1
            AND from_me = true
            AND (sender_id IS NOT NULL OR message_id LIKE 'flow_%' OR message_id LIKE 'camp_%')
            AND status IN ('pending', 'sent')
-           AND message_type = $2
-           AND timestamp > NOW() - INTERVAL '60 seconds'
+           AND (message_type = $2 OR message_type = 'text')
+           AND timestamp > NOW() - INTERVAL '10 minutes'
          ORDER BY timestamp DESC
-         LIMIT 1`,
+         LIMIT 20`,
         [conversationId, messageType]
       );
+      const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+      const webhookContent = normalize(content);
+      const pendingMsg = {
+        rows: pendingCandidates.rows.filter((row) => {
+          if (!webhookContent) return true;
+          const dbContent = normalize(row.content);
+          // Exact normalized match, or one contains the other (providers
+          // sometimes trim or append signatures/preview text to the echo).
+          return dbContent === webhookContent || dbContent.includes(webhookContent) || webhookContent.includes(dbContent);
+        }).slice(0, 1),
+      };
 
       if (pendingMsg.rows.length > 0) {
         await query(
