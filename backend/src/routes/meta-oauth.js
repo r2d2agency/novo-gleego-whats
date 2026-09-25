@@ -33,7 +33,18 @@ async function getMembership(userId, organizationId) {
 
 function scopesFor(provider) {
   if (provider === 'instagram') {
-    return ['pages_show_list', 'pages_read_engagement', 'pages_manage_metadata', 'instagram_basic', 'instagram_manage_messages', 'leads_retrieval'];
+    // Instagram Business accounts are discovered through their linked
+    // Facebook Page, so request the Page scopes as well as Instagram scopes.
+    return [
+      'pages_show_list',
+      'pages_read_engagement',
+      'pages_manage_metadata',
+      'pages_manage_ads',
+      'business_management',
+      'instagram_basic',
+      'instagram_manage_messages',
+      'leads_retrieval',
+    ];
   }
   if (provider === 'whatsapp') {
     return ['business_management', 'whatsapp_business_management', 'whatsapp_business_messaging'];
@@ -165,7 +176,11 @@ router.post('/assets/sync', authenticate, async (req, res) => {
     const connection = connectionResult.rows[0];
     if (!connection) return res.status(404).json({ error: 'Conexão Meta não encontrada' });
     const graphUrl = new URL(`${GRAPH_BASE}/me/accounts`);
-    graphUrl.search = new URLSearchParams({ fields: 'id,name,access_token,instagram_business_account{id,username,name}', limit: '100', access_token: connection.access_token });
+    graphUrl.search = new URLSearchParams({
+      fields: 'id,name,access_token,instagram_business_account{id,username,name}',
+      limit: '100',
+      access_token: connection.access_token,
+    });
     const graphResponse = await fetch(graphUrl);
     const graphBody = await graphResponse.json().catch(() => ({}));
     const graphError = graphBody?.error || {};
