@@ -34,6 +34,8 @@ export const PAGE_PERMISSIONS = [
   { key: 'fluxos_externos', label: 'Fluxos Externos', section: 'Disparos', icon: 'FileText' },
   { key: 'webhooks', label: 'Webhooks', section: 'Disparos', icon: 'Webhook' },
   { key: 'ctwa_analytics', label: 'CTWA Analytics', section: 'Disparos', icon: 'MousePointerClick' },
+  { key: 'integracoes_meta', label: 'Integrações Meta', section: 'Disparos', icon: 'Facebook' },
+  { key: 'meta_lead_ads', label: 'Meta Lead Ads', section: 'Disparos', icon: 'Facebook' },
   { key: 'lead_gleego', label: 'Lead Gleego', section: 'Disparos', icon: 'BarChart4' },
   
   // Minha Conta
