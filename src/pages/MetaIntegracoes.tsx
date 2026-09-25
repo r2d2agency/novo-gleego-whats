@@ -4,7 +4,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Facebook, Instagram, Phone, Loader2, RefreshCw, Link2 } from "lucide-react";
+import { Facebook, Instagram, Phone, Loader2, RefreshCw, Link2, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { api, API_URL } from "@/lib/api";
@@ -102,6 +102,20 @@ export default function MetaIntegracoes() {
       toast.error(e instanceof Error ? e.message : "Erro ao iniciar conexão");
     } finally {
       setStarting(null);
+    }
+  };
+
+  const removeConnection = async (connection: MetaConnection) => {
+    if (!orgId || !window.confirm(`Remover a conexão ${connection.provider} e os ativos sincronizados?`)) return;
+    try {
+      await api(`/api/meta/oauth/connections/${connection.id}`, {
+        method: "DELETE",
+        body: { organization_id: orgId },
+      });
+      toast.success("Conexão Meta removida");
+      await loadState(orgId);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível remover a conexão");
     }
   };
 
@@ -214,10 +228,15 @@ export default function MetaIntegracoes() {
                         : "sem expiração informada"}
                     </p>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => syncAssets(connection.id)} disabled={syncing === connection.id}>
-                    {syncing === connection.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                    Sincronizar ativos
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => syncAssets(connection.id)} disabled={syncing === connection.id}>
+                      {syncing === connection.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                      Sincronizar ativos
+                    </Button>
+                    <Button size="icon" variant="outline" title="Remover conexão" onClick={() => removeConnection(connection)}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </div>
               ))}
               {connections.length === 0 && (

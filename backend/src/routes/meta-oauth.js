@@ -284,6 +284,28 @@ router.patch('/assets/:id', authenticate, async (req, res) => {
   }
 });
 
+router.delete('/connections/:id', authenticate, async (req, res) => {
+  try {
+    const organizationId = String(req.body?.organization_id || '').trim();
+    if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
+    const membership = await getMembership(req.userId, organizationId);
+    if (!membership || (!membership.is_superadmin && !CONNECT_ROLES.has(membership.role))) {
+      return res.status(403).json({ error: 'Sem permissão para remover a conexão Meta' });
+    }
+    const result = await query(
+      `DELETE FROM meta_oauth_connections
+        WHERE id = $1 AND organization_id = $2
+        RETURNING id, provider`,
+      [req.params.id, organizationId]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Conexão Meta não encontrada' });
+    res.json({ success: true, connection: result.rows[0] });
+  } catch (error) {
+    console.error('[Meta OAuth] connection delete failed:', error.message);
+    res.status(500).json({ error: 'Não foi possível remover a conexão Meta' });
+  }
+});
+
 router.get('/connections', authenticate, async (req, res) => {
   const organizationId = String(req.query.organization_id || '').trim();
   if (!organizationId) return res.status(400).json({ error: 'organization_id é obrigatório' });
