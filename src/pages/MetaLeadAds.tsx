@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useMetaPages, useMetaLeadForms, useMetaLeadEvents, type MetaLeadForm } from "@/hooks/use-meta-lead-ads";
 import { useConnections } from "@/hooks/use-connections";
 import { useCRMFunnels, useCRMFunnel } from "@/hooks/use-crm";
-import { Facebook, RefreshCw, Trash2, Plus, RotateCw, CheckCircle2, AlertCircle, Clock, Inbox } from "lucide-react";
+import { Facebook, RefreshCw, Trash2, RotateCw, CheckCircle2, AlertCircle, Clock, Inbox } from "lucide-react";
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string; icon: any }> = {
@@ -30,57 +30,6 @@ function StatusBadge({ status }: { status: string }) {
     <Badge className={`gap-1 ${m.cls} border-transparent`}>
       <Icon className="h-3 w-3" /> {m.label}
     </Badge>
-  );
-}
-
-function AddPageDialog({ organizationId }: { organizationId: string | null }) {
-  const { createPage } = useMetaPages(organizationId);
-  const [open, setOpen] = useState(false);
-  const [pageId, setPageId] = useState("");
-  const [pageName, setPageName] = useState("");
-  const [token, setToken] = useState("");
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" className="gap-2"><Plus className="h-4 w-4" /> Conectar página</Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Conectar página do Facebook</DialogTitle>
-          <DialogDescription>
-            Cadastro manual via Page Access Token (modo provisório enquanto o "Conectar com Facebook" finaliza no App Review).
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>ID da Página</Label>
-            <Input value={pageId} onChange={(e) => setPageId(e.target.value)} placeholder="ex: 102345678901234" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Nome (opcional)</Label>
-            <Input value={pageName} onChange={(e) => setPageName(e.target.value)} placeholder="Nome da página" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Page Access Token</Label>
-            <Textarea value={token} onChange={(e) => setToken(e.target.value)} rows={4} placeholder="EAA..." />
-            <p className="text-xs text-muted-foreground">
-              Gerado no Graph API Explorer com permissão <code>leads_retrieval</code>.
-            </p>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button
-            disabled={!pageId || !token || createPage.isPending}
-            onClick={async () => {
-              await createPage.mutateAsync({ page_id: pageId, page_name: pageName || undefined, page_access_token: token });
-              setOpen(false); setPageId(""); setPageName(""); setToken("");
-            }}
-          >Salvar</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -229,12 +178,17 @@ export default function MetaLeadAds() {
           </TabsList>
 
           <TabsContent value="pages" className="space-y-3">
-            <div className="flex justify-end"><AddPageDialog organizationId={organizationId} /></div>
+            <Card className="border-dashed">
+              <CardContent className="py-4 text-sm text-muted-foreground">
+                Conecte ou altere a Página pelo menu <strong>Integrações Meta</strong>. Depois de autorizar no Facebook,
+                sincronize os ativos nessa tela para que a Página e o Instagram Business apareçam aqui.
+              </CardContent>
+            </Card>
             {pages.isLoading ? (
               <p className="text-sm text-muted-foreground">Carregando...</p>
             ) : (pages.data?.length ?? 0) === 0 ? (
               <Card><CardContent className="py-10 text-center text-muted-foreground">
-                Nenhuma página conectada ainda.
+                Nenhuma página sincronizada. Acesse Integrações Meta, autorize a Página no Facebook e clique em “Sincronizar ativos”.
               </CardContent></Card>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
