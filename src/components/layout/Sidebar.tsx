@@ -169,9 +169,14 @@ interface SidebarContentProps {
 function SidebarContentComponent({ isExpanded, isSuperadmin, onNavigate }: SidebarContentProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout, user, modulesEnabled, pagePermissions } = useAuth();
+  const { logout, user, isLoading, modulesEnabled, pagePermissions } = useAuth();
   const { branding } = useBranding();
+
   const [openSections, setOpenSections] = useState<string[]>(["Atendimento"]);
+
+  // Wait for the authenticated user context before applying template permissions.
+  // Otherwise role-based items briefly appear and disappear after /auth/me loads.
+  if (isLoading) return null;
 
   // Helper to check if user has admin-level role
   const isAdminRole = (role?: string) => ['owner', 'admin', 'manager', 'supervisor'].includes(role || '');

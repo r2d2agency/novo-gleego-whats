@@ -76,6 +76,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const { user } = await authApi.getMe();
         setUser(user);
+        if (user.organization_id) {
+          sessionStorage.setItem('user_org_id', user.organization_id);
+        }
       } catch {
         // Ignore errors on refresh
       }

@@ -141,7 +141,7 @@ router.post('/register', async (req, res) => {
 
     // Fetch role and modules like login does, so the frontend has full context
     const orgRoleResult = await query(
-      `SELECT om.role, o.id as organization_id, o.modules_enabled
+      `SELECT om.role, o.id as organization_id, o.modules_enabled, om.permission_template_id
        FROM organization_members om
        JOIN organizations o ON o.id = om.organization_id
        WHERE om.user_id = $1
@@ -163,7 +163,25 @@ router.post('/register', async (req, res) => {
       scheduled_messages: true, chatbots: true, chat: true, crm: true
     };
 
-    res.status(201).json({ 
+    let pagePermissions = null;
+    const templateId = orgRoleResult.rows[0]?.permission_template_id;
+    if (templateId) {
+      try {
+        const templateResult = await query(
+          `SELECT permissions FROM permission_templates
+           WHERE id = $1 AND organization_id = $2`,
+          [templateId, organizationId]
+        );
+        const permissions = templateResult.rows[0]?.permissions;
+        if (permissions && typeof permissions === 'object' && !Array.isArray(permissions)) {
+          pagePermissions = permissions;
+        }
+      } catch (e) {
+        // Permission templates may not exist in older installations.
+      }
+    }
+
+    res.status(201).json({
       user: {
         id: user.id,
         email: user.email,
@@ -171,8 +189,9 @@ router.post('/register', async (req, res) => {
         role,
         organization_id: organizationId,
         modules_enabled: finalModules,
-      }, 
-      token 
+        page_permissions: pagePermissions,
+      },
+      token
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -213,7 +232,7 @@ router.post('/login', async (req, res) => {
 
     // Get role and organization info
     const orgResult = await query(
-      `SELECT om.role, o.id as organization_id, o.modules_enabled
+      `SELECT om.role, o.id as organization_id, o.modules_enabled, om.permission_template_id
        FROM organization_members om
        JOIN organizations o ON o.id = om.organization_id
        WHERE om.user_id = $1
@@ -255,6 +274,22 @@ router.post('/login', async (req, res) => {
     let modulesEnabled = allModulesEnabled;
     if (!isSuperadmin) {
       modulesEnabled = orgResult.rows[0]?.modules_enabled || allModulesEnabled;
+    }
+
+    // Load the same page permissions used by /auth/me so the menu does not
+    // change after the first session refresh.
+    let pagePermissions = null;
+    const templateId = orgResult.rows[0]?.permission_template_id;
+    if (templateId) {
+      const templateResult = await query(
+        `SELECT permissions FROM permission_templates
+         WHERE id = $1 AND organization_id = $2`,
+        [templateId, organizationId]
+      );
+      const permissions = templateResult.rows[0]?.permissions;
+      if (permissions && typeof permissions === 'object' && !Array.isArray(permissions)) {
+        pagePermissions = permissions;
+      }
     }
 
     // Generate token
@@ -305,6 +340,7 @@ router.post('/login', async (req, res) => {
         organization_id: organizationId,
         modules_enabled: modulesEnabled,
         has_connections: hasConnections,
+        page_permissions: pagePermissions,
       },
       token
     });
@@ -369,11 +405,13 @@ router.get('/me', async (req, res) => {
     if (templateId) {
       try {
         const tplResult = await query(
-          `SELECT permissions FROM permission_templates WHERE id = $1`,
-          [templateId]
+          `SELECT permissions FROM permission_templates
+           WHERE id = $1 AND organization_id = $2`,
+          [templateId, orgResult.rows[0]?.organization_id]
         );
-        if (tplResult.rows.length > 0) {
-          pagePermissions = tplResult.rows[0].permissions;
+        const permissions = tplResult.rows[0]?.permissions;
+        if (permissions && typeof permissions === 'object' && !Array.isArray(permissions)) {
+          pagePermissions = permissions;
         }
       } catch (e) {
         // table might not exist yet
