@@ -25,6 +25,7 @@ import { NotificationConnectionSettings } from "@/components/settings/Notificati
 import { ThemeCustomizer } from "@/components/admin/ThemeCustomizer";
 import { GoogleCalendarPanel } from "@/components/crm/GoogleCalendarPanel";
 import { api as apiCall } from "@/lib/api";
+import { applyThemeColors, invalidateBranding } from "@/hooks/use-branding";
 import { SystemUpdateCard } from "@/components/settings/SystemUpdateCard";
 
 const Configuracoes = () => {
@@ -588,6 +589,8 @@ const Configuracoes = () => {
                     });
                     setOrgThemePreset(preset);
                     setOrgThemeCustom(customColors);
+                    applyThemeColors(preset, customColors);
+                    invalidateBranding(String(user.organization_id));
                   }}
                 />
               </div>

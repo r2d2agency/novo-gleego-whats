@@ -18,7 +18,8 @@ const router = Router();
 // Public endpoint to get branding settings (no auth required)
 // NOTE: Must be defined before router.use(authenticate)
 router.get('/branding', async (req, res) => {
-  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+  // Branding varies by tenant; never let a shared proxy serve one tenant's theme to another.
+  res.setHeader('Cache-Control', 'private, no-store');
 
   try {
     const result = await query(

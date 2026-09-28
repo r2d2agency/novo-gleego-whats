@@ -3,34 +3,47 @@ import { API_URL, getAuthToken } from '@/lib/api';
 
 const BRANDING_CACHE_KEY = 'app-branding-cache';
 const BRANDING_CACHE_TTL_MS = 5 * 60 * 1000;
-let brandingRequest: Promise<BrandingSettings | null> | null = null;
+const brandingRequests = new Map<string, Promise<BrandingSettings | null>>();
 
-function getCachedBranding(): BrandingSettings | null {
+function getBrandingOrgId(): string {
+  return sessionStorage.getItem('user_org_id') || 'global';
+}
+
+function getCachedBranding(orgId: string): BrandingSettings | null {
   try {
-    const cached = JSON.parse(sessionStorage.getItem(BRANDING_CACHE_KEY) || 'null');
+    const cached = JSON.parse(sessionStorage.getItem(`${BRANDING_CACHE_KEY}:${orgId}`) || 'null');
     if (cached?.value && Date.now() - cached.savedAt < BRANDING_CACHE_TTL_MS) {
       return cached.value as BrandingSettings;
     }
+    if (cached) sessionStorage.removeItem(`${BRANDING_CACHE_KEY}:${orgId}`);
   } catch { /* ignore invalid cache */ }
   return null;
 }
 
-function requestBranding(orgParam: string): Promise<BrandingSettings | null> {
-  if (brandingRequest) return brandingRequest;
+function requestBranding(orgId: string): Promise<BrandingSettings | null> {
+  const existing = brandingRequests.get(orgId);
+  if (existing) return existing;
+  const orgParam = orgId === 'global' ? '' : `?org_id=${encodeURIComponent(orgId)}`;
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 7000);
-  brandingRequest = fetch(`${API_URL}/api/admin/branding${orgParam}`, { signal: controller.signal })
+  const request = fetch(`${API_URL}/api/admin/branding${orgParam}`, { signal: controller.signal })
     .then(async (response) => response.ok ? response.json() as Promise<BrandingSettings> : null)
     .then((value) => {
-      if (value) sessionStorage.setItem(BRANDING_CACHE_KEY, JSON.stringify({ value, savedAt: Date.now() }));
+      if (value) sessionStorage.setItem(`${BRANDING_CACHE_KEY}:${orgId}`, JSON.stringify({ value, savedAt: Date.now() }));
       return value;
     })
     .catch(() => null)
     .finally(() => {
       window.clearTimeout(timeout);
-      brandingRequest = null;
+      brandingRequests.delete(orgId);
     });
-  return brandingRequest;
+  brandingRequests.set(orgId, request);
+  return request;
+}
+
+export function invalidateBranding(orgId = getBrandingOrgId()) {
+  try { sessionStorage.removeItem(`${BRANDING_CACHE_KEY}:${orgId}`); } catch { /* ignore storage errors */ }
+  window.dispatchEvent(new CustomEvent('branding-invalidated', { detail: { orgId } }));
 }
 
 export interface BrandingSettings {
@@ -226,7 +239,8 @@ export function applyThemeColors(preset: string | null, customColors: string | n
 }
 
 export function useBranding() {
-  const [branding, setBranding] = useState<BrandingSettings>(() => getCachedBranding() || ({
+  const initialOrgId = getBrandingOrgId();
+  const [branding, setBranding] = useState<BrandingSettings>(() => getCachedBranding(initialOrgId) || ({
     logo_login: null,
     logo_sidebar: null,
     logo_topbar: null,
@@ -235,17 +249,12 @@ export function useBranding() {
     theme_preset: null,
     theme_custom_colors: null,
   }));
-  const [loading, setLoading] = useState(() => !getCachedBranding());
+  const [loading, setLoading] = useState(() => !getCachedBranding(initialOrgId));
 
   const fetchBranding = useCallback(async () => {
     try {
-      let orgParam = '';
-      const cachedOrgId = sessionStorage.getItem('user_org_id');
-      if (cachedOrgId) {
-        orgParam = `?org_id=${cachedOrgId}`;
-      }
-
-      const data = getCachedBranding() || await requestBranding(orgParam);
+      const orgId = getBrandingOrgId();
+      const data = getCachedBranding(orgId) || await requestBranding(orgId);
       if (data) {
         setBranding(data);
         
@@ -267,6 +276,12 @@ export function useBranding() {
 
   useEffect(() => {
     fetchBranding();
+    const handleInvalidation = (event: Event) => {
+      const orgId = (event as CustomEvent<{ orgId: string }>).detail?.orgId;
+      if (!orgId || orgId === getBrandingOrgId()) fetchBranding();
+    };
+    window.addEventListener('branding-invalidated', handleInvalidation);
+    return () => window.removeEventListener('branding-invalidated', handleInvalidation);
   }, [fetchBranding]);
 
   return { branding, loading, refetch: fetchBranding };

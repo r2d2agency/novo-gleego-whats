@@ -165,6 +165,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = () => {
     clearAuthToken();
+    sessionStorage.removeItem('user_org_id');
+    sessionStorage.removeItem('app-branding-cache:global');
+    document.getElementById('theme-override-light')?.remove();
+    document.getElementById('theme-override-dark')?.remove();
+    window.dispatchEvent(new CustomEvent('branding-invalidated', { detail: { orgId: 'global' } }));
     setUser(null);
     toast({ title: 'Logout realizado' });
   };
