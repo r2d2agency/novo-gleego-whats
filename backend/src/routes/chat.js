@@ -5021,19 +5021,21 @@ router.post('/messages/:messageId/retry-download', authenticate, async (req, res
     }
 
     await query(
-      `UPDATE chat_messages 
-       SET media_url = $1, 
+      `UPDATE chat_messages
+       SET media_url = $1,
            media_mimetype = COALESCE($2, media_mimetype),
            content = $3,
+           media_status = 'ready',
            updated_at = NOW()
        WHERE id = $4`,
       [publicUrl, mimetype, newContent, msg.id]
     );
 
-    res.json({ 
-      success: true, 
-      media_url: publicUrl, 
+    res.json({
+      success: true,
+      media_url: publicUrl,
       media_mimetype: mimetype,
+      media_status: 'ready',
       content: newContent
     });
 

@@ -616,7 +616,57 @@ function extractMessageData(payload) {
     mediaMimetype,
     isAlbumContainer,
     originalFilename,
+    mediaStatus: null,
   };
+}
+
+async function resolveUazapiMedia({ connection, messageId, mediaUrl, mediaMimetype, originalFilename }) {
+  // Baixa mídia da UAZAPI e salva localmente. Retorna { url, mimetype } ou null.
+  // NUNCA lança — erros são logados e o chamador marca media_status='failed'.
+  try {
+    const dl = await uazapiProvider.downloadMedia(
+      connection.uazapi_url,
+      connection.uazapi_token,
+      messageId
+    );
+    if (!dl?.success) {
+      console.warn('[UAZAPI] downloadMedia falhou para', messageId, dl?.error);
+      return null;
+    }
+    const baseUrl = String(process.env.API_BASE_URL || '').trim().replace(/\/+$/, '');
+    if (dl.url) {
+      const url = dl.url.startsWith('http')
+        ? dl.url
+        : (baseUrl ? `${baseUrl}${dl.url.startsWith('/') ? dl.url : `/uploads/${dl.url}`}` : dl.url);
+      return { url, mimetype: dl.mimetype || mediaMimetype };
+    }
+    if (dl.buffer || dl.base64) {
+      const buf = dl.buffer || Buffer.from(dl.base64, 'base64');
+      const mt = (dl.mimetype || mediaMimetype || 'application/octet-stream').toLowerCase();
+      const extMap = {
+        'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png',
+        'image/gif': '.gif', 'image/webp': '.webp',
+        'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/3gpp': '.3gp',
+        'audio/ogg': '.ogg', 'audio/mpeg': '.mp3', 'audio/mp4': '.m4a',
+        'audio/wav': '.wav', 'audio/webm': '.webm',
+        'application/pdf': '.pdf',
+      };
+      const ext = extMap[mt] || path.extname(originalFilename || '') || '.bin';
+      const baseName = originalFilename
+        ? path.parse(originalFilename).name.replace(/[^a-zA-Z0-9.-]/g, '_')
+        : `uazapi_${crypto.randomUUID()}`;
+      const fname = `${Date.now()}_${baseName}${ext}`;
+      const uploadsDir = path.join(process.cwd(), 'uploads');
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+      fs.writeFileSync(path.join(uploadsDir, fname), buf);
+      const localPath = `/uploads/${fname}`;
+      return { url: baseUrl ? `${baseUrl}${localPath}` : localPath, mimetype: mt };
+    }
+    return null;
+  } catch (e) {
+    console.error('[UAZAPI] erro ao baixar mídia', e?.message);
+    return null;
+  }
 }
 
 async function persistIncomingMessage(connection, payload) {
@@ -631,63 +681,15 @@ async function persistIncomingMessage(connection, payload) {
     return { skipped: true, reason: 'not_incoming_or_empty' };
   }
 
-  // Resolve placeholder de download da UAZAPI: baixa mídia decifrada,
-  // salva em /uploads e substitui mediaUrl pelo caminho público.
-  if (typeof message.mediaUrl === 'string' && message.mediaUrl.startsWith('__UAZAPI_DOWNLOAD__:')) {
-    const msgIdForDownload = message.mediaUrl.slice('__UAZAPI_DOWNLOAD__:'.length);
-    try {
-      const dl = await uazapiProvider.downloadMedia(
-        connection.uazapi_url,
-        connection.uazapi_token,
-        msgIdForDownload
-      );
-      if (dl?.success) {
-        const baseUrl = String(process.env.API_BASE_URL || '').trim().replace(/\/+$/, '');
-        if (dl.url) {
-          // Se a URL já for completa e externa (não for um path local), usamos ela.
-          // Caso contrário, garantimos que seja absoluta se for um path do servidor.
-          if (dl.url.startsWith('http')) {
-            message.mediaUrl = dl.url;
-          } else {
-            const cleanPath = dl.url.startsWith('/') ? dl.url : `/uploads/${dl.url}`;
-            message.mediaUrl = baseUrl ? `${baseUrl}${cleanPath}` : cleanPath;
-          }
-          if (!message.mediaMimetype && dl.mimetype) message.mediaMimetype = dl.mimetype;
-        } else if (dl.buffer || dl.base64) {
-          const buf = dl.buffer || Buffer.from(dl.base64, 'base64');
-          const mt = (dl.mimetype || message.mediaMimetype || 'application/octet-stream').toLowerCase();
-          const extMap = {
-            'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png',
-            'image/gif': '.gif', 'image/webp': '.webp',
-            'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/3gpp': '.3gp',
-            'audio/ogg': '.ogg', 'audio/mpeg': '.mp3', 'audio/mp4': '.m4a',
-            'audio/wav': '.wav', 'audio/webm': '.webm',
-            'application/pdf': '.pdf',
-          };
-          const ext = extMap[mt] || path.extname(message.originalFilename || '') || '.bin';
-          const baseName = message.originalFilename 
-            ? path.parse(message.originalFilename).name.replace(/[^a-zA-Z0-9.-]/g, '_')
-            : `uazapi_${crypto.randomUUID()}`;
-          
-          const fname = `${Date.now()}_${baseName}${ext}`;
-          const uploadsDir = path.join(process.cwd(), 'uploads');
-          if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-          fs.writeFileSync(path.join(uploadsDir, fname), buf);
-          
-          const localPath = `/uploads/${fname}`;
-          message.mediaUrl = baseUrl ? `${baseUrl}${localPath}` : localPath;
-          if (!message.mediaMimetype) message.mediaMimetype = mt;
-        } else {
-          message.mediaUrl = null;
-        }
-      } else {
-        console.warn('[UAZAPI] downloadMedia falhou para', msgIdForDownload, dl?.error);
-        message.mediaUrl = null;
-      }
-    } catch (e) {
-      console.error('[UAZAPI] erro ao baixar mídia', e?.message);
-      message.mediaUrl = null;
-    }
+  // Detecta se há mídia a processar (placeholder de download UAZAPI)
+  const hasPendingMedia = typeof message.mediaUrl === 'string' && message.mediaUrl.startsWith('__UAZAPI_DOWNLOAD__:');
+  const msgIdForDownload = hasPendingMedia ? message.mediaUrl.slice('__UAZAPI_DOWNLOAD__:'.length) : null;
+
+  // Para mídia pendente: salva mensagem com media_status='pending' e dispara download em background.
+  // NUNCA perde a referência — media_url fica NULL até o download completar.
+  if (hasPendingMedia) {
+    message.mediaUrl = null;
+    message.mediaStatus = 'pending';
   }
 
   // Dedup + reconcile pending optimistic messages sent via chat (temp_ message_id)
@@ -868,10 +870,12 @@ async function persistIncomingMessage(connection, payload) {
     ) as exists_column
   `).then(r => r.rows[0].exists_column);
 
+  const mediaStatus = message.mediaStatus || null;
+
   if (chatMessagesHasConnectionId) {
     await query(
-      `INSERT INTO chat_messages (conversation_id, message_id, content, message_type, media_url, media_mimetype, from_me, sender_name, sender_phone, status, timestamp, connection_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), $11)`,
+      `INSERT INTO chat_messages (conversation_id, message_id, content, message_type, media_url, media_mimetype, media_status, from_me, sender_name, sender_phone, status, timestamp, connection_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), $12)`,
       [
         conversationId,
         message.messageId,
@@ -879,6 +883,7 @@ async function persistIncomingMessage(connection, payload) {
         message.messageType,
         message.mediaUrl,
         message.mediaMimetype,
+        mediaStatus,
         message.fromMe,
         message.senderName,
         message.phone,
@@ -888,8 +893,8 @@ async function persistIncomingMessage(connection, payload) {
     );
   } else {
     await query(
-      `INSERT INTO chat_messages (conversation_id, message_id, content, message_type, media_url, media_mimetype, from_me, sender_name, sender_phone, status, timestamp)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+      `INSERT INTO chat_messages (conversation_id, message_id, content, message_type, media_url, media_mimetype, media_status, from_me, sender_name, sender_phone, status, timestamp)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
       [
         conversationId,
         message.messageId,
@@ -897,12 +902,43 @@ async function persistIncomingMessage(connection, payload) {
         message.messageType,
         message.mediaUrl,
         message.mediaMimetype,
+        mediaStatus,
         message.fromMe,
         message.senderName,
         message.phone,
         message.fromMe ? 'sent' : 'received',
       ]
     );
+  }
+
+  // Dispara download de mídia em background após o INSERT.
+  // Nunca perde a referência: media_status fica 'pending' até resolver.
+  if (hasPendingMedia && msgIdForDownload) {
+    void (async () => {
+      const result = await resolveUazapiMedia({
+        connection,
+        messageId: msgIdForDownload,
+        mediaUrl: message.mediaUrl,
+        mediaMimetype: message.mediaMimetype,
+        originalFilename: message.originalFilename,
+      });
+      if (result?.url) {
+        await query(
+          `UPDATE chat_messages SET media_url = $1, media_mimetype = COALESCE($2, media_mimetype), media_status = 'ready' WHERE message_id = $3`,
+          [result.url, result.mimetype, message.messageId]
+        );
+        console.log('[UAZAPI] mídia baixada e salva:', message.messageId, result.url);
+      } else {
+        await query(
+          `UPDATE chat_messages SET media_status = 'failed' WHERE message_id = $1`,
+          [message.messageId]
+        );
+        console.warn('[UAZAPI] mídia falhou:', message.messageId);
+      }
+    })().catch((err) => {
+      console.error('[UAZAPI] erro no download em background:', err?.message);
+      query(`UPDATE chat_messages SET media_status = 'failed' WHERE message_id = $1`, [message.messageId]).catch(() => {});
+    });
   }
 
   // Push notification on incoming message (skip own messages); honors per-conversation mute

@@ -943,6 +943,13 @@ EXCEPTION
     WHEN duplicate_column THEN null;
 END $$;
 
+-- Add media_status column to track inbound media processing (pending/ready/converting/failed)
+DO $$ BEGIN
+    ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS media_status VARCHAR(20);
+EXCEPTION
+    WHEN duplicate_column THEN null;
+END $$;
+
 -- Add unique index on message_id to prevent duplicates (excludes temp_ messages)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_messages_message_id 
   ON chat_messages (message_id) 

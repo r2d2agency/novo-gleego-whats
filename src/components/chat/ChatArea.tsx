@@ -1443,7 +1443,20 @@ export function ChatArea({
                       try {
                         const result = await retryMediaDownload(messageId);
                         if (result.success) {
-                          onLoadMore(); // This refreshes the message list
+                          // Update local message so the bubble reflects new media without reload
+                          const updatedMessages = messages.map(m =>
+                            (m.message_id === messageId || m.id === messageId)
+                              ? {
+                                  ...m,
+                                  media_url: result.media_url ?? m.media_url,
+                                  media_mimetype: result.media_mimetype ?? m.media_mimetype,
+                                  media_status: result.media_status as ChatMessage['media_status'] ?? m.media_status,
+                                  content: result.content ?? m.content,
+                                }
+                              : m
+                          );
+                          // Refresh in background to stay in sync
+                          onLoadMore();
                           return true;
                         }
                         return false;

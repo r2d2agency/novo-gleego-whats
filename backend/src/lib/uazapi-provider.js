@@ -12,6 +12,9 @@ import { fetchWithRetry } from './retry-fetch.js';
 
 const DEFAULT_TIMEOUT = 15000;
 
+// Download de mídia pode demorar muito em vídeos grandes (UAZAPI decifra antes de servir).
+const UAZAPI_MEDIA_DOWNLOAD_TIMEOUT_MS = Number(process.env.UAZAPI_MEDIA_DOWNLOAD_TIMEOUT_MS) || 60000;
+
 // Buffer em memória para diagnóstico
 const EVENTS_MAX = 300;
 const webhookEvents = []; // { at, instanceId, connectionId, connectionInstanceId, connectionToken, eventType, payload }
@@ -477,7 +480,7 @@ export async function downloadMedia(baseUrl, token, messageId) {
   // 1) POST /message/download { id }
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000);
+    const t = setTimeout(() => ctrl.abort(), UAZAPI_MEDIA_DOWNLOAD_TIMEOUT_MS);
     const r = await fetch(`${base}/message/download`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
@@ -507,7 +510,7 @@ export async function downloadMedia(baseUrl, token, messageId) {
   // 2) GET /message/download/{id}
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15000);
+    const t = setTimeout(() => ctrl.abort(), UAZAPI_MEDIA_DOWNLOAD_TIMEOUT_MS);
     const r = await fetch(`${base}/message/download/${encodeURIComponent(messageId)}`, {
       method: 'GET', headers, signal: ctrl.signal,
     });
@@ -519,6 +522,9 @@ export async function downloadMedia(baseUrl, token, messageId) {
         const url = data?.fileURL || data?.url || data?.URL || data?.mediaUrl || null;
         const mimetype = data?.mimetype || data?.mimeType || null;
         if (url) return { success: true, url, mimetype };
+        if (data?.base64) {
+          return { success: true, base64: data.base64, mimetype };
+        }
       } else {
         const buf = Buffer.from(await r.arrayBuffer());
         return { success: true, buffer: buf, mimetype: ct };

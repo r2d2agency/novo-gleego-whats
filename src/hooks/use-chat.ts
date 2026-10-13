@@ -81,6 +81,7 @@ export interface ChatMessage {
   message_type: string;
   media_url: string | null;
   media_mimetype: string | null;
+  media_status?: 'pending' | 'ready' | 'converting' | 'failed' | null;
   quoted_message_id: string | null;
   quoted_content: string | null;
   quoted_message_type: string | null;
@@ -490,9 +491,9 @@ export const useChat = () => {
     return data;
   }, []);
 
-  const retryMediaDownload = useCallback(async (messageId: string): Promise<{ success: boolean; media_url?: string; media_mimetype?: string; content?: string }> => {
+  const retryMediaDownload = useCallback(async (messageId: string): Promise<{ success: boolean; media_url?: string; media_mimetype?: string; media_status?: string; content?: string }> => {
     try {
-      const data = await api<{ success: boolean; media_url?: string; media_mimetype?: string; content?: string }>(
+      const data = await api<{ success: boolean; media_url?: string; media_mimetype?: string; media_status?: string; content?: string }>(
         `/api/chat/messages/${messageId}/retry-download`,
         { method: 'POST' }
       );

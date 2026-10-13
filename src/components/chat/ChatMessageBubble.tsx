@@ -20,6 +20,7 @@ import {
   Loader2,
   MessageSquarePlus,
   BookUser,
+  Video as VideoIcon,
 } from "lucide-react";
 
  import { format, isBefore, subHours } from "date-fns";
@@ -46,6 +47,22 @@ const isWaMediaError = (content: string | null) => {
     c.includes("peça para reenvialo") ||
     c.includes("peca para reenvialo")
   );
+};
+
+const isMediaPlaceholder = (content: string | null) => {
+  if (!content) return false;
+  return content === "[Vídeo]" || content === "[Áudio]" || content === "[Imagem]" || content === "[Documento]";
+};
+
+// Video/audio received without a playable URL (pending, failed or unsupported).
+const isMediaNeedingRetry = (msg: ChatMessage) => {
+  if (msg.media_status === "failed") return true;
+  if (isMediaPlaceholder(msg.content) && !msg.media_url) return true;
+  if ((msg.message_type === "video" || msg.message_type === "audio") && !msg.media_url) return true;
+  if ((msg.media_mimetype?.startsWith("video/") || msg.media_mimetype?.startsWith("audio/")) && !msg.media_url) {
+    return true;
+  }
+  return false;
 };
 
 function extractUrls(text: string): string[] {
@@ -372,7 +389,21 @@ export function ChatMessageBubble({
 
         {(msg.message_type === 'video' || (msg.media_mimetype?.startsWith('video/') ?? false)) && mediaUrl && (
           <div className="mb-2">
-            <video controls playsInline preload="none" className="rounded max-w-full max-h-[300px]" crossOrigin="anonymous">
+            <video
+              controls
+              playsInline
+              preload="none"
+              className="rounded max-w-full max-h-[300px]"
+              crossOrigin="anonymous"
+              onError={(e) => {
+                const target = e.currentTarget;
+                target.style.display = 'none';
+                const fallback = document.createElement('div');
+                fallback.className = 'flex items-center gap-2 text-sm opacity-70 mb-2 p-3 rounded bg-muted';
+                fallback.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg><span>Vídeo não disponível</span>';
+                target.parentElement?.appendChild(fallback);
+              }}
+            >
               {msg.media_mimetype && <source src={mediaUrl} type={msg.media_mimetype} />}
               <source src={mediaUrl} type="video/mp4" />
               <source src={mediaUrl} type="video/webm" />
@@ -381,6 +412,36 @@ export function ChatMessageBubble({
             <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className="text-xs underline opacity-70 hover:opacity-100">
               Abrir vídeo
             </a>
+          </div>
+        )}
+
+        {(msg.message_type === 'video' || (msg.media_mimetype?.startsWith('video/') ?? false)) && !mediaUrl && (
+          <div className="flex flex-col gap-2 p-3 rounded-lg bg-background/30 mb-2">
+            <div className="flex items-center gap-2 text-sm opacity-70">
+              {(msg.media_status === 'pending' || msg.media_status === 'converting') ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>{msg.media_status === 'converting' ? 'Convertendo vídeo...' : 'Baixando vídeo...'}</span>
+                </>
+              ) : (
+                <>
+                  <VideoIcon className="h-4 w-4" />
+                  <span>Vídeo não disponível</span>
+                </>
+              )}
+            </div>
+            {onRetryMediaDownload && msg.media_status !== 'pending' && msg.media_status !== 'converting' && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-[10px] w-full mt-1 border-primary/20 bg-background/50 hover:bg-background"
+                onClick={handleRetry}
+                disabled={isRetrying}
+              >
+                {isRetrying ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                Tentar recuperar vídeo
+              </Button>
+            )}
           </div>
         )}
 
@@ -578,7 +639,7 @@ export function ChatMessageBubble({
             {extractUrls(msg.content).slice(0, 1).map((url) => (
               <LinkPreview key={url} url={url} savedPreview={msg.link_preview} />
             ))}
-            {isWaMediaError(msg.content) && onRetryMediaDownload && (
+            {(isWaMediaError(msg.content) || (isMediaNeedingRetry(msg) && !(msg.message_type === 'video' || msg.message_type === 'audio' || msg.message_type === 'ptt'))) && onRetryMediaDownload && (
               <Button 
                 variant="outline" 
                 size="sm" 

@@ -215,8 +215,11 @@ app.use('/uploads', (req, res, next) => {
     else if (ext === '.m4a') res.setHeader('Content-Type', 'audio/mp4');
     else if (ext === '.wav') res.setHeader('Content-Type', 'audio/wav');
     else if (ext === '.aac') res.setHeader('Content-Type', 'audio/aac');
-    else if (ext === '.mp4') res.setHeader('Content-Type', 'video/mp4');
-    else if (ext === '.webm') res.setHeader('Content-Type', 'audio/webm');
+    else if (ext === '.mp4' || ext === '.m4v') res.setHeader('Content-Type', 'video/mp4');
+    else if (ext === '.mov' || ext === '.qt') res.setHeader('Content-Type', 'video/quicktime');
+    else if (ext === '.3gp' || ext === '.3gpp') res.setHeader('Content-Type', 'video/3gpp');
+    else if (ext === '.ogv') res.setHeader('Content-Type', 'video/ogg');
+    else if (ext === '.webm') res.setHeader('Content-Type', 'video/webm');
     else if (ext === '.pdf') res.setHeader('Content-Type', 'application/pdf');
   }
 }));
@@ -225,30 +228,40 @@ app.use('/uploads', (req, res, next) => {
 app.get('/api/uploads/:filename', (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(uploadsDir, filename);
-  
+
   if (fs.existsSync(filePath)) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Disposition', 'inline');
     const ext = path.extname(filename).toLowerCase();
     if (ext === '.pdf') res.setHeader('Content-Type', 'application/pdf');
+    else if (ext === '.mp4' || ext === '.m4v') res.setHeader('Content-Type', 'video/mp4');
+    else if (ext === '.mov' || ext === '.qt') res.setHeader('Content-Type', 'video/quicktime');
+    else if (ext === '.3gp' || ext === '.3gpp') res.setHeader('Content-Type', 'video/3gpp');
+    else if (ext === '.ogv') res.setHeader('Content-Type', 'video/ogg');
+    else if (ext === '.webm') res.setHeader('Content-Type', 'video/webm');
     return res.sendFile(filePath);
   }
-  
+
   res.status(404).json({ error: 'Arquivo não encontrado' });
 });
 
 app.get('/uploads/:filename', (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(uploadsDir, filename);
-  
+
   if (fs.existsSync(filePath)) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Content-Disposition', 'inline');
     const ext = path.extname(filename).toLowerCase();
     if (ext === '.pdf') res.setHeader('Content-Type', 'application/pdf');
+    else if (ext === '.mp4' || ext === '.m4v') res.setHeader('Content-Type', 'video/mp4');
+    else if (ext === '.mov' || ext === '.qt') res.setHeader('Content-Type', 'video/quicktime');
+    else if (ext === '.3gp' || ext === '.3gpp') res.setHeader('Content-Type', 'video/3gpp');
+    else if (ext === '.ogv') res.setHeader('Content-Type', 'video/ogg');
+    else if (ext === '.webm') res.setHeader('Content-Type', 'video/webm');
     return res.sendFile(filePath);
   }
-  
+
   res.status(404).json({ error: 'Arquivo não encontrado' });
 });
 
