@@ -1247,8 +1247,7 @@ export default function CRMConfiguracoes() {
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                <ScrollArea className="max-h-48">
-                  <div className="space-y-2">
+                <div className="space-y-2 max-h-48 overflow-y-auto">
                     {orgMembers
                       .filter(m => !groupMembers?.some(gm => gm.user_id === m.user_id))
                       .map((member) => (
@@ -1286,7 +1285,6 @@ export default function CRMConfiguracoes() {
                       </p>
                     )}
                   </div>
-                </ScrollArea>
               )}
             </div>
           </div>
