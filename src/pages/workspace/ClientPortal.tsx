@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Send, Calendar, CheckCircle2, ThumbsUp, RefreshCw, Sparkles, List, Plus, ImagePlus, X, User, Building2, Filter } from "lucide-react";
+import { Loader2, Send, CheckCircle2, ThumbsUp, RefreshCw, Sparkles, List, Plus, ImagePlus, X, User, Building2, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL } from "@/lib/api";
 import {
@@ -44,9 +43,13 @@ export default function ClientPortal() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  // Filtros da lista de solicitações
-  const [filterDept, setFilterDept] = useState<string>("all");
-  const [filterRequester, setFilterRequester] = useState<string>("all");
+  // Lista de solicitações (colapsada atrás de botão) + filtros + paginação
+  const [showList, setShowList] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterFrom, setFilterFrom] = useState<string>("");
+  const [filterTo, setFilterTo] = useState<string>("");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 8;
 
   const loadDepartments = async () => {
     if (!token) return;
@@ -64,10 +67,8 @@ export default function ClientPortal() {
   // Hooks precisam ficar antes de qualquer return (regras do React).
   // Usa fallbacks enquanto os dados carregam.
   const tasks = useMemo(() => (data as any)?.tasks ?? [], [data]);
-  const phases = useMemo(() => (data as any)?.phases ?? [], [data]);
-  const modules = useMemo(() => (data as any)?.modules ?? [], [data]);
 
-  // Departamentos vindos do servidor + digitados manualmente em solicitações
+  // Departamentos cadastrados (usado no select do formulário de solicitação)
   const allDepartments = useMemo(() => {
     const set = new Set<string>();
     departments.forEach((d) => d.name && set.add(d.name));
@@ -75,28 +76,35 @@ export default function ClientPortal() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [departments, tasks]);
 
-  // Solicitantes distintos (quem pediu)
-  const allRequesters = useMemo(() => {
-    const set = new Set<string>();
-    tasks.forEach((t: any) => t.requester_name && set.add(t.requester_name));
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [tasks]);
-
-  // Lista filtrada por departamento e/ou solicitante
+  // Lista filtrada por status + período, com paginação
   const filteredTasks = useMemo(() => {
-    return (tasks as any[]).filter(
-      (t) =>
-        (filterDept === "all" || (t.department || "") === filterDept) &&
-        (filterRequester === "all" || (t.requester_name || "") === filterRequester)
-    );
-  }, [tasks, filterDept, filterRequester]);
+    const from = filterFrom ? new Date(filterFrom + "T00:00:00") : null;
+    const to = filterTo ? new Date(filterTo + "T23:59:59") : null;
+    return (tasks as any[]).filter((t) => {
+      if (filterStatus !== "all" && t.status !== filterStatus) return false;
+      if ((from || to) && t.created_at) {
+        const d = new Date(t.created_at);
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+      }
+      return true;
+    });
+  }, [tasks, filterStatus, filterFrom, filterTo]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedTasks = useMemo(
+    () => filteredTasks.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filteredTasks, safePage]
+  );
+
+  // Ao mudar qualquer filtro, volta para a primeira página
+  useEffect(() => { setPage(1); }, [filterStatus, filterFrom, filterTo]);
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
   if (error || !data) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Portal indisponível.</div>;
 
   const { project } = data;
-  const totalDone = phases.filter((p: any) => p.status === "done").length;
-  const pct = phases.length > 0 ? Math.round((totalDone / phases.length) * 100) : 0;
 
   const resolveImageUrl = (url: string) => {
     if (!url) return url;
@@ -185,46 +193,51 @@ export default function ClientPortal() {
         </div>
 
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-base">Progresso geral</CardTitle></CardHeader>
-          <CardContent>
-            <div className="flex justify-between text-xs text-muted-foreground mb-1"><span>{totalDone}/{phases.length} fases</span><span>{pct}%</span></div>
-            <Progress value={pct} className="h-3" />
-          </CardContent>
-        </Card>
-
-        <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <CardTitle className="text-base">Minhas solicitações</CardTitle>
-              {(allDepartments.length > 0 || allRequesters.length > 0) && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-muted-foreground flex items-center gap-1"><Filter className="h-3 w-3" /> Filtrar:</span>
-                  {allDepartments.length > 0 && (
-                    <Select value={filterDept} onValueChange={setFilterDept}>
-                      <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Departamento" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos os deptos.</SelectItem>
-                        {allDepartments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  {allRequesters.length > 0 && (
-                    <Select value={filterRequester} onValueChange={setFilterRequester}>
-                      <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Solicitante" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos os solicitantes</SelectItem>
-                        {allRequesters.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              )}
+              <Button variant="outline" size="sm" onClick={() => setShowList((s) => !s)}>
+                <List className="h-4 w-4 mr-1" />
+                {showList ? "Ocultar lista" : `Ver solicitações (${tasks.length})`}
+              </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-2">
+          {showList && (
+          <CardContent className="space-y-3">
+            <div className="flex items-end gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground flex items-center gap-1 pb-2"><Filter className="h-3 w-3" /> Filtrar:</span>
+              <div className="grid gap-1">
+                <Label className="text-xs">Status</Label>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {Object.entries(STATUS_LABEL).map(([v, s]) => <SelectItem key={v} value={v}>{s.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">De</Label>
+                <Input type="date" className="h-8 w-40 text-xs" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} />
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">Até</Label>
+                <Input type="date" className="h-8 w-40 text-xs" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} />
+              </div>
+              {(filterStatus !== "all" || filterFrom || filterTo) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => { setFilterStatus("all"); setFilterFrom(""); setFilterTo(""); }}
+                >
+                  <X className="h-3 w-3 mr-1" /> Limpar
+                </Button>
+              )}
+            </div>
             {tasks.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma solicitação ainda. Envie a primeira abaixo.</p>}
             {tasks.length > 0 && filteredTasks.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma solicitação com esses filtros.</p>}
-            {filteredTasks.map((t: any) => {
+            {pagedTasks.map((t: any) => {
               const st = STATUS_LABEL[t.status] || { label: t.status, tone: "bg-muted" };
               const canTest = t.status === "testing" && !t.client_feedback;
               return (
@@ -290,28 +303,31 @@ export default function ClientPortal() {
                 </div>
               );
             })}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-2 border-t">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={safePage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Anterior
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  Página {safePage} de {totalPages} · {filteredTasks.length} {filteredTasks.length === 1 ? "solicitação" : "solicitações"}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Próxima
+                </Button>
+              </div>
+            )}
           </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle className="text-base">Fases</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {phases.map((p: any) => {
-              const mod = modules.find((m: any) => m.id === p.module_id);
-              const done = p.status === "done";
-              return (
-                <div key={p.id} className="border rounded p-3 flex items-center gap-3">
-                  {done ? <CheckCircle2 className="h-5 w-5 text-green-500" /> : <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{p.name}</div>
-                    {mod && <div className="text-xs text-muted-foreground flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: mod.color }} /> {mod.name}</div>}
-                  </div>
-                  {p.due_date && <Badge variant={done ? "secondary" : "outline"} className="shrink-0"><Calendar className="h-3 w-3 mr-1" /> {new Date(p.due_date).toLocaleDateString("pt-BR")}</Badge>}
-                </div>
-              );
-            })}
-            {phases.length === 0 && <p className="text-sm text-muted-foreground">Fases ainda não definidas.</p>}
-          </CardContent>
+          )}
         </Card>
 
         <Card>
