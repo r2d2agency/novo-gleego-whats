@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { API_URL, getAuthToken } from "@/lib/api";
+import { API_URL, api, getAuthToken } from "@/lib/api";
 
 export interface MapLocation {
   id: string;
@@ -139,11 +139,31 @@ export interface MapUser {
 }
 
 async function fetchMapUsers(): Promise<MapUser[]> {
-  const res = await fetch(`${API_URL}/api/crm/map-users`, {
-    headers: { Authorization: `Bearer ${getAuthToken()}` },
-  });
-  if (!res.ok) return [];
-  return res.json();
+  try {
+    const viaMap = await api<any[]>('/api/crm/map-users');
+    if (Array.isArray(viaMap) && viaMap.length) {
+      return viaMap
+        .map((m: any) => ({ id: m.id || m.user_id, name: m.name || m.email || m.full_name }))
+        .filter((m: any) => m.id);
+    }
+  } catch (e) {
+    console.error('[use-map-data] map-users failed:', e);
+  }
+  try {
+    const orgs = await api<any[]>('/api/organizations');
+    const orgId = orgs?.[0]?.id || sessionStorage.getItem('user_org_id') || localStorage.getItem('user_org_id');
+    if (orgId) {
+      const members = await api<any[]>(`/api/organizations/${orgId}/members`);
+      if (Array.isArray(members) && members.length) {
+        return members
+          .map((m: any) => ({ id: m.user_id || m.id, name: m.name || m.email || m.full_name }))
+          .filter((m: any) => m.id);
+      }
+    }
+  } catch (e) {
+    console.error('[use-map-data] org-members failed:', e);
+  }
+  return [];
 }
 
 export function useMapUsers() {

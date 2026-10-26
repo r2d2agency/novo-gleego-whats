@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -145,17 +145,60 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
   const [editCustomFields, setEditCustomFields] = useState<Record<string, any>>({});
   const [isEditingCustomFields, setIsEditingCustomFields] = useState(false);
   
-  // Org members for owner select
-  const { data: orgMembers } = useQuery({
-    queryKey: ["org-members-for-deal-detail"],
+  // Org members for owner select (map-users no backend; fallback para members da org)
+  const { data: orgMembers, refetch: refetchOrgMembers } = useQuery({
+    queryKey: ["org-members-for-deal-detail", open],
     queryFn: async () => {
+      // 1) Tentar via /api/crm/map-users
       try {
-        return await api<{ id: string; name: string }[]>('/api/crm/map-users');
-      } catch {
-        return [];
+        const viaMap = await api<any[]>('/api/crm/map-users');
+        if (Array.isArray(viaMap) && viaMap.length) {
+          return viaMap
+            .map((m: any) => ({ id: m.id || m.user_id, name: m.name || m.email || m.full_name }))
+            .filter((m: any) => m.id);
+        }
+      } catch (e) {
+        console.error('[DealDetailDialog] map-users failed:', e);
       }
+      // 2) Tentar via /api/organizations (pegar primeira org)
+      try {
+        const orgs = await api<any[]>('/api/organizations');
+        const orgId = orgs?.[0]?.id || sessionStorage.getItem('user_org_id') || localStorage.getItem('user_org_id');
+        if (orgId) {
+          const members = await api<any[]>(`/api/organizations/${orgId}/members`);
+          if (Array.isArray(members) && members.length) {
+            return members
+              .map((m: any) => ({ id: m.user_id || m.id, name: m.name || m.email || m.full_name }))
+              .filter((m: any) => m.id);
+          }
+        }
+      } catch (e) {
+        console.error('[DealDetailDialog] org-members failed:', e);
+      }
+      // 3) Último recurso: fetch direto com token
+      try {
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          const res = await fetch('https://gleego-whats-back.ckilhl.easypanel.host/api/crm/map-users', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length) {
+              return data
+                .map((m: any) => ({ id: m.id || m.user_id, name: m.name || m.email || m.full_name }))
+                .filter((m: any) => m.id);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[DealDetailDialog] direct map-users failed:', e);
+      }
+      return [];
     },
     enabled: open,
+    retry: 1,
+    staleTime: 0,
   });
 
   // Lead Scoring
@@ -173,6 +216,16 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
 
   const currentDeal = fullDeal || deal;
   const stages = funnelData?.stages || [];
+
+  // Garante que o responsável atual apareça no select, mesmo se a lista vier incompleta
+  const ownerOptions = useMemo(() => {
+    const list = (orgMembers || []).filter((m: any) => m?.id);
+    const currentId = currentDeal?.owner_id;
+    if (currentId && !list.some((m: any) => m.id === currentId)) {
+      return [...list, { id: currentId, name: currentDeal?.owner_name || "Responsável atual" }];
+    }
+    return list;
+  }, [orgMembers, currentDeal?.owner_id, currentDeal?.owner_name]);
 
   // Default new-task assignment to deal owner whenever the loaded deal changes.
   useEffect(() => {
@@ -304,6 +357,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
     setEditProbability(String(currentDeal?.probability || 0));
     setEditExpectedClose(currentDeal?.expected_close_date ? currentDeal.expected_close_date.split('T')[0] : '');
     setEditOwnerId(currentDeal?.owner_id || '');
+    refetchOrgMembers();
     setIsEditingDetails(true);
   };
 
@@ -902,9 +956,15 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="none">Nenhum</SelectItem>
-                            {orgMembers?.map((m) => (
-                              <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                            ))}
+                            {ownerOptions.length > 0 ? (
+                              ownerOptions.map((m) => (
+                                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                              ))
+                            ) : currentDeal?.owner_id ? (
+                              <SelectItem key={currentDeal.owner_id} value={currentDeal.owner_id}>
+                                {currentDeal.owner_name || "Responsável atual"}
+                              </SelectItem>
+                            ) : null}
                           </SelectContent>
                         </Select>
                       ) : (

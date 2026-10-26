@@ -64,12 +64,35 @@ export function DealFormDialog({ funnel, open, onOpenChange }: DealFormDialogPro
   const { data: orgMembers } = useQuery({
     queryKey: ["org-members-for-deal"],
     queryFn: async () => {
+      // 1) /api/crm/map-users
       try {
-        return await api<{ id: string; name: string }[]>('/api/crm/map-users');
-      } catch {
-        return [];
+        const viaMap = await api<any[]>('/api/crm/map-users');
+        if (Array.isArray(viaMap) && viaMap.length) {
+          return viaMap
+            .map((m: any) => ({ id: m.id || m.user_id, name: m.name || m.email || m.full_name }))
+            .filter((m: any) => m.id);
+        }
+      } catch (e) {
+        console.error('[DealFormDialog] map-users failed:', e);
       }
+      // 2) /api/organizations/:id/members
+      try {
+        const orgs = await api<any[]>('/api/organizations');
+        const orgId = orgs?.[0]?.id || sessionStorage.getItem('user_org_id') || localStorage.getItem('user_org_id');
+        if (orgId) {
+          const members = await api<any[]>(`/api/organizations/${orgId}/members`);
+          if (Array.isArray(members) && members.length) {
+            return members
+              .map((m: any) => ({ id: m.user_id || m.id, name: m.name || m.email || m.full_name }))
+              .filter((m: any) => m.id);
+          }
+        }
+      } catch (e) {
+        console.error('[DealFormDialog] org-members failed:', e);
+      }
+      return [];
     },
+    staleTime: 0,
   });
 
   // Auto-fill group for non-managers

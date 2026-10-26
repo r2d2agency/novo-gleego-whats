@@ -16,7 +16,7 @@ import { useContacts, Contact, ContactList } from "@/hooks/use-contacts";
 import { Tag, User, Plus, Trash2, Phone, Search, Check, UserPlus, Users, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { API_URL, api, getAuthToken } from "@/lib/api";
+import { api } from "@/lib/api";
 import { toast } from "sonner";
 
 interface CompanyContact {
@@ -75,12 +75,33 @@ export function CompanyDialog({ company, open, onOpenChange, onCreated }: Compan
   const { data: orgMembers } = useQuery({
     queryKey: ["org-members-for-company"],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/crm/map-users`, {
-        headers: { Authorization: `Bearer ${getAuthToken()}` },
-      });
-      if (!res.ok) return [];
-      return res.json() as Promise<{ id: string; name: string }[]>;
+      try {
+        const viaMap = await api<any[]>('/api/crm/map-users');
+        if (Array.isArray(viaMap) && viaMap.length) {
+          return viaMap
+            .map((m: any) => ({ id: m.id || m.user_id, name: m.name || m.email || m.full_name }))
+            .filter((m: any) => m.id);
+        }
+      } catch (e) {
+        console.error('[CompanyDialog] map-users failed:', e);
+      }
+      try {
+        const orgs = await api<any[]>('/api/organizations');
+        const orgId = orgs?.[0]?.id || sessionStorage.getItem('user_org_id') || localStorage.getItem('user_org_id');
+        if (orgId) {
+          const members = await api<any[]>(`/api/organizations/${orgId}/members`);
+          if (Array.isArray(members) && members.length) {
+            return members
+              .map((m: any) => ({ id: m.user_id || m.id, name: m.name || m.email || m.full_name }))
+              .filter((m: any) => m.id);
+          }
+        }
+      } catch (e) {
+        console.error('[CompanyDialog] org-members failed:', e);
+      }
+      return [];
     },
+    staleTime: 0,
   });
   const contactsApi = useContacts();
 
