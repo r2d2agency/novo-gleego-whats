@@ -127,13 +127,13 @@ function TaskCardBody({ task, dragHandle, onOpen }: { task: DevTaskGlobal; dragH
 
         {task.phase_name && <div className="text-[11px] text-muted-foreground">Fase: {task.phase_name}</div>}
         {task.description && <div className="text-[11px] text-muted-foreground line-clamp-2">{task.description}</div>}
-        {task.source === "portal" && (
+        {task.source === "portal" || task.source === "client" ? (
           <div>
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-0">
               Pedido do cliente
             </Badge>
           </div>
-        )}
+        ) : null}
         {(task.requester_name || task.department || task.created_at) && (
           <div className="rounded-md bg-muted/60 p-2 space-y-1 text-[11px] text-muted-foreground">
             {task.requester_name && (
@@ -385,7 +385,7 @@ export default function WorkspaceKanban() {
           <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-start gap-2">
-                {detailTask?.source === "portal" && (
+                {(detailTask?.source === "portal" || detailTask?.source === "client") && (
                   <Badge variant="secondary" className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-0 shrink-0 mt-0.5">
                     Pedido do cliente
                   </Badge>
