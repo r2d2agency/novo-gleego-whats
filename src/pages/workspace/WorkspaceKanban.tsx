@@ -88,15 +88,16 @@ function ModulePicker({ task }: { task: DevTaskGlobal }) {
   );
 }
 
-function TaskCardBody({ task, dragHandle }: { task: DevTaskGlobal; dragHandle?: React.ReactNode }) {
+function TaskCardBody({ task, dragHandle, onOpen }: { task: DevTaskGlobal; dragHandle?: React.ReactNode; onOpen?: (t: DevTaskGlobal) => void }) {
   const daysOpen = daysSince(task.created_at);
   const dueLeft = task.due_date ? Math.round((new Date(task.due_date).getTime() - Date.now()) / 86400000) : null;
   const overdue = dueLeft !== null && dueLeft < 0 && task.status !== "done";
   const accent = task.module_color || "#94a3b8";
   return (
     <Card
-      className="border hover:border-primary/40 transition-colors bg-card border-l-4"
+      className="border hover:border-primary/40 transition-colors bg-card border-l-4 cursor-pointer"
       style={{ borderLeftColor: accent }}
+      onClick={() => onOpen?.(task)}
     >
       <CardContent className="p-3 space-y-2">
         <div className="flex items-start gap-2">
@@ -125,10 +126,31 @@ function TaskCardBody({ task, dragHandle }: { task: DevTaskGlobal; dragHandle?: 
         </div>
 
         {task.phase_name && <div className="text-[11px] text-muted-foreground">Fase: {task.phase_name}</div>}
-        {(task.requester_name || task.department) && (
-          <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-muted-foreground">
-            {task.requester_name && <span className="inline-flex items-center gap-1"><User className="h-3 w-3" /> {task.requester_name}</span>}
-            {task.department && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{task.department}</Badge>}
+        {task.description && <div className="text-[11px] text-muted-foreground line-clamp-2">{task.description}</div>}
+        {task.source === "portal" && (
+          <div>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-0">
+              Pedido do cliente
+            </Badge>
+          </div>
+        )}
+        {(task.requester_name || task.department || task.created_at) && (
+          <div className="rounded-md bg-muted/60 p-2 space-y-1 text-[11px] text-muted-foreground">
+            {task.requester_name && (
+              <div className="flex items-center gap-1 text-foreground font-medium">
+                <User className="h-3 w-3" /> {task.requester_name}
+              </div>
+            )}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {task.department && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{task.department}</Badge>}
+              {task.contact_email && <span className="truncate max-w-full">{task.contact_email}</span>}
+            </div>
+            {task.created_at && (
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Solicitado em {new Date(task.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </div>
+            )}
           </div>
         )}
         {task.image_url && (
@@ -162,18 +184,20 @@ function TaskCardBody({ task, dragHandle }: { task: DevTaskGlobal; dragHandle?: 
   );
 }
 
-function DraggableCard({ task }: { task: DevTaskGlobal }) {
+function DraggableCard({ task, onOpen }: { task: DevTaskGlobal; onOpen: (t: DevTaskGlobal) => void }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: task.id, data: { task } });
   return (
     <div ref={setNodeRef} style={{ opacity: isDragging ? 0.4 : 1 }}>
       <TaskCardBody
         task={task}
+        onOpen={onOpen}
         dragHandle={
           <button
             {...attributes}
             {...listeners}
             className="p-1 -m-1 text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing touch-none"
             aria-label="Arrastar"
+            onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-4 w-4" />
           </button>
@@ -211,6 +235,7 @@ export default function WorkspaceKanban() {
   const [activeTask, setActiveTask] = useState<DevTaskGlobal | null>(null);
   const [doneTarget, setDoneTarget] = useState<DevTaskGlobal | null>(null);
   const [doneNotes, setDoneNotes] = useState("");
+  const [detailTask, setDetailTask] = useState<DevTaskGlobal | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const projects = useMemo(() => {
@@ -343,7 +368,7 @@ export default function WorkspaceKanban() {
             <div className="grid gap-3 grid-cols-1 md:grid-cols-3 xl:grid-cols-5">
               {COLUMNS.map((col) => (
                 <DroppableColumn key={col.key} col={col} count={grouped[col.key]?.length || 0}>
-                  {(grouped[col.key] || []).map((t) => <DraggableCard key={t.id} task={t} />)}
+                  {(grouped[col.key] || []).map((t) => <DraggableCard key={t.id} task={t} onOpen={setDetailTask} />)}
                   {(grouped[col.key] || []).length === 0 && (
                     <div className="text-center text-xs text-muted-foreground py-6">Solte aqui</div>
                   )}
@@ -355,6 +380,89 @@ export default function WorkspaceKanban() {
             </DragOverlay>
           </DndContext>
         )}
+
+        <Dialog open={!!detailTask} onOpenChange={(o) => { if (!o) setDetailTask(null); }}>
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-start gap-2">
+                {detailTask?.source === "portal" && (
+                  <Badge variant="secondary" className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-0 shrink-0 mt-0.5">
+                    Pedido do cliente
+                  </Badge>
+                )}
+                <span>{detailTask?.title}</span>
+              </DialogTitle>
+              <DialogDescription>
+                {detailTask?.project_name}{detailTask?.phase_name ? ` · ${detailTask.phase_name}` : ""}{detailTask?.module_name ? ` · ${detailTask.module_name}` : ""}
+              </DialogDescription>
+            </DialogHeader>
+            {detailTask && (
+              <div className="space-y-4">
+                {detailTask.description && (
+                  <p className="text-sm whitespace-pre-wrap">{detailTask.description}</p>
+                )}
+                {(detailTask.requester_name || detailTask.department || detailTask.contact_email || detailTask.created_at) && (
+                  <div className="rounded-md bg-muted/60 p-3 space-y-1.5 text-sm">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Quem solicitou</div>
+                    {detailTask.requester_name && (
+                      <div className="flex items-center gap-1.5 font-medium"><User className="h-4 w-4" /> {detailTask.requester_name}</div>
+                    )}
+                    <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                      {detailTask.department && <Badge variant="outline">{detailTask.department}</Badge>}
+                      {detailTask.contact_email && <span>{detailTask.contact_email}</span>}
+                    </div>
+                    {detailTask.created_at && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Clock className="h-3.5 w-3.5" />
+                        Solicitado em {new Date(detailTask.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {detailTask.image_url && (
+                  <a href={detailTask.image_url} target="_blank" rel="noreferrer" className="block">
+                    <img src={detailTask.image_url} alt="Anexo da solicitação" className="rounded border max-h-64 object-contain" loading="lazy" />
+                  </a>
+                )}
+                <div className="grid gap-1.5">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Etapa atual</span>
+                  <Select
+                    value={detailTask.status}
+                    onValueChange={(v) => {
+                      if (v === "done") {
+                        setDetailTask(null);
+                        setDoneTarget(detailTask);
+                      } else {
+                        move.mutate({ id: detailTask.id, status: v });
+                        setDetailTask({ ...detailTask, status: v });
+                      }
+                    }}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {COLUMNS.map((c) => <SelectItem key={c.key} value={c.key}>{c.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {detailTask.client_feedback === "needs_changes" && (
+                  <div className="text-sm text-amber-600 flex items-center gap-1.5">
+                    <MessageSquare className="h-4 w-4" /> Cliente pediu ajustes
+                    {detailTask.client_feedback_note ? `: ${detailTask.client_feedback_note}` : ""}
+                  </div>
+                )}
+                {detailTask.client_feedback === "approved" && (
+                  <div className="text-sm text-emerald-600">Cliente aprovou esta entrega</div>
+                )}
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" asChild onClick={() => setDetailTask(null)}>
+                <Link to={`/workspace/${detailTask?.project_id}`}>Abrir projeto</Link>
+              </Button>
+              <Button onClick={() => setDetailTask(null)}>Fechar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={!!doneTarget} onOpenChange={(o) => { if (!o) { setDoneTarget(null); setDoneNotes(""); } }}>
           <DialogContent className="max-w-lg">
