@@ -61,12 +61,11 @@ export default function ClientPortal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, data?.project?.id]);
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
-  if (error || !data) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Portal indisponível.</div>;
-
-  const { project, phases = [], modules = [], tasks = [] } = data;
-  const totalDone = phases.filter((p: any) => p.status === "done").length;
-  const pct = phases.length > 0 ? Math.round((totalDone / phases.length) * 100) : 0;
+  // Hooks precisam ficar antes de qualquer return (regras do React).
+  // Usa fallbacks enquanto os dados carregam.
+  const tasks = useMemo(() => (data as any)?.tasks ?? [], [data]);
+  const phases = useMemo(() => (data as any)?.phases ?? [], [data]);
+  const modules = useMemo(() => (data as any)?.modules ?? [], [data]);
 
   // Departamentos vindos do servidor + digitados manualmente em solicitações
   const allDepartments = useMemo(() => {
@@ -91,6 +90,13 @@ export default function ClientPortal() {
         (filterRequester === "all" || (t.requester_name || "") === filterRequester)
     );
   }, [tasks, filterDept, filterRequester]);
+
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>;
+  if (error || !data) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Portal indisponível.</div>;
+
+  const { project } = data;
+  const totalDone = phases.filter((p: any) => p.status === "done").length;
+  const pct = phases.length > 0 ? Math.round((totalDone / phases.length) * 100) : 0;
 
   const resolveImageUrl = (url: string) => {
     if (!url) return url;
