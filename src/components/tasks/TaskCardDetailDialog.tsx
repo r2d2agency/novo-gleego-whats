@@ -653,15 +653,19 @@ export function TaskCardDetailDialog({ cardId, boardId, isGlobal, open, onOpenCh
                   </div>
 
                   {/* Assignee (only on global boards) */}
-                  {isGlobal && orgMembers.length > 0 && (
+                  {isGlobal && (
                     <div>
                       <label className="text-xs text-muted-foreground">Responsável</label>
-                      <Select value={card.assigned_to || ""} onValueChange={v => handleUpdateField('assigned_to', v || null)}>
+                      <Select value={card.assigned_to || "none"} onValueChange={v => handleUpdateField('assigned_to', v === "none" ? null : v)}>
                         <SelectTrigger className="h-8 mt-1"><SelectValue placeholder="Nenhum" /></SelectTrigger>
                         <SelectContent>
-                          {orgMembers.map(m => (
+                          <SelectItem value="none">Nenhum</SelectItem>
+                          {(orgMembers || []).map(m => (
                             <SelectItem key={m.user_id} value={m.user_id}>{m.name}</SelectItem>
                           ))}
+                          {card.assigned_to && !(orgMembers || []).some(m => m.user_id === card.assigned_to) && (
+                            <SelectItem value={card.assigned_to}>{card.assigned_to_name || "Responsável atual"}</SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>

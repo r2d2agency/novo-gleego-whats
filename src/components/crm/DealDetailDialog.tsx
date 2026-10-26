@@ -149,9 +149,10 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
   const { data: orgMembers, refetch: refetchOrgMembers } = useQuery({
     queryKey: ["org-members-for-deal-detail", open],
     queryFn: async () => {
-      // 1) Tentar via /api/crm/map-users
+      // 1) Tentar via /api/crm/map-users (com deal_id para respeitar multi-tenant)
       try {
-        const viaMap = await api<any[]>('/api/crm/map-users');
+        const q = deal?.id ? `?deal_id=${encodeURIComponent(deal.id)}` : '';
+        const viaMap = await api<any[]>(`/api/crm/map-users${q}`);
         if (Array.isArray(viaMap) && viaMap.length) {
           return viaMap
             .map((m: any) => ({ id: m.id || m.user_id, name: m.name || m.email || m.full_name }))

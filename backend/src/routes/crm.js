@@ -3560,11 +3560,31 @@ router.get('/map-users', async (req, res) => {
     const org = await getUserOrg(req.userId);
     if (!org) return res.status(403).json({ error: 'No organization' });
 
+    let orgId = org.organization_id;
+    // If called with deal_id/company_id/funnel_id, prefer that entity's organization,
+    // but only if the caller is actually a member of it.
+    const { deal_id, company_id, funnel_id } = req.query;
+    const requestedOrgId = deal_id
+      ? (await query('SELECT organization_id FROM crm_deals WHERE id = $1', [deal_id])).rows[0]?.organization_id
+      : company_id
+        ? (await query('SELECT organization_id FROM crm_companies WHERE id = $1', [company_id])).rows[0]?.organization_id
+        : funnel_id
+          ? (await query('SELECT organization_id FROM crm_funnels WHERE id = $1', [funnel_id])).rows[0]?.organization_id
+          : null;
+
+    if (requestedOrgId && requestedOrgId !== orgId) {
+      const member = await query(
+        'SELECT 1 FROM organization_members WHERE organization_id = $1 AND user_id = $2 LIMIT 1',
+        [requestedOrgId, req.userId]
+      );
+      if (member.rows.length > 0) orgId = requestedOrgId;
+    }
+
     const result = await query(
       `SELECT u.id, u.name FROM users u
        INNER JOIN organization_members om ON om.user_id = u.id
        WHERE om.organization_id = $1 ORDER BY u.name`,
-      [org.organization_id]
+      [orgId]
     );
     res.json(result.rows);
   } catch (error) {
