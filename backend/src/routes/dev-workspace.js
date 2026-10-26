@@ -567,12 +567,11 @@ router.post('/portal/:token/requests', async (req, res) => {
       try {
         const modules = (await query(`SELECT id, name FROM dev_modules WHERE project_id = $1`, [project.id])).rows;
         const phases = (await query(`SELECT id, name, module_id FROM dev_phases WHERE project_id = $1`, [project.id])).rows;
-        if (modules.length === 0) return;
+        // Mesmo sem módulos cadastrados, a IA classifica tipo/prioridade (module_id/phase_id ficam null).
         const classification = await aiJSON(
           project.organization_id,
           `Você classifica demandas de clientes de um projeto de software. Responda SEMPRE JSON válido.`,
-          `Módulos disponíveis: ${JSON.stringify(modules)}
-Fases: ${JSON.stringify(phases)}
+          `${modules.length ? `Módulos disponíveis: ${JSON.stringify(modules)}\nFases: ${JSON.stringify(phases)}` : `Ainda não há módulos/fases cadastrados — use module_id null e phase_id null.`}
 Demanda: "${title}\n${description || ''}"
 Responda no formato {"module_id": "...", "phase_id": "...", "type": "support|implementation|fix|feature|chore", "priority": "low|medium|high", "reasoning": "..."}`,
           project.owner_user_id
@@ -688,16 +687,15 @@ router.post('/portal/:token/requests/bulk', async (req, res) => {
     }
     await logActivity(project.id, 'client', 'bulk_request_created', { count: created.length, contact_email });
 
-    // Async: IA classifica em segundo plano (fire-and-forget)
+    // Async: IA classifica em segundo plano (fire-and-forget).
+    // Mesmo sem módulos cadastrados, classifica tipo/prioridade (module_id/phase_id ficam null).
     (async () => {
       try {
-        if (!modules.length) return;
         const numbered = demands.map((d, i) => `${i + 1}. ${d}`).join('\n');
         const data = await aiJSON(
           project.organization_id,
           `Você classifica demandas de clientes num projeto de software JÁ EM ANDAMENTO. Use apenas módulos/fases existentes ou null. Responda SOMENTE JSON válido.`,
-          `Módulos: ${JSON.stringify(modules)}
-Fases: ${JSON.stringify(phases)}
+          `${modules.length ? `Módulos: ${JSON.stringify(modules)}\nFases: ${JSON.stringify(phases)}` : `Ainda não há módulos/fases cadastrados — use module_id null e phase_id null para todas.`}
 
 Demandas (mesma ordem):
 ${numbered}

@@ -232,6 +232,7 @@ export default function WorkspaceKanban() {
   const [deptFilter, setDeptFilter] = useState<string>("all");
   const [requesterFilter, setRequesterFilter] = useState<string>("all");
   const [sortMode, setSortMode] = useState<SortMode>("oldest");
+  const [clientOnly, setClientOnly] = useState(false);
   const [activeTask, setActiveTask] = useState<DevTaskGlobal | null>(null);
   const [doneTarget, setDoneTarget] = useState<DevTaskGlobal | null>(null);
   const [doneNotes, setDoneNotes] = useState("");
@@ -259,6 +260,7 @@ export default function WorkspaceKanban() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = (tasks || []).filter((t) =>
+      (clientOnly ? (t.source === "client" || t.source === "portal") : true) &&
       (projectFilter === "all" || t.project_id === projectFilter) &&
       (deptFilter === "all" || (t.department || "") === deptFilter) &&
       (requesterFilter === "all" || (t.requester_name || "") === requesterFilter) &&
@@ -325,6 +327,15 @@ export default function WorkspaceKanban() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Input placeholder="Buscar…" value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 w-48" />
+            <Button
+              variant={clientOnly ? "default" : "outline"}
+              size="sm"
+              className="h-9"
+              onClick={() => setClientOnly((v) => !v)}
+              title="Mostrar apenas pedidos feitos pelo portal do cliente"
+            >
+              Pedidos do cliente
+            </Button>
             <Select value={projectFilter} onValueChange={setProjectFilter}>
               <SelectTrigger className="h-9 w-52"><SelectValue placeholder="Todos os projetos" /></SelectTrigger>
               <SelectContent>
