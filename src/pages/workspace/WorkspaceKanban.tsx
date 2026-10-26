@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Calendar, Clock, Loader2, LayoutGrid, MessageSquare, AlertTriangle, GripVertical } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, Loader2, LayoutGrid, MessageSquare, AlertTriangle, GripVertical, User } from "lucide-react";
 import { useDevAllTasks, useDevTaskStatusMutation, useDevTaskUpdateGlobal, useDevModules, DevTaskGlobal } from "@/hooks/use-dev-workspace";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -125,6 +125,17 @@ function TaskCardBody({ task, dragHandle }: { task: DevTaskGlobal; dragHandle?: 
         </div>
 
         {task.phase_name && <div className="text-[11px] text-muted-foreground">Fase: {task.phase_name}</div>}
+        {(task.requester_name || task.department) && (
+          <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-muted-foreground">
+            {task.requester_name && <span className="inline-flex items-center gap-1"><User className="h-3 w-3" /> {task.requester_name}</span>}
+            {task.department && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{task.department}</Badge>}
+          </div>
+        )}
+        {task.image_url && (
+          <a href={task.image_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="block">
+            <img src={task.image_url} alt="Anexo" className="rounded border max-h-24 object-contain" loading="lazy" />
+          </a>
+        )}
         {task.client_feedback === "needs_changes" && (
           <div className="text-[11px] text-amber-600 flex items-center gap-1"><MessageSquare className="h-3 w-3" /> Cliente pediu ajustes</div>
         )}
@@ -194,6 +205,8 @@ export default function WorkspaceKanban() {
   const move = useDevTaskStatusMutation();
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState<string>("all");
+  const [deptFilter, setDeptFilter] = useState<string>("all");
+  const [requesterFilter, setRequesterFilter] = useState<string>("all");
   const [sortMode, setSortMode] = useState<SortMode>("oldest");
   const [activeTask, setActiveTask] = useState<DevTaskGlobal | null>(null);
   const [doneTarget, setDoneTarget] = useState<DevTaskGlobal | null>(null);
@@ -206,11 +219,26 @@ export default function WorkspaceKanban() {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [tasks]);
 
+  const departments = useMemo(() => {
+    const set = new Set<string>();
+    (tasks || []).forEach((t) => t.department && set.add(t.department));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [tasks]);
+
+  const requesters = useMemo(() => {
+    const set = new Set<string>();
+    (tasks || []).forEach((t) => t.requester_name && set.add(t.requester_name));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [tasks]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = (tasks || []).filter((t) =>
       (projectFilter === "all" || t.project_id === projectFilter) &&
-      (!q || t.title.toLowerCase().includes(q) || t.project_name.toLowerCase().includes(q))
+      (deptFilter === "all" || (t.department || "") === deptFilter) &&
+      (requesterFilter === "all" || (t.requester_name || "") === requesterFilter) &&
+      (!q || t.title.toLowerCase().includes(q) || t.project_name.toLowerCase().includes(q) ||
+        (t.requester_name || "").toLowerCase().includes(q) || (t.department || "").toLowerCase().includes(q))
     );
     const prio = (p: string) => (p === "high" ? 0 : p === "medium" ? 1 : 2);
     const ts = (t: DevTaskGlobal) => (t.created_at ? new Date(t.created_at).getTime() : 0);
@@ -219,7 +247,7 @@ export default function WorkspaceKanban() {
       if (sortMode === "newest") return ts(b) - ts(a);
       return prio(a.priority) - prio(b.priority) || ts(b) - ts(a);
     });
-  }, [tasks, search, projectFilter, sortMode]);
+  }, [tasks, search, projectFilter, deptFilter, requesterFilter, sortMode]);
 
   const grouped = useMemo(() => {
     const g: Record<string, DevTaskGlobal[]> = {};
@@ -279,6 +307,24 @@ export default function WorkspaceKanban() {
                 {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
+            {departments.length > 0 && (
+              <Select value={deptFilter} onValueChange={setDeptFilter}>
+                <SelectTrigger className="h-9 w-44"><SelectValue placeholder="Departamento" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os deptos.</SelectItem>
+                  {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            {requesters.length > 0 && (
+              <Select value={requesterFilter} onValueChange={setRequesterFilter}>
+                <SelectTrigger className="h-9 w-44"><SelectValue placeholder="Solicitante" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os solicitantes</SelectItem>
+                  {requesters.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
             <Select value={sortMode} onValueChange={(v: SortMode) => setSortMode(v)}>
               <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>
               <SelectContent>

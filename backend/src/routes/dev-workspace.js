@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import crypto from 'crypto';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { authenticate } from '../middleware/auth.js';
 import { query } from '../db.js';
 import {
@@ -14,6 +17,30 @@ import { callAI } from '../lib/ai-caller.js';
 import { logInfo, logError } from '../logger.js';
 
 const router = Router();
+
+// Upload de imagens do portal do cliente (público via token) — pasta uploads/ compartilhada
+const portalUploadsDir = path.join(process.cwd(), 'uploads');
+const portalImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      try { fs.mkdirSync(portalUploadsDir, { recursive: true }); } catch (_) {}
+      cb(null, portalUploadsDir);
+    },
+    filename: (_req, file, cb) => {
+      const mimeToExt = {
+        'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif',
+        'image/webp': '.webp', 'image/bmp': '.bmp', 'image/jfif': '.jpg',
+      };
+      const ext = mimeToExt[file.mimetype] || path.extname(file.originalname || '') || '.jpg';
+      cb(null, `portal-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|gif|webp|bmp|jfif)$/.test(file.mimetype)) return cb(null, true);
+    cb(new Error(`Tipo de arquivo não permitido: ${file.mimetype}. Envie uma imagem (JPG, PNG, GIF ou WEBP).`), false);
+  },
+});
 
 // -------------------- Self-heal schema --------------------
 (async () => {
@@ -107,6 +134,20 @@ const router = Router();
     // Sub-modules: hierarchical modules via parent_id
     await query(`ALTER TABLE dev_modules ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES dev_modules(id) ON DELETE CASCADE`);
     await query(`CREATE INDEX IF NOT EXISTS idx_dev_modules_parent ON dev_modules(parent_id)`);
+    // Client request metadata: requester name, department, attached image
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS requester_name TEXT`);
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS department TEXT`);
+    await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS image_url TEXT`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_dev_tasks_department ON dev_tasks(project_id, department)`);
+    // Departments registered per project (client can add via "+" in the portal)
+    await query(`CREATE TABLE IF NOT EXISTS dev_departments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL REFERENCES dev_projects(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (project_id, name)
+    )`);
+    await query(`CREATE INDEX IF NOT EXISTS idx_dev_departments_proj ON dev_departments(project_id)`);
   } catch (e) { console.error('dev-workspace init error:', e.message); }
 })();
 
@@ -473,12 +514,16 @@ router.get('/portal/:token', async (req, res) => {
 
     // Client-visible task list — client requests + anything already sent to testing
     const tasksQ = await query(
-      `SELECT id, title, description, status, type, priority, phase_id, module_id, source, client_feedback, client_feedback_note, contact_email, created_at, completed_at, due_date
+      `SELECT id, title, description, status, type, priority, phase_id, module_id, source, client_feedback, client_feedback_note, contact_email, requester_name, department, image_url, created_at, completed_at, due_date
          FROM dev_tasks
         WHERE project_id = $1
           AND (source = 'client' OR status IN ('testing','done'))
         ORDER BY created_at DESC
         LIMIT 200`,
+      [project.id]
+    );
+    const departmentsQ = await query(
+      `SELECT id, name FROM dev_departments WHERE project_id = $1 ORDER BY name ASC`,
       [project.id]
     );
 
@@ -487,6 +532,7 @@ router.get('/portal/:token', async (req, res) => {
       modules: modules.rows,
       phases: phases.rows.map((ph) => ({ ...ph, task_stats: cmap[ph.id] || { total: 0, done: 0 } })),
       tasks: tasksQ.rows,
+      departments: departmentsQ.rows,
     });
   } catch (e) {
     logError('dev_workspace.portal_error', e);
@@ -496,7 +542,7 @@ router.get('/portal/:token', async (req, res) => {
 
 router.post('/portal/:token/requests', async (req, res) => {
   try {
-    const { title, description, contact_email } = req.body || {};
+    const { title, description, contact_email, requester_name, department, image_url } = req.body || {};
     if (!title) return res.status(400).json({ error: 'title obrigatório' });
     const p = await query(
       `SELECT id, organization_id, owner_user_id FROM dev_projects WHERE portal_token = $1 AND portal_enabled = true LIMIT 1`,
@@ -506,14 +552,15 @@ router.post('/portal/:token/requests', async (req, res) => {
     const project = p.rows[0];
 
     const ins = await query(
-      `INSERT INTO dev_tasks (project_id, title, description, type, status, source, client_note)
-       VALUES ($1, $2, $3, 'feature', 'backlog', 'client', $4) RETURNING *`,
-      [project.id, title.slice(0, 240), (description || '').slice(0, 5000), contact_email || null]
+      `INSERT INTO dev_tasks (project_id, title, description, type, status, source, client_note, requester_name, department, image_url)
+       VALUES ($1, $2, $3, 'feature', 'backlog', 'client', $4, $5, $6, $7) RETURNING *`,
+      [project.id, title.slice(0, 240), (description || '').slice(0, 5000), contact_email || null,
+       (requester_name || '').slice(0, 120) || null, (department || '').slice(0, 120) || null, image_url || null]
     );
     if (contact_email) {
       try { await query(`UPDATE dev_tasks SET contact_email = $1 WHERE id = $2`, [contact_email, ins.rows[0].id]); } catch (_) {}
     }
-    await logActivity(project.id, 'client', 'request_created', { task_id: ins.rows[0].id, contact_email });
+    await logActivity(project.id, 'client', 'request_created', { task_id: ins.rows[0].id, contact_email, requester_name, department });
 
     // Async: classify with AI (fire and forget)
     (async () => {
@@ -600,7 +647,7 @@ async function handleFeedback(req, res) {
 // Public bulk request: cliente envia várias demandas de uma vez; IA classifica e cria tasks.
 router.post('/portal/:token/requests/bulk', async (req, res) => {
   try {
-    const { text, items, contact_email } = req.body || {};
+    const { text, items, contact_email, requester_name, department } = req.body || {};
     const p = await query(
       `SELECT id, organization_id, owner_user_id FROM dev_projects WHERE portal_token = $1 AND portal_enabled = true LIMIT 1`,
       [req.params.token]
@@ -628,9 +675,10 @@ router.post('/portal/:token/requests/bulk', async (req, res) => {
     for (const d of demands) {
       const title = d.split('\n')[0].slice(0, 200);
       const ins = await query(
-        `INSERT INTO dev_tasks (project_id, title, description, type, status, source, client_note, contact_email)
-         VALUES ($1,$2,$3,'feature','backlog','client',$4,$5) RETURNING *`,
-        [project.id, title, d.slice(0, 5000), d.slice(0, 5000), contact_email || null]
+        `INSERT INTO dev_tasks (project_id, title, description, type, status, source, client_note, contact_email, requester_name, department)
+         VALUES ($1,$2,$3,'feature','backlog','client',$4,$5,$6,$7) RETURNING *`,
+        [project.id, title, d.slice(0, 5000), d.slice(0, 5000), contact_email || null,
+         (requester_name || '').slice(0, 120) || null, (department || '').slice(0, 120) || null]
       ).catch(async () => query(
         `INSERT INTO dev_tasks (project_id, title, description, type, status, source, client_note)
          VALUES ($1,$2,$3,'feature','backlog','client',$4) RETURNING *`,
@@ -680,6 +728,73 @@ Formato: { "tasks": [ { "index": 1, "title": "resumo curto", "module_id": "uuid|
     logError('dev_workspace.portal_bulk_error', e);
     res.status(500).json({ error: 'Erro ao registrar pedidos' });
   }
+});
+
+// List departments of a project (public via portal token)
+router.get('/portal/:token/departments', async (req, res) => {
+  try {
+    const p = await query(
+      `SELECT id FROM dev_projects WHERE portal_token = $1 AND portal_enabled = true LIMIT 1`,
+      [req.params.token]
+    );
+    if (p.rows.length === 0) return res.status(404).json({ error: 'Portal não encontrado' });
+    const rows = await query(
+      `SELECT id, name FROM dev_departments WHERE project_id = $1 ORDER BY name ASC`,
+      [p.rows[0].id]
+    );
+    res.json(rows.rows);
+  } catch (e) {
+    logError('dev_workspace.portal_departments_error', e);
+    res.status(500).json({ error: 'Erro ao carregar departamentos' });
+  }
+});
+
+// Register a department (public via portal token — botão "+" no portal do cliente)
+router.post('/portal/:token/departments', async (req, res) => {
+  try {
+    const { name } = req.body || {};
+    const cleanName = String(name || '').trim().slice(0, 120);
+    if (!cleanName) return res.status(400).json({ error: 'name obrigatório' });
+    const p = await query(
+      `SELECT id FROM dev_projects WHERE portal_token = $1 AND portal_enabled = true LIMIT 1`,
+      [req.params.token]
+    );
+    if (p.rows.length === 0) return res.status(404).json({ error: 'Portal não encontrado' });
+    const ins = await query(
+      `INSERT INTO dev_departments (project_id, name) VALUES ($1, $2)
+       ON CONFLICT (project_id, name) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id, name`,
+      [p.rows[0].id, cleanName]
+    );
+    res.status(201).json(ins.rows[0]);
+  } catch (e) {
+    logError('dev_workspace.portal_department_create_error', e);
+    res.status(500).json({ error: 'Erro ao cadastrar departamento' });
+  }
+});
+
+// Upload de imagem junto com a solicitação (público via portal token)
+router.post('/portal/:token/upload-image', (req, res) => {
+  portalImageUpload.single('image')(req, res, async (uploadErr) => {
+    try {
+      if (uploadErr) return res.status(400).json({ error: uploadErr.message });
+      if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' });
+      const p = await query(
+        `SELECT id FROM dev_projects WHERE portal_token = $1 AND portal_enabled = true LIMIT 1`,
+        [req.params.token]
+      );
+      if (p.rows.length === 0) {
+        try { fs.unlinkSync(req.file.path); } catch (_) {}
+        return res.status(404).json({ error: 'Portal não encontrado' });
+      }
+      const baseUrl = String(process.env.API_BASE_URL || '').trim().replace(/\/+$/, '');
+      const url = baseUrl ? `${baseUrl}/uploads/${req.file.filename}` : `/uploads/${req.file.filename}`;
+      res.json({ ok: true, url });
+    } catch (e) {
+      logError('dev_workspace.portal_upload_error', e);
+      res.status(500).json({ error: 'Erro ao enviar imagem' });
+    }
+  });
 });
 
 // =====================================================

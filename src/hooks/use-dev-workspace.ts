@@ -23,7 +23,7 @@ export interface DevProject {
 }
 export interface DevModule { id: string; project_id: string; name: string; description: string | null; color: string; icon: string | null; position: number; parent_id: string | null; }
 export interface DevPhase { id: string; project_id: string; module_id: string | null; name: string; description: string | null; position: number; start_date: string | null; due_date: string | null; status: string; completed_at: string | null; }
-export interface DevTask { id: string; project_id: string; module_id: string | null; phase_id: string | null; title: string; description: string | null; type: string; priority: string; status: string; source: string; client_note: string | null; ai_reasoning: string | null; due_date: string | null; completed_at: string | null; completion_notes?: string | null; knowledge_id?: string | null; created_at?: string; updated_at?: string; }
+export interface DevTask { id: string; project_id: string; module_id: string | null; phase_id: string | null; title: string; description: string | null; type: string; priority: string; status: string; source: string; client_note: string | null; ai_reasoning: string | null; due_date: string | null; completed_at: string | null; completion_notes?: string | null; knowledge_id?: string | null; requester_name?: string | null; department?: string | null; image_url?: string | null; contact_email?: string | null; created_at?: string; updated_at?: string; }
 export interface DevTaskGlobal extends DevTask { project_name: string; phase_name: string | null; module_name: string | null; module_color: string | null; client_feedback?: string | null; client_feedback_note?: string | null; }
 export interface DevKnowledge { id: string; title: string; kind: string; source_url: string | null; tokens: number; preview?: string; created_at: string; }
 export interface DevGanttPhase extends DevPhase { module_name: string | null; module_color: string | null; deadline_status: "ok" | "warning" | "overdue"; }
@@ -253,7 +253,10 @@ export function useDevPortal(token: string | undefined) {
   });
 }
 
-export async function submitPortalRequest(token: string, data: { title: string; description?: string; contact_email?: string }) {
+export async function submitPortalRequest(
+  token: string,
+  data: { title: string; description?: string; contact_email?: string; requester_name?: string; department?: string; image_url?: string }
+) {
   const r = await fetch(`${API_URL}${base}/portal/${token}/requests`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -265,7 +268,7 @@ export async function submitPortalRequest(token: string, data: { title: string; 
 
 export async function submitPortalBulkRequests(
   token: string,
-  data: { text?: string; items?: string[]; contact_email?: string }
+  data: { text?: string; items?: string[]; contact_email?: string; requester_name?: string; department?: string }
 ) {
   const r = await fetch(`${API_URL}${base}/portal/${token}/requests/bulk`, {
     method: "POST",
@@ -277,6 +280,39 @@ export async function submitPortalBulkRequests(
     throw new Error(err.error || "Falha ao enviar pedidos");
   }
   return r.json() as Promise<{ ok: boolean; created: number }>;
+}
+
+export async function fetchPortalDepartments(token: string): Promise<{ id: string; name: string }[]> {
+  const r = await fetch(`${API_URL}${base}/portal/${token}/departments`);
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function createPortalDepartment(token: string, name: string): Promise<{ id: string; name: string }> {
+  const r = await fetch(`${API_URL}${base}/portal/${token}/departments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || "Falha ao cadastrar departamento");
+  }
+  return r.json();
+}
+
+export async function uploadPortalImage(token: string, file: File): Promise<{ ok: boolean; url: string }> {
+  const fd = new FormData();
+  fd.append("image", file);
+  const r = await fetch(`${API_URL}${base}/portal/${token}/upload-image`, {
+    method: "POST",
+    body: fd,
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || "Falha ao enviar imagem");
+  }
+  return r.json();
 }
 
 export async function submitPortalFeedback(
