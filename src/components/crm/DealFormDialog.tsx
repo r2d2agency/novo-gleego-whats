@@ -11,7 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { Building2, User, Search, Loader2, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
-import { api, API_URL, getAuthToken } from "@/lib/api";
+import { api } from "@/lib/api";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CompanyDialog } from "./CompanyDialog";
 import { useCRMLeadSources, useCRMLeadSourceMutations } from "@/hooks/use-crm-config";
@@ -64,11 +64,11 @@ export function DealFormDialog({ funnel, open, onOpenChange }: DealFormDialogPro
   const { data: orgMembers } = useQuery({
     queryKey: ["org-members-for-deal"],
     queryFn: async () => {
-      const res = await fetch(`${API_URL}/api/crm/map-users`, {
-        headers: { Authorization: `Bearer ${getAuthToken()}` },
-      });
-      if (!res.ok) return [];
-      return res.json() as Promise<{ id: string; name: string }[]>;
+      try {
+        return await api<{ id: string; name: string }[]>('/api/crm/map-users');
+      } catch {
+        return [];
+      }
     },
   });
 

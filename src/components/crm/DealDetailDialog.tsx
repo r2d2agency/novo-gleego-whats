@@ -149,11 +149,11 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
   const { data: orgMembers } = useQuery({
     queryKey: ["org-members-for-deal-detail"],
     queryFn: async () => {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/crm/map-users`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('auth_token')}` },
-      });
-      if (!res.ok) return [];
-      return res.json() as Promise<{ id: string; name: string }[]>;
+      try {
+        return await api<{ id: string; name: string }[]>('/api/crm/map-users');
+      } catch {
+        return [];
+      }
     },
     enabled: open,
   });

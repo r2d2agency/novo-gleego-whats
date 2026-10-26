@@ -1478,11 +1478,27 @@ router.post('/deals/bulk', async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
     if (!org) return res.status(403).json({ error: 'No organization' });
-    if (!['owner', 'admin', 'manager'].includes(org.role)) return res.status(403).json({ error: 'Permission denied' });
 
     const { action, deal_ids, target_funnel_id, target_stage_id, owner_id, group_id } = req.body;
     if (!deal_ids || !Array.isArray(deal_ids) || deal_ids.length === 0) {
       return res.status(400).json({ error: 'deal_ids is required' });
+    }
+
+    // Supervisores de grupo também podem reatribuir (apenas reassign, sem mudar grupo)
+    let isGroupSupervisor = false;
+    if (!canManage(org.role)) {
+      if (action !== 'reassign') return res.status(403).json({ error: 'Permission denied' });
+      const myGroups = await getUserGroupIds(req.userId);
+      isGroupSupervisor = myGroups.some(g => g.is_supervisor);
+      if (!isGroupSupervisor) return res.status(403).json({ error: 'Permission denied' });
+      if (group_id !== undefined) return res.status(403).json({ error: 'Permission denied' });
+      // Garante que os deals pertencem a um grupo onde o usuário é supervisor
+      const supGroupIds = myGroups.filter(g => g.is_supervisor).map(g => g.group_id);
+      const owned = await query(
+        `SELECT COUNT(*)::int AS c FROM crm_deals WHERE id = ANY($1) AND organization_id = $2 AND (group_id = ANY($3) OR owner_id = $4)`,
+        [deal_ids, org.organization_id, supGroupIds.length ? supGroupIds : [null], req.userId]
+      );
+      if (owned.rows[0].c !== deal_ids.length) return res.status(403).json({ error: 'Permission denied' });
     }
 
     let affected = 0;
