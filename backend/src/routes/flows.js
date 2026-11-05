@@ -407,6 +407,21 @@ router.post('/:id/toggle', async (req, res) => {
       return res.status(404).json({ error: 'Fluxo não encontrado' });
     }
 
+    // If flow was just deactivated, cancel all active sessions for it
+    const toggled = result.rows[0];
+    if (toggled.is_active === false) {
+      try {
+        await query(
+          `UPDATE flow_sessions
+           SET is_active = false, ended_at = NOW(), wait_reply_expires_at = NULL, wait_reply_variable = NULL
+           WHERE flow_id = $1 AND is_active = true`,
+          [toggled.id]
+        );
+      } catch (e) {
+        console.log('flow_sessions cancel on toggle skipped:', e.message);
+      }
+    }
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Toggle flow error:', error);

@@ -89,9 +89,11 @@ export async function executeWaitReplyTimeouts() {
     const result = await query(
       `SELECT fs.*
        FROM flow_sessions fs
-       WHERE fs.is_active = true 
-         AND fs.wait_reply_expires_at IS NOT NULL 
+       LEFT JOIN flows f ON f.id = fs.flow_id
+       WHERE fs.is_active = true
+         AND fs.wait_reply_expires_at IS NOT NULL
          AND fs.wait_reply_expires_at <= NOW()
+         AND (f.id IS NULL OR f.is_active = true)
        LIMIT 20`
     );
 
