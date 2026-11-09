@@ -44,6 +44,38 @@ function isValidBrazilianWhatsApp(value: string) {
   return national.length === 11 && /^[1-9][1-9]9/.test(national);
 }
 
+function isValidCPF(value: string) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(digits[i]) * (10 - i);
+  let rest = (sum * 10) % 11;
+  if (rest === 10) rest = 0;
+  if (rest !== parseInt(digits[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(digits[i]) * (11 - i);
+  rest = (sum * 10) % 11;
+  if (rest === 10) rest = 0;
+  return rest === parseInt(digits[10]);
+}
+
+function isValidCNPJ(value: string) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length !== 14 || /^(\d)\1{13}$/.test(digits)) return false;
+  const weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += parseInt(digits[i]) * weights1[i];
+  let rest = sum % 11;
+  const d1 = rest < 2 ? 0 : 11 - rest;
+  if (d1 !== parseInt(digits[12])) return false;
+  sum = 0;
+  for (let i = 0; i < 13; i++) sum += parseInt(digits[i]) * weights2[i];
+  rest = sum % 11;
+  const d2 = rest < 2 ? 0 : 11 - rest;
+  return d2 === parseInt(digits[13]);
+}
+
 // Ensures the number is dialable (has the 55 DDI) for a wa.me link.
 function toDialableBrazilPhone(value: string) {
   const digits = String(value || "").replace(/\D/g, "");
@@ -224,6 +256,20 @@ export default function PublicFormPage() {
     if (field.field_type === "whatsapp" && value.trim()) {
       if (!isValidBrazilianWhatsApp(value)) {
         addBotMessage("Por favor, informe um número de WhatsApp válido com DDD e celular (ex: 11 99999-9999).");
+        return false;
+      }
+    }
+
+    if (field.field_type === "cpf" && value.trim()) {
+      if (!isValidCPF(value)) {
+        addBotMessage("Por favor, informe um CPF válido.");
+        return false;
+      }
+    }
+
+    if (field.field_type === "cnpj" && value.trim()) {
+      if (!isValidCNPJ(value)) {
+        addBotMessage("Por favor, informe um CNPJ válido.");
         return false;
       }
     }
@@ -730,6 +776,12 @@ function validateField(value: string, field: FormField): string | null {
   if (field.field_type === "whatsapp" && value.trim()) {
     if (!isValidBrazilianWhatsApp(value)) return "Informe um WhatsApp válido com DDD e celular (ex: 11 99999-9999).";
   }
+  if (field.field_type === "cpf" && value.trim()) {
+    if (!isValidCPF(value)) return "Informe um CPF válido.";
+  }
+  if (field.field_type === "cnpj" && value.trim()) {
+    if (!isValidCNPJ(value)) return "Informe um CNPJ válido.";
+  }
   return null;
 }
 
@@ -984,7 +1036,7 @@ function TypeformView({ form, slug, primaryColor, bgColor, textColor, buttonText
             />
           ) : current ? (
             <Input
-              type={current.field_type === "email" ? "email" : current.field_type === "phone" || current.field_type === "whatsapp" ? "tel" : "text"}
+              type={current.field_type === "email" ? "email" : current.field_type === "phone" || current.field_type === "whatsapp" ? "tel" : current.field_type === "cpf" || current.field_type === "cnpj" ? "text" : "text"}
               value={values[current.field_key] || ""}
               onChange={(e) => setVal(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); goNext(); } }}

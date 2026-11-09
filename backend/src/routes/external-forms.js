@@ -9,7 +9,7 @@ import * as whatsappProvider from '../lib/whatsapp-provider.js';
 
 const router = express.Router();
 const VALID_DISPLAY_MODES = ['chat', 'typeform', 'standard', 'survey'];
-const VALID_FIELD_TYPES = ['text', 'phone', 'whatsapp', 'email', 'select', 'textarea', 'rating_stars'];
+const VALID_FIELD_TYPES = ['text', 'phone', 'whatsapp', 'email', 'select', 'textarea', 'rating_stars', 'cpf', 'cnpj'];
 
 // Self-healing for newer external form features on partial deployments.
 (async () => {

@@ -65,6 +65,8 @@ const FIELD_TYPES = [
   { value: "phone", label: "Telefone" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "email", label: "E-mail" },
+  { value: "cpf", label: "CPF" },
+  { value: "cnpj", label: "CNPJ" },
   { value: "textarea", label: "Texto longo" },
   { value: "select", label: "Seleção" },
 ];
