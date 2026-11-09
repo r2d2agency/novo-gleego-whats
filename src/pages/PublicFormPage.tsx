@@ -84,7 +84,7 @@ export default function PublicFormPage() {
   useEffect(() => {
     if (form?.fb_pixel_id && !window.fbq) {
       const s = document.createElement("script");
-      s.innerHTML = `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      s.text = `!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
         n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
         n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
         t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
@@ -319,7 +319,19 @@ export default function PublicFormPage() {
       
       setSubmitted(true);
       setThankYouMessage(result.thank_you_message || form.thank_you_message || "Obrigado!");
-      
+
+      // Fire ad-tracking conversion events on successful submit
+      if (form.fb_pixel_id && window.fbq) {
+        window.fbq("track", "Lead", { content_name: form.name || form.organization_name || "" });
+      }
+      if (form.google_ads_conversion_id && window.gtag) {
+        window.gtag("event", "conversion", {
+          send_to: form.google_ads_conversion_label
+            ? `${form.google_ads_conversion_id}/${form.google_ads_conversion_label}`
+            : form.google_ads_conversion_id,
+        });
+      }
+
       // Remove "Enviando..." message and add thank you
       setMessages((prev) => prev.filter((m) => !m.content.includes("Enviando")));
       addBotMessage(result.thank_you_message || form.thank_you_message || "Obrigado pelo contato!");
