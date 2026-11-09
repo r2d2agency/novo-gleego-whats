@@ -26,7 +26,7 @@ export const useCampaignLogs = (filters: Filters = {}) => {
     try {
       const params = new URLSearchParams();
       Object.entries({ ...filters, ...override }).forEach(([key, value]) => { if (value) params.set(key, value); });
-      const result = await api<CampaignLog[] | { logs: CampaignLog[] }>(`/campaigns/logs${params.toString() ? `?${params}` : ''}`);
+      const result = await api<CampaignLog[] | { logs: CampaignLog[] }>(`/api/campaigns/logs${params.toString() ? `?${params}` : ''}`);
       setLogs(Array.isArray(result) ? result : result.logs || []);
       return result;
     } catch (err) {
