@@ -454,6 +454,21 @@ const Configuracoes = () => {
                       <p><strong>Android:</strong> Toque no menu (⋮) do navegador e selecione "Instalar app" ou "Adicionar à tela inicial"</p>
                     </div>
                   </div>
+                  {isPushSupported && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleRequestPush}
+                      disabled={pushPermission === 'granted'}
+                    >
+                      <Bell className="h-4 w-4 mr-2" />
+                      {pushPermission === 'granted'
+                        ? 'Notificações ativadas neste navegador'
+                        : pushPermission === 'denied'
+                          ? 'Permissão bloqueada no navegador'
+                          : 'Ativar notificações neste navegador'}
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     className="w-full"

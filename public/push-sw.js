@@ -103,8 +103,8 @@ self.addEventListener('push', function(event) {
         badge: data.badge || '/icons/icon-96.png?v=2',
         vibrate: data.vibrate || [200, 100, 200, 100, 200],
         data: {
-          url: data.url || '/',
           ...data.data,
+          url: data.url || data.data?.url || '/',
         },
         actions: data.actions || [],
         tag: data.tag || 'default',

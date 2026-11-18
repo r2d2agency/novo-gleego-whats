@@ -282,14 +282,19 @@ export function useNotificationSound() {
     if (!settings.pushEnabled || pushPermission !== 'granted') return;
     
     try {
+      const notificationData = options?.data as { url?: string } | undefined;
       const notification = new Notification(title, {
         icon: '/icons/icon-192.png',
         badge: '/icons/icon-72.png',
+        tag: `local-${Date.now()}`,
         ...options,
       });
 
       notification.onclick = () => {
         window.focus();
+        if (notificationData?.url) {
+          window.location.assign(notificationData.url);
+        }
         notification.close();
       };
 
