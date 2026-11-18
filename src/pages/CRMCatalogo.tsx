@@ -362,41 +362,44 @@ export default function CRMCatalogo() {
       </div>
 
       <Dialog open={!!categoryDialog} onOpenChange={(open) => !open && setCategoryDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{categoryDialog === 'new' ? 'Nova categoria' : 'Editar categoria'}</DialogTitle>
-          </DialogHeader>
-          <form id="category-form" onSubmit={(event) => {
-            event.preventDefault();
-            handleSaveCategory(new FormData(event.currentTarget));
-          }} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="category-name">Nome</Label>
-              <Input id="category-name" name="name" defaultValue={categoryDialog !== 'new' ? categoryDialog?.name : ''} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="category-description">Descrição</Label>
-              <Textarea id="category-description" name="description" defaultValue={categoryDialog !== 'new' ? categoryDialog?.description : ''} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="category-position">Ordem</Label>
-              <Input id="category-position" name="position" type="number" defaultValue={categoryDialog !== 'new' ? categoryDialog?.position : 0} />
-            </div>
-            {categoryDialog !== 'new' && (
-              <div className="flex items-center gap-2">
-                <Switch id="category-active" name="is_active" defaultChecked={categoryDialog?.is_active} />
-                <Label htmlFor="category-active">Categoria ativa</Label>
+        {categoryDialog && (
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{categoryDialog === 'new' ? 'Nova categoria' : 'Editar categoria'}</DialogTitle>
+            </DialogHeader>
+            <form id="category-form" onSubmit={(event) => {
+              event.preventDefault();
+              handleSaveCategory(new FormData(event.currentTarget));
+            }} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="category-name">Nome</Label>
+                <Input id="category-name" name="name" defaultValue={categoryDialog === 'new' ? '' : categoryDialog.name} required />
               </div>
-            )}
-          </form>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCategoryDialog(null)}>Cancelar</Button>
-            <Button type="submit" form="category-form">Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
+              <div className="space-y-2">
+                <Label htmlFor="category-description">Descrição</Label>
+                <Textarea id="category-description" name="description" defaultValue={categoryDialog === 'new' ? '' : categoryDialog.description} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="category-position">Ordem</Label>
+                <Input id="category-position" name="position" type="number" defaultValue={categoryDialog === 'new' ? 0 : categoryDialog.position} />
+              </div>
+              {categoryDialog !== 'new' && (
+                <div className="flex items-center gap-2">
+                  <Switch id="category-active" name="is_active" defaultChecked={categoryDialog.is_active} />
+                  <Label htmlFor="category-active">Categoria ativa</Label>
+                </div>
+              )}
+            </form>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCategoryDialog(null)}>Cancelar</Button>
+              <Button type="submit" form="category-form">Salvar</Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
       </Dialog>
 
       <Dialog open={!!itemDialog} onOpenChange={(open) => !open && setItemDialog(null)}>
+        {itemDialog && (
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{itemDialog === 'new' ? 'Novo item' : 'Editar item'}</DialogTitle>
@@ -486,6 +489,7 @@ export default function CRMCatalogo() {
             <Button type="submit" form="item-form">Salvar</Button>
           </DialogFooter>
         </DialogContent>
+        )}
       </Dialog>
     </MainLayout>
   );
