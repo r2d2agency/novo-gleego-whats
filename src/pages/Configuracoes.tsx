@@ -344,6 +344,28 @@ const Configuracoes = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {isPushSupported && (
+                    <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+                      <div className="space-y-0.5">
+                        <Label className="flex items-center gap-2">
+                          <Bell className="h-4 w-4" />
+                          Notificações no navegador
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Exibe alertas de novas mensagens no navegador
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRequestPush}
+                        disabled={pushPermission === 'granted'}
+                      >
+                        {pushPermission === 'granted' ? 'Ativadas' : 'Ativar'}
+                      </Button>
+                    </div>
+                  )}
+
                   {/* Sound enabled toggle */}
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
@@ -454,21 +476,6 @@ const Configuracoes = () => {
                       <p><strong>Android:</strong> Toque no menu (⋮) do navegador e selecione "Instalar app" ou "Adicionar à tela inicial"</p>
                     </div>
                   </div>
-                  {isPushSupported && (
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={handleRequestPush}
-                      disabled={pushPermission === 'granted'}
-                    >
-                      <Bell className="h-4 w-4 mr-2" />
-                      {pushPermission === 'granted'
-                        ? 'Notificações ativadas neste navegador'
-                        : pushPermission === 'denied'
-                          ? 'Permissão bloqueada no navegador'
-                          : 'Ativar notificações neste navegador'}
-                    </Button>
-                  )}
                   <Button
                     variant="outline"
                     className="w-full"
