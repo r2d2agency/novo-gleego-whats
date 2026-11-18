@@ -371,3 +371,246 @@ export function useCRMLeadSourceMutations() {
 
   return { createLeadSource, updateLeadSource, deleteLeadSource };
 }
+
+// CRM Catalog
+export interface CRMCatalogCategory {
+  id: string;
+  organization_id?: string;
+  name: string;
+  description?: string;
+  is_active: boolean;
+  position: number;
+  items_count?: number;
+  created_at: string;
+}
+
+export interface CRMCatalogItem {
+  id: string;
+  organization_id?: string;
+  category_id?: string | null;
+  category_name?: string;
+  type: 'product' | 'service';
+  name: string;
+  code?: string;
+  description?: string;
+  unit: string;
+  recurrence: 'one_time' | 'monthly' | 'yearly';
+  unit_price: number;
+  is_active: boolean;
+  external_id?: string;
+  external_source?: string;
+  created_at: string;
+}
+
+export interface CRMDealItem {
+  id: string;
+  organization_id?: string;
+  deal_id: string;
+  catalog_item_id?: string | null;
+  category_name?: string;
+  item_type: 'product' | 'service';
+  name: string;
+  code?: string;
+  description?: string;
+  unit: string;
+  recurrence: 'one_time' | 'monthly' | 'yearly';
+  quantity: number;
+  unit_price: number;
+  discount_percent: number;
+  external_id?: string;
+  external_source?: string;
+  created_at: string;
+}
+
+export interface CRMProposalItem {
+  id: string;
+  proposal_id: string;
+  deal_item_id?: string;
+  category_name?: string;
+  item_type: 'product' | 'service';
+  name: string;
+  code?: string;
+  description?: string;
+  unit: string;
+  recurrence: 'one_time' | 'monthly' | 'yearly';
+  quantity: number;
+  unit_price: number;
+  discount_percent: number;
+  total: number;
+  position: number;
+}
+
+export interface CRMProposalTemplate {
+  id: string;
+  organization_id?: string;
+  logo_url?: string | null;
+  header_text?: string | null;
+  description?: string | null;
+  footer_text?: string | null;
+  created_at: string;
+}
+
+export interface CRMProposal {
+  id: string;
+  organization_id?: string;
+  deal_id: string;
+  number: string;
+  title: string;
+  template_logo_url?: string | null;
+  template_header_text?: string | null;
+  template_description?: string | null;
+  template_footer_text?: string | null;
+  customer_name?: string;
+  customer_document?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  notes?: string;
+  payment_terms?: string;
+  validity_days: number;
+  discount_percent: number;
+  subtotal: number;
+  discount_amount: number;
+  total: number;
+  status: 'draft' | 'sent' | 'approved' | 'rejected';
+  public_token: string;
+  sent_at?: string;
+  decided_at?: string;
+  decision_notes?: string;
+  created_at: string;
+  items?: CRMProposalItem[];
+}
+
+export function useCRMCatalogCategories() {
+  return useQuery({
+    queryKey: ["crm-catalog-categories"],
+    queryFn: () => api<CRMCatalogCategory[]>("/api/crm/catalog/categories"),
+  });
+}
+
+export function useCRMCatalogItems() {
+  return useQuery({
+    queryKey: ["crm-catalog-items"],
+    queryFn: () => api<CRMCatalogItem[]>("/api/crm/catalog/items"),
+  });
+}
+
+export function useCRMCatalogMutations() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["crm-catalog-categories"] });
+    queryClient.invalidateQueries({ queryKey: ["crm-catalog-items"] });
+  };
+
+  const createCategory = useMutation({
+    mutationFn: (data: Partial<CRMCatalogCategory>) => api<CRMCatalogCategory>("/api/crm/catalog/categories", { method: "POST", body: data }),
+    onSuccess: () => { invalidate(); toast({ title: "Categoria criada" }); },
+    onError: (e: any) => toast({ title: "Erro ao criar categoria", description: e.message, variant: "destructive" }),
+  });
+  const updateCategory = useMutation({
+    mutationFn: ({ id, ...data }: Partial<CRMCatalogCategory> & { id: string }) => api<CRMCatalogCategory>(`/api/crm/catalog/categories/${id}`, { method: "PUT", body: data }),
+    onSuccess: () => { invalidate(); toast({ title: "Categoria atualizada" }); },
+  });
+  const deleteCategory = useMutation({
+    mutationFn: (id: string) => api<void>(`/api/crm/catalog/categories/${id}`, { method: "DELETE" }),
+    onSuccess: () => { invalidate(); toast({ title: "Categoria excluída" }); },
+    onError: (e: any) => toast({ title: "Erro ao excluir categoria", description: e.message, variant: "destructive" }),
+  });
+  const createItem = useMutation({
+    mutationFn: (data: Partial<CRMCatalogItem>) => api<CRMCatalogItem>("/api/crm/catalog/items", { method: "POST", body: data }),
+    onSuccess: () => { invalidate(); toast({ title: "Item criado" }); },
+    onError: (e: any) => toast({ title: "Erro ao criar item", description: e.message, variant: "destructive" }),
+  });
+  const updateItem = useMutation({
+    mutationFn: ({ id, ...data }: Partial<CRMCatalogItem> & { id: string }) => api<CRMCatalogItem>(`/api/crm/catalog/items/${id}`, { method: "PUT", body: data }),
+    onSuccess: () => { invalidate(); toast({ title: "Item atualizado" }); },
+  });
+  const deleteItem = useMutation({
+    mutationFn: (id: string) => api<void>(`/api/crm/catalog/items/${id}`, { method: "DELETE" }),
+    onSuccess: () => { invalidate(); toast({ title: "Item excluído" }); },
+  });
+
+  return { createCategory, updateCategory, deleteCategory, createItem, updateItem, deleteItem };
+}
+
+export function useDealItems(dealId: string | null) {
+  return useQuery({
+    queryKey: ["crm-deal-items", dealId],
+    queryFn: () => api<CRMDealItem[]>(`/api/crm/deals/${dealId}/items`),
+    enabled: !!dealId,
+  });
+}
+
+export function useDealItemMutations(dealId: string | null) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["crm-deal-items", dealId] });
+    queryClient.invalidateQueries({ queryKey: ["crm-deal"] });
+  };
+
+  const addItem = useMutation({
+    mutationFn: (data: { catalog_item_id: string; quantity: number; unit_price: number; discount_percent?: number }) =>
+      api<CRMDealItem>(`/api/crm/deals/${dealId}/items`, { method: "POST", body: data }),
+    onSuccess: () => { invalidate(); toast({ title: "Item adicionado" }); },
+    onError: (e: any) => toast({ title: "Erro ao adicionar item", description: e.message, variant: "destructive" }),
+  });
+  const updateItem = useMutation({
+    mutationFn: ({ id, ...data }: { id: string; quantity: number; unit_price: number; discount_percent: number }) =>
+      api<CRMDealItem>(`/api/crm/deals/${dealId}/items/${id}`, { method: "PUT", body: data }),
+    onSuccess: () => invalidate(),
+  });
+  const removeItem = useMutation({
+    mutationFn: (id: string) => api<void>(`/api/crm/deals/${dealId}/items/${id}`, { method: "DELETE" }),
+    onSuccess: () => { invalidate(); toast({ title: "Item removido" }); },
+  });
+
+  return { addItem, updateItem, removeItem };
+}
+
+export function useProposalTemplate() {
+  return useQuery({
+    queryKey: ["crm-proposal-template"],
+    queryFn: () => api<CRMProposalTemplate | null>("/api/crm/proposal-template"),
+  });
+}
+
+export function useProposalTemplateMutation() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (data: Partial<CRMProposalTemplate>) =>
+      api<CRMProposalTemplate>("/api/crm/proposal-template", { method: "PUT", body: data }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["crm-proposal-template"] });
+      toast({ title: "Modelo de proposta salvo" });
+    },
+    onError: (e: any) => toast({ title: "Erro ao salvar modelo", description: e.message, variant: "destructive" }),
+  });
+}
+
+export function useDealProposals(dealId: string | null) {
+  return useQuery({
+    queryKey: ["crm-deal-proposals", dealId],
+    queryFn: () => api<CRMProposal[]>(`/api/crm/deals/${dealId}/proposals`),
+    enabled: !!dealId,
+  });
+}
+
+export function useProposalMutations(dealId: string | null) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["crm-deal-proposals", dealId] });
+
+  const createProposal = useMutation({
+    mutationFn: (data: Partial<CRMProposal>) => api<CRMProposal>(`/api/crm/deals/${dealId}/proposals`, { method: "POST", body: data }),
+    onSuccess: () => { invalidate(); toast({ title: "Proposta criada" }); },
+    onError: (e: any) => toast({ title: "Erro ao criar proposta", description: e.message, variant: "destructive" }),
+  });
+  const sendProposal = useMutation({
+    mutationFn: (id: string) => api<CRMProposal>(`/api/crm/deals/${dealId}/proposals/${id}/send`, { method: "POST" }),
+    onSuccess: () => { invalidate(); toast({ title: "Proposta enviada" }); },
+  });
+
+  return { createProposal, sendProposal };
+}

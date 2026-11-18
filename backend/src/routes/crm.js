@@ -7,6 +7,10 @@ import { logInfo, logError } from '../logger.js';
 import { normalizeBrazilDateTime } from '../lib/timezone.js';
 
 const router = express.Router();
+const publicRouter = express.Router();
+
+// Public proposal routes must be registered before the authenticated router.
+router.use('/public/proposals', publicRouter);
 router.use(authenticate);
 
 // Log history manually (for frontend actions like WhatsApp)
@@ -76,6 +80,68 @@ function closedAtSql(alias = 'd') {
 }
 
 // Helper: Get user's organization
+function calculateItemTotal(quantity, unitPrice, discountPercent) {
+  const gross = Number(quantity || 0) * Number(unitPrice || 0);
+  const discount = gross * (Number(discountPercent || 0) / 100);
+  return Math.round((gross - discount) * 100) / 100;
+}
+
+async function replaceProposalItems(proposalId, items) {
+  await query('DELETE FROM crm_proposal_items WHERE proposal_id = $1', [proposalId]);
+
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    const total = calculateItemTotal(item.quantity, item.unit_price, item.discount_percent);
+    await query(
+      `INSERT INTO crm_proposal_items
+       (proposal_id, deal_item_id, category_name, item_type, name, code, description, unit, recurrence, quantity, unit_price, discount_percent, total, position)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      [
+        proposalId,
+        item.deal_item_id || null,
+        item.category_name || null,
+        item.item_type || 'product',
+        item.name,
+        item.code || null,
+        item.description || null,
+        item.unit || 'un',
+        item.recurrence || 'one_time',
+        item.quantity || 1,
+        item.unit_price || 0,
+        item.discount_percent || 0,
+        total,
+        index,
+      ]
+    );
+  }
+}
+
+async function getProposalBase(organizationId, proposalId) {
+  const isToken = typeof proposalId === 'string' && proposalId.length >= 32 && /^[0-9a-f-]+$/i.test(proposalId);
+  const filter = isToken ? 'p.public_token = $1' : 'p.id = $1';
+  const params = [proposalId];
+  if (organizationId) params.push(organizationId);
+  const result = await query(
+    `SELECT p.*, d.title AS deal_title, d.company_id, c.name AS company_name,
+            COALESCE(NULLIF(dc.contact_name, ''), NULLIF(dc.contact_phone, ''), '') AS contact_name,
+            dc.contact_phone, dc.contact_email
+     FROM crm_proposals p
+     JOIN crm_deals d ON d.id = p.deal_id
+     LEFT JOIN crm_companies c ON c.id = d.company_id
+     LEFT JOIN LATERAL (
+       SELECT cnt.name AS contact_name, cnt.phone AS contact_phone, cnt.email AS contact_email
+       FROM crm_deal_contacts dc2
+       JOIN contacts cnt ON cnt.id = dc2.contact_id
+       WHERE dc2.deal_id = d.id
+       ORDER BY dc2.is_primary DESC, dc2.created_at ASC
+       LIMIT 1
+     ) dc ON true
+     WHERE ${filter}${organizationId ? ' AND p.organization_id = $2' : ''}`,
+    params
+  );
+  return result.rows[0];
+}
+
 async function getUserOrg(userId) {
   const result = await query(
     `SELECT om.organization_id,
@@ -4360,6 +4426,533 @@ router.get('/cnpj/:cnpj', async (req, res) => {
     res.json(data);
   } catch (error) {
     logError('CNPJ lookup error', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// CRM CATALOG - CATEGORIES
+// ============================================
+
+router.get('/catalog/categories', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const result = await query(
+      `SELECT c.*,
+              (SELECT COUNT(*) FROM crm_catalog_items i WHERE i.category_id = c.id) AS items_count
+       FROM crm_catalog_categories c
+       WHERE c.organization_id = $1
+       ORDER BY c.position ASC, c.name ASC`,
+      [org.organization_id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    if (error.code === '42P01') return res.json([]);
+    console.error('Error fetching catalog categories:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/catalog/categories', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org || !canManage(org.role)) return res.status(403).json({ error: 'Not authorized' });
+    const { name, description, is_active, position } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
+
+    const result = await query(
+      `INSERT INTO crm_catalog_categories (organization_id, name, description, is_active, position)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [org.organization_id, name.trim(), description || null, is_active !== false, Number(position || 0)]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating catalog category:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/catalog/categories/:id', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org || !canManage(org.role)) return res.status(403).json({ error: 'Not authorized' });
+    const { name, description, is_active, position } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
+
+    const result = await query(
+      `UPDATE crm_catalog_categories
+       SET name = $1, description = $2, is_active = $3, position = $4, updated_at = NOW()
+       WHERE id = $5 AND organization_id = $6
+       RETURNING *`,
+      [name.trim(), description || null, is_active !== false, Number(position || 0), req.params.id, org.organization_id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Category not found' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating catalog category:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/catalog/categories/:id', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org || !canManage(org.role)) return res.status(403).json({ error: 'Not authorized' });
+    const usage = await query('SELECT COUNT(*)::int AS count FROM crm_catalog_items WHERE category_id = $1', [req.params.id]);
+    if (Number(usage.rows[0]?.count || 0) > 0) {
+      return res.status(400).json({ error: 'Categoria com itens vinculados. Desative-a em vez de excluir.' });
+    }
+    const result = await query('DELETE FROM crm_catalog_categories WHERE id = $1 AND organization_id = $2 RETURNING id', [req.params.id, org.organization_id]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Category not found' });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting catalog category:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// CRM CATALOG - ITEMS
+// ============================================
+
+router.get('/catalog/items', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const result = await query(
+      `SELECT i.*, c.name AS category_name
+       FROM crm_catalog_items i
+       LEFT JOIN crm_catalog_categories c ON c.id = i.category_id
+       WHERE i.organization_id = $1
+       ORDER BY i.name ASC`,
+      [org.organization_id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    if (error.code === '42P01') return res.json([]);
+    console.error('Error fetching catalog items:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+function normalizeCatalogItemBody(body) {
+  const type = ['product', 'service'].includes(body.type) ? body.type : 'product';
+  const recurrence = ['one_time', 'monthly', 'yearly'].includes(body.recurrence) ? body.recurrence : 'one_time';
+  const unitPrice = Number(String(body.unit_price ?? '0').replace(',', '.'));
+  return {
+    category_id: body.category_id || null,
+    type,
+    name: String(body.name || '').trim(),
+    code: body.code?.trim() || null,
+    description: body.description?.trim() || null,
+    unit: body.unit?.trim() || (type === 'service' ? 'hora' : 'un'),
+    recurrence: type === 'product' ? 'one_time' : recurrence,
+    unit_price: Number.isFinite(unitPrice) ? unitPrice : 0,
+    is_active: body.is_active !== false,
+    external_id: body.external_id?.trim() || null,
+    external_source: body.external_source?.trim() || null,
+  };
+}
+
+router.post('/catalog/items', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org || !canManage(org.role)) return res.status(403).json({ error: 'Not authorized' });
+    const item = normalizeCatalogItemBody(req.body);
+    if (!item.name) return res.status(400).json({ error: 'Name is required' });
+
+    const result = await query(
+      `INSERT INTO crm_catalog_items
+       (organization_id, category_id, type, name, code, description, unit, recurrence, unit_price, is_active, external_id, external_source, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       RETURNING *`,
+      [org.organization_id, item.category_id, item.type, item.name, item.code, item.description, item.unit, item.recurrence, item.unit_price, item.is_active, item.external_id, item.external_source, req.userId]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating catalog item:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/catalog/items/:id', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org || !canManage(org.role)) return res.status(403).json({ error: 'Not authorized' });
+    const item = normalizeCatalogItemBody(req.body);
+    if (!item.name) return res.status(400).json({ error: 'Name is required' });
+
+    const result = await query(
+      `UPDATE crm_catalog_items
+       SET category_id = $1, type = $2, name = $3, code = $4, description = $5,
+           unit = $6, recurrence = $7, unit_price = $8, is_active = $9,
+           external_id = $10, external_source = $11, updated_at = NOW()
+       WHERE id = $12 AND organization_id = $13
+       RETURNING *`,
+      [item.category_id, item.type, item.name, item.code, item.description, item.unit, item.recurrence, item.unit_price, item.is_active, item.external_id, item.external_source, req.params.id, org.organization_id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Item not found' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating catalog item:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/catalog/items/:id', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org || !canManage(org.role)) return res.status(403).json({ error: 'Not authorized' });
+    const result = await query('DELETE FROM crm_catalog_items WHERE id = $1 AND organization_id = $2 RETURNING id', [req.params.id, org.organization_id]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Item not found' });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting catalog item:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// DEAL ITEMS
+// ============================================
+
+router.get('/deals/:id/items', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const result = await query(
+      `SELECT * FROM crm_deal_items
+       WHERE deal_id = $1 AND organization_id = $2
+       ORDER BY created_at ASC`,
+      [req.params.id, org.organization_id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    if (error.code === '42P01') return res.json([]);
+    console.error('Error fetching deal items:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/deals/:id/items', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const { catalog_item_id } = req.body;
+    if (!catalog_item_id) return res.status(400).json({ error: 'Catalog item is required' });
+
+    const catalog = await query(
+      `SELECT i.*, c.name AS category_name
+       FROM crm_catalog_items i
+       LEFT JOIN crm_catalog_categories c ON c.id = i.category_id
+       WHERE i.id = $1 AND i.organization_id = $2`,
+      [catalog_item_id, org.organization_id]
+    );
+    const item = catalog.rows[0];
+    if (!item) return res.status(404).json({ error: 'Catalog item not found' });
+
+    const quantity = Number(req.body.quantity || 1);
+    const unitPrice = Number(req.body.unit_price ?? item.unit_price);
+    const discountPercent = Number(req.body.discount_percent || 0);
+
+    const result = await query(
+      `INSERT INTO crm_deal_items
+       (organization_id, deal_id, catalog_item_id, category_name, item_type, name, code, description,
+        unit, recurrence, quantity, unit_price, discount_percent, external_id, external_source, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       RETURNING *`,
+      [
+        org.organization_id, req.params.id, item.id, item.category_name, item.type, item.name, item.code,
+        item.description, item.unit, item.recurrence, quantity, unitPrice, discountPercent,
+        item.external_id, item.external_source, req.userId,
+      ]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error adding deal item:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/deals/:id/items/:itemId', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const quantity = Number(req.body.quantity);
+    const unitPrice = Number(req.body.unit_price);
+    const discountPercent = Number(req.body.discount_percent || 0);
+    if (!Number.isFinite(quantity) || !Number.isFinite(unitPrice)) {
+      return res.status(400).json({ error: 'Invalid quantity or price' });
+    }
+
+    const result = await query(
+      `UPDATE crm_deal_items
+       SET quantity = $1, unit_price = $2, discount_percent = $3
+       WHERE id = $4 AND deal_id = $5 AND organization_id = $6
+       RETURNING *`,
+      [quantity, unitPrice, discountPercent, req.params.itemId, req.params.id, org.organization_id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Deal item not found' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating deal item:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/deals/:id/items/:itemId', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const result = await query(
+      'DELETE FROM crm_deal_items WHERE id = $1 AND deal_id = $2 AND organization_id = $3 RETURNING id',
+      [req.params.itemId, req.params.id, org.organization_id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Deal item not found' });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting deal item:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// PROPOSAL TEMPLATE
+// ============================================
+
+router.get('/proposal-template', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const result = await query('SELECT * FROM crm_proposal_templates WHERE organization_id = $1', [org.organization_id]);
+    res.json(result.rows[0] || null);
+  } catch (error) {
+    if (error.code === '42P01') return res.json(null);
+    console.error('Error fetching proposal template:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/proposal-template', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org || !canManage(org.role)) return res.status(403).json({ error: 'Not authorized' });
+    const clean = (value) => value == null ? null : String(value).trim() || null;
+    const result = await query(
+      `INSERT INTO crm_proposal_templates
+       (organization_id, logo_url, header_text, description, footer_text, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (organization_id) DO UPDATE SET
+         logo_url = EXCLUDED.logo_url,
+         header_text = EXCLUDED.header_text,
+         description = EXCLUDED.description,
+         footer_text = EXCLUDED.footer_text,
+         updated_at = NOW()
+       RETURNING *`,
+      [org.organization_id, clean(req.body.logo_url), clean(req.body.header_text), clean(req.body.description), clean(req.body.footer_text), req.userId]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error saving proposal template:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================
+// PROPOSALS
+// ============================================
+
+function serializeProposal(proposal, items) {
+  return { ...proposal, items };
+}
+
+router.get('/deals/:id/proposals', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const result = await query(
+      `SELECT * FROM crm_proposals
+       WHERE deal_id = $1 AND organization_id = $2
+       ORDER BY created_at DESC`,
+      [req.params.id, org.organization_id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    if (error.code === '42P01') return res.json([]);
+    console.error('Error fetching proposals:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/deals/:id/proposals/:proposalId', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const proposal = await getProposalBase(org.organization_id, req.params.proposalId);
+    if (!proposal || proposal.deal_id !== req.params.id) return res.status(404).json({ error: 'Proposal not found' });
+    const items = await query('SELECT * FROM crm_proposal_items WHERE proposal_id = $1 ORDER BY position ASC', [req.params.proposalId]);
+    res.json(serializeProposal(proposal, items.rows));
+  } catch (error) {
+    console.error('Error fetching proposal:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/deals/:id/proposals', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const deal = await query('SELECT * FROM crm_deals WHERE id = $1 AND organization_id = $2', [req.params.id, org.organization_id]);
+    if (!deal.rows[0]) return res.status(404).json({ error: 'Deal not found' });
+
+    const itemsResult = await query('SELECT * FROM crm_deal_items WHERE deal_id = $1 AND organization_id = $2 ORDER BY created_at ASC', [req.params.id, org.organization_id]);
+    if (!itemsResult.rows.length) return res.status(400).json({ error: 'Adicione pelo menos um item à negociação' });
+
+    const title = String(req.body.title || `Proposta - ${deal.rows[0].title}`).trim();
+    const validityDays = Number(req.body.validity_days || 15);
+    const globalDiscount = Number(req.body.discount_percent || 0);
+    const subtotal = itemsResult.rows.reduce((sum, item) => sum + calculateItemTotal(item.quantity, item.unit_price, item.discount_percent), 0);
+    const discountAmount = Math.round(subtotal * (globalDiscount / 100) * 100) / 100;
+    const total = Math.round((subtotal - discountAmount) * 100) / 100;
+    const { randomUUID } = await import('node:crypto');
+    const templateResult = await query('SELECT * FROM crm_proposal_templates WHERE organization_id = $1', [org.organization_id]);
+    const template = templateResult.rows[0];
+
+    const result = await query(
+      `INSERT INTO crm_proposals
+       (organization_id, deal_id, number, title, template_logo_url, template_header_text, template_description, template_footer_text,
+        customer_name, customer_document, customer_email, customer_phone,
+        notes, payment_terms, validity_days, discount_percent, subtotal, discount_amount, total, public_token, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+       RETURNING *`,
+      [
+        org.organization_id, req.params.id,
+        `PROP-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`,
+        title,
+        template?.logo_url || null,
+        template?.header_text || null,
+        template?.description || null,
+        template?.footer_text || null,
+        req.body.customer_name || deal.rows[0].title || null,
+        req.body.customer_document || null,
+        req.body.customer_email || null,
+        req.body.customer_phone || null,
+        req.body.notes || null,
+        req.body.payment_terms || null,
+        validityDays,
+        globalDiscount,
+        subtotal,
+        discountAmount,
+        total,
+        randomUUID(),
+        req.userId,
+      ]
+    );
+    const proposal = result.rows[0];
+    await replaceProposalItems(proposal.id, itemsResult.rows);
+    res.status(201).json(serializeProposal(proposal, itemsResult.rows));
+  } catch (error) {
+    console.error('Error creating proposal:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.put('/deals/:id/proposals/:proposalId', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const existing = await query('SELECT * FROM crm_proposals WHERE id = $1 AND deal_id = $2 AND organization_id = $3', [req.params.proposalId, req.params.id, org.organization_id]);
+    if (!existing.rows[0]) return res.status(404).json({ error: 'Proposal not found' });
+    if (existing.rows[0].status !== 'draft') return res.status(400).json({ error: 'Only draft proposals can be edited' });
+
+    const result = await query(
+      `UPDATE crm_proposals
+       SET title = $1, customer_name = $2, customer_document = $3, customer_email = $4, customer_phone = $5,
+           notes = $6, payment_terms = $7, validity_days = $8, discount_percent = $9, updated_at = NOW()
+       WHERE id = $10 AND organization_id = $11
+       RETURNING *`,
+      [
+        req.body.title || existing.rows[0].title,
+        req.body.customer_name || null,
+        req.body.customer_document || null,
+        req.body.customer_email || null,
+        req.body.customer_phone || null,
+        req.body.notes || null,
+        req.body.payment_terms || null,
+        Number(req.body.validity_days || existing.rows[0].validity_days),
+        Number(req.body.discount_percent || 0),
+        req.params.proposalId,
+        org.organization_id,
+      ]
+    );
+
+    let items = (await query('SELECT * FROM crm_proposal_items WHERE proposal_id = $1 ORDER BY position ASC', [req.params.proposalId])).rows;
+    if (Array.isArray(req.body.items) && req.body.items.length) {
+      await replaceProposalItems(req.params.proposalId, req.body.items);
+      items = (await query('SELECT * FROM crm_proposal_items WHERE proposal_id = $1 ORDER BY position ASC', [req.params.proposalId])).rows;
+    }
+    const subtotal = items.reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const discountAmount = Math.round(subtotal * (Number(result.rows[0].discount_percent || 0) / 100) * 100) / 100;
+    const total = Math.round((subtotal - discountAmount) * 100) / 100;
+    const totals = await query('UPDATE crm_proposals SET subtotal = $1, discount_amount = $2, total = $3 WHERE id = $4 RETURNING *', [subtotal, discountAmount, total, req.params.proposalId]);
+    res.json(serializeProposal(totals.rows[0], items));
+  } catch (error) {
+    console.error('Error updating proposal:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/deals/:id/proposals/:proposalId/send', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const result = await query(
+      `UPDATE crm_proposals SET status = 'sent', sent_at = COALESCE(sent_at, NOW()), updated_at = NOW()
+       WHERE id = $1 AND deal_id = $2 AND organization_id = $3 RETURNING *`,
+      [req.params.proposalId, req.params.id, org.organization_id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Proposal not found' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error sending proposal:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+publicRouter.get('/:token', async (req, res) => {
+  try {
+    const proposal = await getProposalBase(null, req.params.token);
+    if (!proposal || proposal.status === 'draft') return res.status(404).json({ error: 'Proposta indisponível' });
+    const items = await query('SELECT * FROM crm_proposal_items WHERE proposal_id = $1 ORDER BY position ASC', [proposal.id]);
+    res.json(serializeProposal(proposal, items.rows));
+  } catch (error) {
+    console.error('Error fetching public proposal:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+publicRouter.post('/:token/decision', async (req, res) => {
+  try {
+    const decision = req.body.decision === 'approve' ? 'approved' : req.body.decision === 'reject' ? 'rejected' : null;
+    if (!decision) return res.status(400).json({ error: 'Invalid decision' });
+    const tokenResult = await query('SELECT * FROM crm_proposals WHERE public_token = $1', [req.params.token]);
+    const proposal = tokenResult.rows[0];
+    if (!proposal || proposal.status === 'draft') return res.status(404).json({ error: 'Proposta indisponível' });
+    if (proposal.decided_at) return res.status(400).json({ error: 'Proposta já respondida' });
+
+    const result = await query(
+      `UPDATE crm_proposals
+       SET status = $1, decided_at = NOW(), decision_notes = $2, updated_at = NOW()
+       WHERE id = $3 AND decided_at IS NULL
+       RETURNING *`,
+      [decision, req.body.notes || null, proposal.id]
+    );
+    if (!result.rows[0]) return res.status(400).json({ error: 'Proposta já respondida' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error recording proposal decision:', error);
     res.status(500).json({ error: error.message });
   }
 });

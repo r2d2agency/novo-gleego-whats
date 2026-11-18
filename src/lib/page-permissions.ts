@@ -16,6 +16,7 @@ export const PAGE_PERMISSIONS = [
   { key: 'crm_negociacoes', label: 'Negociações', section: 'CRM', icon: 'Kanban' },
   { key: 'crm_prospects', label: 'Prospects', section: 'CRM', icon: 'UserPlus' },
   { key: 'crm_empresas', label: 'Empresas', section: 'CRM', icon: 'Building2' },
+  { key: 'crm_catalogo', label: 'Catálogo', section: 'CRM', icon: 'Package' },
   { key: 'projetos', label: 'Projetos', section: 'CRM', icon: 'FolderKanban' },
   { key: 'mapa', label: 'Mapa', section: 'CRM', icon: 'Map' },
   { key: 'crm_agenda', label: 'Agenda', section: 'CRM', icon: 'CalendarDays' },

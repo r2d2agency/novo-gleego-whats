@@ -3966,7 +3966,136 @@ CREATE INDEX IF NOT EXISTS idx_sales_seo_leads_tracker ON sales_seo_leads(tracke
 CREATE INDEX IF NOT EXISTS idx_sales_seo_leads_created ON sales_seo_leads(created_at DESC);
 `;
 
+const step43CRMCatalog = `
+CREATE TABLE IF NOT EXISTS crm_catalog_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    is_active BOOLEAN DEFAULT true,
+    position INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(organization_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS crm_catalog_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE NOT NULL,
+    category_id UUID REFERENCES crm_catalog_categories(id) ON DELETE SET NULL,
+    type VARCHAR(20) NOT NULL DEFAULT 'product',
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(100),
+    description TEXT,
+    unit VARCHAR(50) DEFAULT 'un',
+    recurrence VARCHAR(20) DEFAULT 'one_time',
+    unit_price DECIMAL(15, 2) DEFAULT 0,
+    is_active BOOLEAN DEFAULT true,
+    external_id VARCHAR(255),
+    external_source VARCHAR(100),
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS crm_deal_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE NOT NULL,
+    deal_id UUID REFERENCES crm_deals(id) ON DELETE CASCADE NOT NULL,
+    catalog_item_id UUID REFERENCES crm_catalog_items(id) ON DELETE SET NULL,
+    category_name VARCHAR(100),
+    item_type VARCHAR(20) NOT NULL DEFAULT 'product',
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(100),
+    description TEXT,
+    unit VARCHAR(50) DEFAULT 'un',
+    recurrence VARCHAR(20) DEFAULT 'one_time',
+    quantity DECIMAL(12, 2) DEFAULT 1,
+    unit_price DECIMAL(15, 2) DEFAULT 0,
+    discount_percent DECIMAL(5, 2) DEFAULT 0,
+    external_id VARCHAR(255),
+    external_source VARCHAR(100),
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS crm_proposal_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE NOT NULL,
+    logo_url TEXT,
+    header_text TEXT,
+    description TEXT,
+    footer_text TEXT,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(organization_id)
+);
+
+CREATE TABLE IF NOT EXISTS crm_proposals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE NOT NULL,
+    deal_id UUID REFERENCES crm_deals(id) ON DELETE CASCADE NOT NULL,
+    number VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    template_logo_url TEXT,
+    template_header_text TEXT,
+    template_description TEXT,
+    template_footer_text TEXT,
+    customer_name VARCHAR(255),
+    customer_document VARCHAR(50),
+    customer_email VARCHAR(255),
+    customer_phone VARCHAR(50),
+    notes TEXT,
+    payment_terms TEXT,
+    validity_days INTEGER DEFAULT 15,
+    discount_percent DECIMAL(5, 2) DEFAULT 0,
+    subtotal DECIMAL(15, 2) DEFAULT 0,
+    discount_amount DECIMAL(15, 2) DEFAULT 0,
+    total DECIMAL(15, 2) DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'draft',
+    public_token VARCHAR(255) NOT NULL,
+    sent_at TIMESTAMP WITH TIME ZONE,
+    decided_at TIMESTAMP WITH TIME ZONE,
+    decision_notes TEXT,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(organization_id, number),
+    UNIQUE(public_token)
+);
+
+CREATE TABLE IF NOT EXISTS crm_proposal_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    proposal_id UUID REFERENCES crm_proposals(id) ON DELETE CASCADE NOT NULL,
+    deal_item_id UUID REFERENCES crm_deal_items(id) ON DELETE SET NULL,
+    category_name VARCHAR(100),
+    item_type VARCHAR(20) NOT NULL DEFAULT 'product',
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(100),
+    description TEXT,
+    unit VARCHAR(50) DEFAULT 'un',
+    recurrence VARCHAR(20) DEFAULT 'one_time',
+    quantity DECIMAL(12, 2) DEFAULT 1,
+    unit_price DECIMAL(15, 2) DEFAULT 0,
+    discount_percent DECIMAL(5, 2) DEFAULT 0,
+    total DECIMAL(15, 2) DEFAULT 0,
+    position INTEGER DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_crm_catalog_categories_org ON crm_catalog_categories(organization_id);
+CREATE INDEX IF NOT EXISTS idx_crm_catalog_items_org ON crm_catalog_items(organization_id);
+CREATE INDEX IF NOT EXISTS idx_crm_catalog_items_category ON crm_catalog_items(category_id);
+CREATE INDEX IF NOT EXISTS idx_crm_deal_items_deal ON crm_deal_items(deal_id);
+CREATE INDEX IF NOT EXISTS idx_crm_deal_items_org ON crm_deal_items(organization_id);
+CREATE INDEX IF NOT EXISTS idx_crm_proposals_deal ON crm_proposals(deal_id);
+CREATE INDEX IF NOT EXISTS idx_crm_proposals_org ON crm_proposals(organization_id);
+CREATE INDEX IF NOT EXISTS idx_crm_proposals_token ON crm_proposals(public_token);
+CREATE INDEX IF NOT EXISTS idx_crm_proposal_items_proposal ON crm_proposal_items(proposal_id);
+`;
+
 const migrationSteps = [
+  { name: 'CRM Catalog & Proposals', sql: step43CRMCatalog, critical: false },
   { name: 'AppBarber Commercial Configuration', sql: step30AppBarberCommercial, critical: false },
   { name: 'Enums', sql: step1Enums, critical: true },
   { name: 'Core Tables (users, plans)', sql: step2CoreTables, critical: true },

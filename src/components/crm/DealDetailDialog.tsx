@@ -14,7 +14,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
  import { CRMDeal, CRMTask, CRMStage, useCRMDeal, useCRMDealMutations, useCRMTaskMutations, useCRMFunnel, useCRMCompanies } from "@/hooks/use-crm";
  import { LossReasonDialog } from "./LossReasonDialog";
-import { useCRMCustomFields, CRMCustomField } from "@/hooks/use-crm-config";
+import { useCRMCustomFields, CRMCustomField, useCRMCatalogItems, useDealItems, useDealItemMutations, useDealProposals, useProposalMutations, type CRMDealItem, type CRMProposal, type CRMCatalogItem } from "@/hooks/use-crm-config";
+import { generateProposalPdf } from "./ProposalPdf";
 import { api } from "@/lib/api";
 import { Building2, User, Phone, Calendar as CalendarIcon, Clock, CheckCircle, Plus, Trash2, Paperclip, MessageSquare, ChevronRight, Edit2, Save, X, FileText, Image, Loader2, Upload, Search, UserPlus, Building, Mail, Video, Send, ClipboardList, RefreshCw, Flame, FileSignature, ThumbsUp, ThumbsDown, Pause, Play, Sparkles } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -142,6 +143,24 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
   const { createTask, completeTask, deleteTask } = useCRMTaskMutations();
   const { uploadFile, isUploading } = useUpload();
   const { data: dealCustomFields = [] } = useCRMCustomFields('deal');
+  const { data: catalogItems = [] } = useCRMCatalogItems();
+  const { data: dealItems = [] } = useDealItems(open ? (deal?.id || null) : null);
+  const { data: dealProposals = [] } = useDealProposals(open ? (deal?.id || null) : null);
+  const { addItem, updateItem, removeItem } = useDealItemMutations(open ? (deal?.id || null) : null);
+  const { createProposal, sendProposal } = useProposalMutations(open ? (deal?.id || null) : null);
+  const [selectedCatalogItemId, setSelectedCatalogItemId] = useState("");
+  const [newItemQuantity, setNewItemQuantity] = useState("1");
+  const [newItemPrice, setNewItemPrice] = useState("");
+  const [newItemDiscount, setNewItemDiscount] = useState("0");
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editItemQuantity, setEditItemQuantity] = useState("");
+  const [editItemPrice, setEditItemPrice] = useState("");
+  const [editItemDiscount, setEditItemDiscount] = useState("");
+  const [proposalTitle, setProposalTitle] = useState("");
+  const [proposalDiscount, setProposalDiscount] = useState("0");
+  const [proposalValidity, setProposalValidity] = useState("15");
+  const [proposalCustomerName, setProposalCustomerName] = useState("");
+  const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
   const [editCustomFields, setEditCustomFields] = useState<Record<string, any>>({});
   const [isEditingCustomFields, setIsEditingCustomFields] = useState(false);
   
@@ -325,6 +344,150 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
       style: "currency",
       currency: "BRL",
     }).format(value);
+  };
+
+  const calculateDealItemTotal = (item: CRMDealItem) => {
+    const gross = Number(item.quantity || 0) * Number(item.unit_price || 0);
+    const discount = gross * (Number(item.discount_percent || 0) / 100);
+    return Math.round((gross - discount) * 100) / 100;
+  };
+
+  const dealItemsTotal = dealItems.reduce((sum, item) => sum + calculateDealItemTotal(item), 0);
+  const activeCatalogItems = catalogItems.filter((item) => item.is_active);
+  const selectedCatalogItem: CRMCatalogItem | undefined = activeCatalogItems.find(
+    (item) => item.id === selectedCatalogItemId
+  );
+
+  useEffect(() => {
+    if (selectedCatalogItem) {
+      setNewItemPrice(String(selectedCatalogItem.unit_price ?? ""));
+    }
+  }, [selectedCatalogItemId]);
+
+  const resetNewItemForm = () => {
+    setSelectedCatalogItemId("");
+    setNewItemQuantity("1");
+    setNewItemPrice("");
+    setNewItemDiscount("0");
+  };
+
+  const handleAddDealItem = () => {
+    if (!selectedCatalogItemId) {
+      toast.error("Selecione um item do catálogo");
+      return;
+    }
+    const quantity = Number(newItemQuantity);
+    const unitPrice = Number(String(newItemPrice).replace(",", "."));
+    const discountPercent = Number(String(newItemDiscount).replace(",", ".") || 0);
+    if (!quantity || quantity <= 0 || Number.isNaN(unitPrice)) {
+      toast.error("Informe quantidade e preço válidos");
+      return;
+    }
+    addItem.mutate(
+      {
+        catalog_item_id: selectedCatalogItemId,
+        quantity,
+        unit_price: unitPrice,
+        discount_percent: discountPercent,
+      },
+      { onSuccess: resetNewItemForm }
+    );
+  };
+
+  const handleStartEditItem = (item: CRMDealItem) => {
+    setEditingItemId(item.id);
+    setEditItemQuantity(String(item.quantity));
+    setEditItemPrice(String(item.unit_price));
+    setEditItemDiscount(String(item.discount_percent ?? 0));
+  };
+
+  const handleSaveEditItem = (itemId: string) => {
+    const quantity = Number(editItemQuantity);
+    const unitPrice = Number(String(editItemPrice).replace(",", "."));
+    const discountPercent = Number(String(editItemDiscount).replace(",", ".") || 0);
+    if (!quantity || quantity <= 0 || Number.isNaN(unitPrice)) {
+      toast.error("Informe quantidade e preço válidos");
+      return;
+    }
+    updateItem.mutate(
+      { id: itemId, quantity, unit_price: unitPrice, discount_percent: discountPercent },
+      {
+        onSuccess: () => setEditingItemId(null),
+        onError: (error: any) => toast.error(error?.message || "Erro ao atualizar item"),
+      }
+    );
+  };
+
+  const proposalStatusLabels: Record<CRMProposal["status"], string> = {
+    draft: "Rascunho",
+    sent: "Enviada",
+    approved: "Aprovada",
+    rejected: "Recusada",
+  };
+
+  const getPublicProposalUrl = (proposal: CRMProposal) =>
+    `${window.location.origin}/proposta/${proposal.public_token}`;
+
+  const handleCopyProposalLink = async (proposal: CRMProposal) => {
+    try {
+      await navigator.clipboard.writeText(getPublicProposalUrl(proposal));
+      toast.success("Link público copiado!");
+    } catch (error) {
+      toast.error("Não foi possível copiar o link");
+    }
+  };
+
+  const handleCreateProposal = () => {
+    if (!dealItems.length) {
+      toast.error("Adicione pelo menos um item à negociação");
+      return;
+    }
+    const discountPercent = Number(String(proposalDiscount).replace(",", ".") || 0);
+    const validityDays = Number(proposalValidity) || 15;
+    createProposal.mutate(
+      {
+        title: proposalTitle.trim() || `Proposta - ${currentDeal?.title || "Negociação"}`,
+        customer_name:
+          proposalCustomerName.trim() ||
+          currentDeal?.contacts?.[0]?.name ||
+          currentDeal?.company_name ||
+          "",
+        discount_percent: discountPercent,
+        validity_days: validityDays,
+      },
+      {
+        onSuccess: () => {
+          setProposalTitle("");
+          setProposalDiscount("0");
+          setProposalValidity("15");
+          setProposalCustomerName("");
+        },
+        onError: (error: any) => toast.error(error?.message || "Erro ao criar proposta"),
+      }
+    );
+  };
+
+  const handleDownloadProposalPdf = async (proposal: CRMProposal) => {
+    setGeneratingPdfId(proposal.id);
+    try {
+      let detailedProposal = proposal;
+      if (!proposal.items?.length) {
+        try {
+          detailedProposal = await api<CRMProposal>(`/api/crm/deals/${deal.id}/proposals/${proposal.id}`);
+        } catch (error) {
+          detailedProposal = proposal;
+        }
+      }
+      await generateProposalPdf(detailedProposal, {
+        dealTitle: currentDeal?.title,
+        companyName: currentDeal?.company_name,
+      });
+      toast.success("PDF da proposta gerado!");
+    } catch (error: any) {
+      toast.error(error?.message || "Erro ao gerar PDF");
+    } finally {
+      setGeneratingPdfId(null);
+    }
   };
 
   const handleStartEditTitle = () => {
@@ -872,6 +1035,22 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
               )}
             </TabsTrigger>
             <TabsTrigger value="contacts">Contatos</TabsTrigger>
+            <TabsTrigger value="items">
+              Itens
+              {dealItems.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">
+                  {dealItems.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="proposals">
+              Propostas
+              {dealProposals.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-xs">
+                  {dealProposals.length}
+                </Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="attachments">
               Arquivos
               {fullDeal?.attachments && fullDeal.attachments.length > 0 && (
@@ -1826,6 +2005,260 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                     Nenhum contato vinculado. Selecione uma lista e busque contatos acima.
                   </p>
                 )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="items" className="m-0">
+              <div className="space-y-4">
+                <Card className="p-4">
+                  <h4 className="font-medium mb-3">Adicionar item do catálogo</h4>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Item do catálogo</Label>
+                      <Select value={selectedCatalogItemId} onValueChange={setSelectedCatalogItemId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione um item" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {activeCatalogItems.map((item) => (
+                            <SelectItem key={item.id} value={item.id}>
+                              {item.name} • {formatCurrency(Number(item.unit_price || 0))}/{item.unit}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Quantidade</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={newItemQuantity}
+                        onChange={(e) => setNewItemQuantity(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Preço unitário (R$)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={newItemPrice}
+                        onChange={(e) => setNewItemPrice(e.target.value)}
+                        placeholder={selectedCatalogItem ? String(selectedCatalogItem.unit_price) : "0,00"}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Desconto %</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={newItemDiscount}
+                        onChange={(e) => setNewItemDiscount(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button onClick={handleAddDealItem} disabled={addItem.isPending} className="w-full">
+                        {addItem.isPending ? (
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <Plus className="h-4 w-4 mr-2" />
+                        )}
+                        Adicionar item
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium">Itens da negociação</h4>
+                    <Badge variant="secondary">Total: {formatCurrency(dealItemsTotal)}</Badge>
+                  </div>
+                  <div className="space-y-3">
+                    {dealItems.map((item) => (
+                      <div key={item.id} className="rounded-lg border p-3">
+                        {editingItemId === item.id ? (
+                          <div className="grid gap-2 md:grid-cols-4">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Quantidade</Label>
+                              <Input
+                                type="number"
+                                min="1"
+                                value={editItemQuantity}
+                                onChange={(e) => setEditItemQuantity(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Preço unitário</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={editItemPrice}
+                                onChange={(e) => setEditItemPrice(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Desconto %</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                value={editItemDiscount}
+                                onChange={(e) => setEditItemDiscount(e.target.value)}
+                              />
+                            </div>
+                            <div className="flex items-end gap-2">
+                              <Button size="sm" onClick={() => handleSaveEditItem(item.id)} disabled={updateItem.isPending}>
+                                <Save className="h-4 w-4" />
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => setEditingItemId(null)}>
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-sm">{item.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.quantity} {item.unit} × {formatCurrency(Number(item.unit_price || 0))}
+                                {Number(item.discount_percent || 0) > 0 && ` • desconto ${item.discount_percent}%`}
+                              </p>
+                              <p className="text-sm font-medium mt-1">{formatCurrency(calculateDealItemTotal(item))}</p>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleStartEditItem(item)}>
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                onClick={() => removeItem.mutate(item.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {dealItems.length === 0 && (
+                      <p className="text-center text-muted-foreground py-8">
+                        Nenhum item adicionado a esta negociação
+                      </p>
+                    )}
+                  </div>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="proposals" className="m-0">
+              <div className="space-y-4">
+                <Card className="p-4">
+                  <h4 className="font-medium mb-3 flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Criar proposta a partir dos itens
+                  </h4>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Título</Label>
+                      <Input
+                        value={proposalTitle}
+                        onChange={(e) => setProposalTitle(e.target.value)}
+                        placeholder={`Proposta - ${currentDeal?.title || "Negociação"}`}
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Cliente</Label>
+                      <Input
+                        value={proposalCustomerName}
+                        onChange={(e) => setProposalCustomerName(e.target.value)}
+                        placeholder={currentDeal?.contacts?.[0]?.name || currentDeal?.company_name || "Nome do cliente"}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Desconto geral %</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={proposalDiscount}
+                        onChange={(e) => setProposalDiscount(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Validade (dias)</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={proposalValidity}
+                        onChange={(e) => setProposalValidity(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <Button onClick={handleCreateProposal} disabled={createProposal.isPending || dealItems.length === 0} className="mt-3 w-full">
+                    {createProposal.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4 mr-2" />
+                    )}
+                    Criar proposta
+                  </Button>
+                  {dealItems.length === 0 && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Adicione itens na aba Itens antes de criar uma proposta.
+                    </p>
+                  )}
+                </Card>
+
+                <div className="space-y-3">
+                  {dealProposals.map((proposal) => (
+                    <Card key={proposal.id} className="p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium">{proposal.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {proposal.number} • Total {formatCurrency(Number(proposal.total || 0))}
+                          </p>
+                        </div>
+                        <Badge variant={proposal.status === "approved" ? "default" : proposal.status === "rejected" ? "destructive" : "secondary"}>
+                          {proposalStatusLabels[proposal.status]}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <Button size="sm" variant="outline" onClick={() => handleDownloadProposalPdf(proposal)} disabled={generatingPdfId === proposal.id}>
+                          {generatingPdfId === proposal.id ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <FileText className="h-4 w-4 mr-2" />
+                          )}
+                          PDF
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => handleCopyProposalLink(proposal)}>
+                          Copiar link público
+                        </Button>
+                        {proposal.status === "draft" && (
+                          <Button size="sm" onClick={() => sendProposal.mutate(proposal.id)} disabled={sendProposal.isPending}>
+                            <Send className="h-4 w-4 mr-2" />
+                            Marcar como enviada
+                          </Button>
+                        )}
+                      </div>
+                    </Card>
+                  ))}
+                  {dealProposals.length === 0 && (
+                    <p className="text-center text-muted-foreground py-8">
+                      Nenhuma proposta criada para esta negociação
+                    </p>
+                  )}
+                </div>
               </div>
             </TabsContent>
 

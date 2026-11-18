@@ -43,6 +43,7 @@ const CRMEmpresas = lazy(() => import("./pages/CRMEmpresas"));
 const CRMTarefas = lazy(() => import("./pages/CRMTarefas"));
 const CRMAgenda = lazy(() => import("./pages/CRMAgenda"));
 const CRMConfiguracoes = lazy(() => import("./pages/CRMConfiguracoes"));
+const CRMCatalogo = lazy(() => import("./pages/CRMCatalogo"));
 const CRMRelatorios = lazy(() => import("./pages/CRMRelatorios"));
 const Mapa = lazy(() => import("./pages/Mapa"));
 const PoliticaPrivacidade = lazy(() => import("./pages/PoliticaPrivacidade"));
@@ -50,6 +51,7 @@ const TermosServico = lazy(() => import("./pages/TermosServico"));
 const ExclusaoDados = lazy(() => import("./pages/ExclusaoDados"));
 const FluxosExternos = lazy(() => import("./pages/FluxosExternos"));
 const PublicFormPage = lazy(() => import("./pages/PublicFormPage"));
+const PropostaPublica = lazy(() => import("./pages/PropostaPublica"));
 const LeadWebhooks = lazy(() => import("./pages/LeadWebhooks"));
 const SequenciasNurturing = lazy(() => import("./pages/SequenciasNurturing"));
 const CTWAAnalytics = lazy(() => import("./pages/CTWAAnalytics"));
@@ -169,6 +171,7 @@ const App = () => (
             <Route path="/crm/negociacoes" element={<ProtectedRoute><CRMNegociacoes /></ProtectedRoute>} />
             <Route path="/crm/prospects" element={<ProtectedRoute><CRMProspects /></ProtectedRoute>} />
             <Route path="/crm/empresas" element={<ProtectedRoute><CRMEmpresas /></ProtectedRoute>} />
+            <Route path="/crm/catalogo" element={<ProtectedRoute><CRMCatalogo /></ProtectedRoute>} />
             <Route path="/crm/tarefas" element={<ProtectedRoute><CRMTarefas /></ProtectedRoute>} />
             <Route path="/crm/agenda" element={<ProtectedRoute><CRMAgenda /></ProtectedRoute>} />
             <Route path="/crm/configuracoes" element={<ProtectedRoute><CRMConfiguracoes /></ProtectedRoute>} />
@@ -203,6 +206,7 @@ const App = () => (
             <Route path="/marina-test" element={<ProtectedRoute><MarinaTestChat /></ProtectedRoute>} />
             <Route path="/api-docs" element={<ApiDocumentation />} />
             <Route path="/f/:slug" element={<PublicFormPage />} />
+            <Route path="/proposta/:token" element={<PropostaPublica />} />
             <Route path="/assinar/:token" element={<AssinarDocumento />} />
             <Route path="/verificar/:documentId" element={<VerificarDocumento />} />
             <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
