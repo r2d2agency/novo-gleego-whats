@@ -293,6 +293,14 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
     setDescription(currentDeal?.description || "");
   }, [currentDeal?.id, currentDeal?.description]);
 
+  // Pre-fill the price when a catalog item is selected
+  useEffect(() => {
+    const selected = catalogItems.find((item) => item.id === selectedCatalogItemId);
+    if (selected) {
+      setNewItemPrice(String(selected.unit_price ?? ""));
+    }
+  }, [selectedCatalogItemId, catalogItems]);
+
   // Create new contact and link to deal
   const handleCreateAndLinkContact = async () => {
     if (!newContactName.trim() || !newContactPhone.trim()) return;
@@ -357,12 +365,6 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
   const selectedCatalogItem: CRMCatalogItem | undefined = activeCatalogItems.find(
     (item) => item.id === selectedCatalogItemId
   );
-
-  useEffect(() => {
-    if (selectedCatalogItem) {
-      setNewItemPrice(String(selectedCatalogItem.unit_price ?? ""));
-    }
-  }, [selectedCatalogItemId]);
 
   const resetNewItemForm = () => {
     setSelectedCatalogItemId("");
