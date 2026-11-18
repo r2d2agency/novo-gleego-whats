@@ -67,7 +67,7 @@ export function MessageNotifications() {
   const previousUnreadByConversationRef = useRef<Map<string, number>>(new Map());
   const isFetchingRef = useRef(false);
   
-  const { playSound, playNewConversationSound, settings, isConnectionMuted, isConversationMuted, isGroupMuted } = useNotificationSound();
+  const { playSound, playNewConversationSound, showPushNotification, settings, pushPermission, isConnectionMuted, isConversationMuted, isGroupMuted } = useNotificationSound();
 
   // Project note notifications
   const { data: projectNotifications = [] } = useProjectNoteNotifications();
@@ -128,13 +128,37 @@ export function MessageNotifications() {
           && !isGroupMuted(conv.is_group, conv.id);
       });
       
-      // Play appropriate sound
+      // Play appropriate sound and show a browser notification for new unmuted messages.
+      const unmutedNewConversation = newConversationIds
+        .map((id) => data.find((c) => c.id === id))
+        .find((conv) => conv
+          && !isConnectionMuted(conv.connection_id)
+          && !isConversationMuted(conv.id)
+          && !isGroupMuted(conv.is_group, conv.id));
+      const unmutedUpdatedConversation = conversationsWithUnreadIncrease.find((conv) => {
+        return conv.unread_count > 0
+          && !isConnectionMuted(conv.connection_id)
+          && !isConversationMuted(conv.id)
+          && !isGroupMuted(conv.is_group, conv.id);
+      });
+      const notifiableConversation = unmutedNewConversation || unmutedUpdatedConversation;
+
       if (soundEnabled && settings.soundEnabled && previousUnreadRef.current >= 0) {
         if (hasUnmutedNewConversations) {
           playNewConversationSound();
         } else if (hasUnmutedNewMessages && previousUnreadRef.current > 0) {
           playSound();
         }
+      }
+
+      if (emitEvent && notifiableConversation && settings.pushEnabled && pushPermission === 'granted') {
+        const contactLabel = notifiableConversation.contact_name || notifiableConversation.contact_phone || 'Nova mensagem';
+        const preview = formatMessagePreview(notifiableConversation);
+        showPushNotification(`💬 ${contactLabel}`, {
+          body: preview,
+          tag: `conv-${notifiableConversation.id}`,
+          data: { url: `/chat?conversation=${notifiableConversation.id}` },
+        });
       }
       
       // Broadcast to other components to refresh immediately
@@ -151,7 +175,7 @@ export function MessageNotifications() {
     } finally {
       isFetchingRef.current = false;
     }
-  }, [soundEnabled, settings.soundEnabled, playSound, playNewConversationSound, isConnectionMuted, isConversationMuted, isGroupMuted]);
+  }, [soundEnabled, settings.soundEnabled, settings.pushEnabled, pushPermission, playSound, playNewConversationSound, showPushNotification, isConnectionMuted, isConversationMuted, isGroupMuted]);
 
   // Avoid request storms when the backend is under load.
   useEffect(() => {
