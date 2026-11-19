@@ -3,6 +3,13 @@ import { useParams } from 'react-router-dom';
 import SignatureCanvas from 'react-signature-canvas';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -27,6 +34,7 @@ export default function PropostaPublica() {
   const [error, setError] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
   const signatureRef = useRef<SignatureCanvas>(null);
 
   useEffect(() => {
@@ -43,13 +51,15 @@ export default function PropostaPublica() {
 
   const recordDecision = async (decision: 'approve' | 'reject') => {
     if (!token || !proposal || proposal.decided_at) return;
-    const signatureImage = proposal.requires_signature && decision === 'approve' && signatureRef.current && !signatureRef.current.isEmpty()
-      ? signatureRef.current.toDataURL('image/png')
-      : null;
-    if (proposal.requires_signature && decision === 'approve' && !signatureImage) {
-      setError('Desenhe sua assinatura antes de aprovar.');
+    if (decision === 'approve' && proposal.requires_signature) {
+      setSignatureDialogOpen(true);
       return;
     }
+    await submitDecision(decision, null);
+  };
+
+  const submitDecision = async (decision: 'approve' | 'reject', signatureImage: string | null) => {
+    if (!token || !proposal || proposal.decided_at) return;
     setError('');
     setSubmitting(true);
     try {
@@ -61,6 +71,7 @@ export default function PropostaPublica() {
       if (!response.ok) throw new Error('Não foi possível registrar sua resposta');
       const updated = await response.json();
       setProposal((current) => current ? { ...current, ...updated } : current);
+      setSignatureDialogOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao registrar resposta');
     } finally {
@@ -206,20 +217,6 @@ export default function PropostaPublica() {
               </div>
             ) : (
               <div className="space-y-3 border-t pt-4">
-                {proposal.requires_signature && (
-                  <div className="space-y-2 rounded-lg border p-3">
-                    <Label>Assinatura digital (obrigatória para aprovar)</Label>
-                    <div className="rounded-md border bg-white">
-                      <SignatureCanvas
-                        ref={signatureRef}
-                        canvasProps={{ className: 'h-40 w-full touch-none' }}
-                      />
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => signatureRef.current?.clear()}>
-                      Limpar assinatura
-                    </Button>
-                  </div>
-                )}
                 <div className="space-y-2">
                   <Label htmlFor="decision-notes">Mensagem (opcional)</Label>
                   <Textarea
@@ -251,6 +248,48 @@ export default function PropostaPublica() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={signatureDialogOpen} onOpenChange={setSignatureDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assine para aprovar</DialogTitle>
+            <DialogDescription>
+              Desenhe sua assinatura com o dedo ou o mouse e confirme.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-lg border bg-white p-1">
+              <SignatureCanvas
+                ref={signatureRef}
+                canvasProps={{ className: 'h-44 w-full touch-none' }}
+              />
+            </div>
+            <Button variant="outline" size="sm" onClick={() => signatureRef.current?.clear()}>
+              Limpar assinatura
+            </Button>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              className="flex-1"
+              disabled={submitting}
+              onClick={async () => {
+                if (!signatureRef.current || signatureRef.current.isEmpty()) {
+                  setError('Desenhe sua assinatura para continuar.');
+                  return;
+                }
+                await submitDecision('approve', signatureRef.current.toDataURL('image/png'));
+              }}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              {submitting ? 'Enviando...' : 'Confirmar aprovação'}
+            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setSignatureDialogOpen(false)}>
+              Cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
