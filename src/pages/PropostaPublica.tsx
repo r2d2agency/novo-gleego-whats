@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import SignatureCanvas from 'react-signature-canvas';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +14,7 @@ const currency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
 
 const statusLabels: Record<string, string> = {
+  draft: 'Rascunho',
   sent: 'Enviada',
   approved: 'Aprovada',
   rejected: 'Recusada',
@@ -25,6 +27,7 @@ export default function PropostaPublica() {
   const [error, setError] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const signatureRef = useRef<SignatureCanvas>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -40,12 +43,20 @@ export default function PropostaPublica() {
 
   const recordDecision = async (decision: 'approve' | 'reject') => {
     if (!token || !proposal || proposal.decided_at) return;
+    const signatureImage = proposal.requires_signature && decision === 'approve' && signatureRef.current && !signatureRef.current.isEmpty()
+      ? signatureRef.current.toDataURL('image/png')
+      : null;
+    if (proposal.requires_signature && decision === 'approve' && !signatureImage) {
+      setError('Desenhe sua assinatura antes de aprovar.');
+      return;
+    }
+    setError('');
     setSubmitting(true);
     try {
       const response = await fetch(`${API_URL}/api/crm/public/proposals/${encodeURIComponent(token)}/decision`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision, notes }),
+        body: JSON.stringify({ decision, notes, signature_image: signatureImage }),
       });
       if (!response.ok) throw new Error('Não foi possível registrar sua resposta');
       const updated = await response.json();
@@ -180,9 +191,29 @@ export default function PropostaPublica() {
               <div className={`rounded-lg p-4 text-sm ${proposal.status === 'approved' ? 'bg-green-500/10 text-green-700' : 'bg-destructive/10 text-destructive'}`}>
                 {proposal.status === 'approved' ? 'Proposta aprovada' : 'Proposta recusada'} em {new Date(proposal.decided_at).toLocaleString('pt-BR')}
                 {proposal.decision_notes && <p className="mt-1">{proposal.decision_notes}</p>}
+                {proposal.signature_image && (
+                  <div className="mt-3">
+                    <p className="mb-1 text-xs text-muted-foreground">Assinatura digital</p>
+                    <img src={proposal.signature_image} alt="Assinatura do cliente" className="h-24 w-auto rounded bg-white object-contain" />
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-3 border-t pt-4">
+                {proposal.requires_signature && (
+                  <div className="space-y-2 rounded-lg border p-3">
+                    <Label>Assinatura digital (obrigatória para aprovar)</Label>
+                    <div className="rounded-md border bg-white">
+                      <SignatureCanvas
+                        ref={signatureRef}
+                        canvasProps={{ className: 'h-40 w-full touch-none' }}
+                      />
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => signatureRef.current?.clear()}>
+                      Limpar assinatura
+                    </Button>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="decision-notes">Mensagem (opcional)</Label>
                   <Textarea

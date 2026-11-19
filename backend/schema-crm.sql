@@ -328,6 +328,14 @@ CREATE INDEX IF NOT EXISTS idx_crm_proposals_org ON crm_proposals(organization_i
 CREATE INDEX IF NOT EXISTS idx_crm_proposals_token ON crm_proposals(public_token);
 CREATE INDEX IF NOT EXISTS idx_crm_proposal_items_proposal ON crm_proposal_items(proposal_id);
 
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_logo_url TEXT;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_header_text TEXT;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_description TEXT;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_footer_text TEXT;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS requires_signature BOOLEAN DEFAULT false;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS signature_image TEXT;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS signed_at TIMESTAMP WITH TIME ZONE;
+
 CREATE INDEX IF NOT EXISTS idx_crm_user_groups_org ON crm_user_groups(organization_id);
 CREATE INDEX IF NOT EXISTS idx_crm_user_group_members_group ON crm_user_group_members(group_id);
 CREATE INDEX IF NOT EXISTS idx_crm_user_group_members_user ON crm_user_group_members(user_id);

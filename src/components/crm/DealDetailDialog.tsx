@@ -162,6 +162,11 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
   const [proposalCustomerName, setProposalCustomerName] = useState("");
   const [proposalCompanySearchOpen, setProposalCompanySearchOpen] = useState(false);
   const [proposalCompanySearch, setProposalCompanySearch] = useState("");
+  const [proposalCustomerDocument, setProposalCustomerDocument] = useState("");
+  const [proposalCustomerEmail, setProposalCustomerEmail] = useState("");
+  const [proposalCustomerPhone, setProposalCustomerPhone] = useState("");
+  const [proposalContactName, setProposalContactName] = useState("");
+  const [proposalSignatureRequired, setProposalSignatureRequired] = useState<Record<string, boolean>>({});
   const { data: proposalCompanies = [] } = useCRMCompanies(proposalCompanySearch);
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
   const [editCustomFields, setEditCustomFields] = useState<Record<string, any>>({});
@@ -454,9 +459,13 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
         title: proposalTitle.trim() || `Proposta - ${currentDeal?.title || "Negociação"}`,
         customer_name:
           proposalCustomerName.trim() ||
-          currentDeal?.contacts?.[0]?.name ||
           currentDeal?.company_name ||
+          currentDeal?.contacts?.[0]?.name ||
           "",
+        customer_document: proposalCustomerDocument.trim() || null,
+        customer_email: proposalCustomerEmail.trim() || null,
+        customer_phone: proposalCustomerPhone.trim() || null,
+        notes: proposalContactName.trim() ? `Contato: ${proposalContactName.trim()}` : null,
         discount_percent: discountPercent,
         validity_days: validityDays,
       },
@@ -467,6 +476,10 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
           setProposalValidity("15");
           setProposalCustomerName("");
           setProposalCompanySearch("");
+          setProposalCustomerDocument("");
+          setProposalCustomerEmail("");
+          setProposalCustomerPhone("");
+          setProposalContactName("");
         },
         onError: (error: any) => toast.error(error?.message || "Erro ao criar proposta"),
       }
@@ -2234,6 +2247,39 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label>Nome do contato</Label>
+                      <Input
+                        value={proposalContactName}
+                        onChange={(e) => setProposalContactName(e.target.value)}
+                        placeholder="Nome de quem vai receber a proposta"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Documento / CNPJ</Label>
+                      <Input
+                        value={proposalCustomerDocument}
+                        onChange={(e) => setProposalCustomerDocument(e.target.value)}
+                        placeholder="CNPJ ou CPF"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>E-mail</Label>
+                      <Input
+                        type="email"
+                        value={proposalCustomerEmail}
+                        onChange={(e) => setProposalCustomerEmail(e.target.value)}
+                        placeholder="email@empresa.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Telefone / WhatsApp</Label>
+                      <Input
+                        value={proposalCustomerPhone}
+                        onChange={(e) => setProposalCustomerPhone(e.target.value)}
+                        placeholder="(00) 00000-0000"
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <Label>Desconto geral %</Label>
                       <Input
                         type="number"
@@ -2296,10 +2342,27 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                           Copiar link público
                         </Button>
                         {proposal.status === "draft" && (
-                          <Button size="sm" onClick={() => sendProposal.mutate(proposal.id)} disabled={sendProposal.isPending}>
-                            <Send className="h-4 w-4 mr-2" />
-                            Marcar como enviada
-                          </Button>
+                          <>
+                            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <input
+                                type="checkbox"
+                                checked={proposalSignatureRequired[proposal.id] || false}
+                                onChange={(event) => setProposalSignatureRequired((current) => ({ ...current, [proposal.id]: event.target.checked }))}
+                              />
+                              Exigir assinatura digital
+                            </label>
+                            <Button
+                              size="sm"
+                              onClick={() => sendProposal.mutate({ id: proposal.id, requires_signature: !!proposalSignatureRequired[proposal.id] })}
+                              disabled={sendProposal.isPending}
+                            >
+                              <Send className="h-4 w-4 mr-2" />
+                              Marcar como enviada
+                            </Button>
+                          </>
+                        )}
+                        {proposal.requires_signature && (
+                          <Badge variant="outline">Assinatura digital {proposal.signed_at ? 'coletada' : 'obrigatória'}</Badge>
                         )}
                       </div>
                     </Card>

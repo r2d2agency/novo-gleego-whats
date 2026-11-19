@@ -152,6 +152,13 @@ export async function generateProposalPdf(
   cursorY += 4;
 
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(
+    `Validade: ${Number(proposal.validity_days || 0)} dias`,
+    margin,
+    cursorY
+  );
+  cursorY += 6;
   if (proposal.template_footer_text) {
     const footerLines = doc.splitTextToSize(proposal.template_footer_text, pageWidth - margin * 2);
     doc.setFontSize(9);
@@ -165,12 +172,6 @@ export async function generateProposalPdf(
     });
     cursorY += 6;
   }
-  doc.text(
-    `Validade: ${Number(proposal.validity_days || 0)} dias`,
-    margin,
-    cursorY
-  );
-  cursorY += 6;
   if (proposal.notes) {
     const notesLines = doc.splitTextToSize(`Observações: ${proposal.notes}`, pageWidth - margin * 2);
     doc.text(notesLines, margin, cursorY);
@@ -180,7 +181,7 @@ export async function generateProposalPdf(
   doc.setFontSize(9);
   doc.setTextColor(130, 130, 130);
   doc.text(
-    `Gerado em ${new Date().toLocaleString("pt-BR")}`,
+    `Gerado em ${new Date().toLocaleString("pt-BR")} por Whats-Gleego`,
     margin,
     doc.internal.pageSize.getHeight() - 10
   );

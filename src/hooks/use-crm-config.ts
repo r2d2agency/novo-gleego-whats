@@ -460,6 +460,9 @@ export interface CRMProposal {
   template_header_text?: string | null;
   template_description?: string | null;
   template_footer_text?: string | null;
+  requires_signature?: boolean;
+  signature_image?: string | null;
+  signed_at?: string | null;
   customer_name?: string;
   customer_document?: string;
   customer_email?: string;
@@ -608,8 +611,10 @@ export function useProposalMutations(dealId: string | null) {
     onError: (e: any) => toast({ title: "Erro ao criar proposta", description: e.message, variant: "destructive" }),
   });
   const sendProposal = useMutation({
-    mutationFn: (id: string) => api<CRMProposal>(`/api/crm/deals/${dealId}/proposals/${id}/send`, { method: "POST" }),
+    mutationFn: ({ id, requires_signature }: { id: string; requires_signature: boolean }) =>
+      api<CRMProposal>(`/api/crm/deals/${dealId}/proposals/${id}/send`, { method: "POST", body: { requires_signature } }),
     onSuccess: () => { invalidate(); toast({ title: "Proposta enviada" }); },
+    onError: (e: any) => toast({ title: "Erro ao enviar proposta", description: e.message, variant: "destructive" }),
   });
 
   return { createProposal, sendProposal };

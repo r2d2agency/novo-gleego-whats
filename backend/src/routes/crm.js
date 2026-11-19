@@ -4909,10 +4909,13 @@ router.post('/deals/:id/proposals/:proposalId/send', async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
     if (!org) return res.status(403).json({ error: 'No organization' });
+    const requiresSignature = req.body.requires_signature === true;
     const result = await query(
-      `UPDATE crm_proposals SET status = 'sent', sent_at = COALESCE(sent_at, NOW()), updated_at = NOW()
+      `UPDATE crm_proposals
+       SET status = 'sent', sent_at = COALESCE(sent_at, NOW()), updated_at = NOW(),
+           requires_signature = $4
        WHERE id = $1 AND deal_id = $2 AND organization_id = $3 RETURNING *`,
-      [req.params.proposalId, req.params.id, org.organization_id]
+      [req.params.proposalId, req.params.id, org.organization_id, requiresSignature]
     );
     if (!result.rows[0]) return res.status(404).json({ error: 'Proposal not found' });
     res.json(result.rows[0]);
@@ -4932,7 +4935,7 @@ publicRouter.get('/:token', async (req, res) => {
        WHERE p.public_token = $1`,
       [req.params.token]
     ).then((result) => result.rows[0]);
-    if (!proposal || proposal.status === 'draft') return res.status(404).json({ error: 'Proposta indisponível' });
+    if (!proposal) return res.status(404).json({ error: 'Proposta indisponível' });
     const items = await query('SELECT * FROM crm_proposal_items WHERE proposal_id = $1 ORDER BY position ASC', [proposal.id]);
     res.json(serializeProposal(proposal, items.rows));
   } catch (error) {
@@ -4945,17 +4948,22 @@ publicRouter.post('/:token/decision', async (req, res) => {
   try {
     const decision = req.body.decision === 'approve' ? 'approved' : req.body.decision === 'reject' ? 'rejected' : null;
     if (!decision) return res.status(400).json({ error: 'Invalid decision' });
+    const signatureImage = typeof req.body.signature_image === 'string' ? req.body.signature_image : null;
     const tokenResult = await query('SELECT * FROM crm_proposals WHERE public_token = $1', [req.params.token]);
     const proposal = tokenResult.rows[0];
-    if (!proposal || proposal.status === 'draft') return res.status(404).json({ error: 'Proposta indisponível' });
+    if (!proposal) return res.status(404).json({ error: 'Proposta indisponível' });
     if (proposal.decided_at) return res.status(400).json({ error: 'Proposta já respondida' });
+    if (proposal.requires_signature && decision === 'approve' && !signatureImage) {
+      return res.status(400).json({ error: 'Assinatura digital é obrigatória para aprovar esta proposta' });
+    }
 
     const result = await query(
       `UPDATE crm_proposals
-       SET status = $1, decided_at = NOW(), decision_notes = $2, updated_at = NOW()
+       SET status = $1, decided_at = NOW(), decision_notes = $2, updated_at = NOW(),
+           signature_image = $4, signed_at = CASE WHEN $4 IS NOT NULL THEN NOW() ELSE NULL END
        WHERE id = $3 AND decided_at IS NULL
        RETURNING *`,
-      [decision, req.body.notes || null, proposal.id]
+      [decision, req.body.notes || null, proposal.id, signatureImage]
     );
     if (!result.rows[0]) return res.status(400).json({ error: 'Proposta já respondida' });
     res.json(result.rows[0]);

@@ -4096,6 +4096,9 @@ ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_logo_url TEXT;
 ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_header_text TEXT;
 ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_description TEXT;
 ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_footer_text TEXT;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS requires_signature BOOLEAN DEFAULT false;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS signature_image TEXT;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS signed_at TIMESTAMP WITH TIME ZONE;
 `;
 
 const migrationSteps = [
