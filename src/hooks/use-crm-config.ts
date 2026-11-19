@@ -471,6 +471,7 @@ export interface CRMProposal {
   customer_phone?: string;
   notes?: string;
   payment_terms?: string;
+  payment_method?: string | null;
   validity_days: number;
   discount_percent: number;
   subtotal: number;

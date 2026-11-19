@@ -180,6 +180,12 @@ export default function PropostaPublica() {
                 <p className="whitespace-pre-wrap text-sm text-muted-foreground">{proposal.notes}</p>
               </div>
             )}
+            {proposal.payment_method && (
+              <div>
+                <p className="text-sm font-medium">Forma de pagamento</p>
+                <p className="text-sm text-muted-foreground">{proposal.payment_method}</p>
+              </div>
+            )}
             {proposal.payment_terms && (
               <div>
                 <p className="text-sm font-medium">Condições de pagamento</p>

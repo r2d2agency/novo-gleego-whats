@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Trash2, FileText, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { api } from '@/lib/api';
 import {
   CRMProposal,
   CRMProposalItem,
@@ -53,6 +54,7 @@ export function ProposalEditorDialog({ dealId, proposal, open, onOpenChange, dea
   const [validityDays, setValidityDays] = useState('15');
   const [discountPercent, setDiscountPercent] = useState('0');
   const [paymentTerms, setPaymentTerms] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Pix');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<CRMProposalItem[]>([]);
   const [selectedCatalogId, setSelectedCatalogId] = useState('');
@@ -68,6 +70,7 @@ export function ProposalEditorDialog({ dealId, proposal, open, onOpenChange, dea
     setValidityDays(String(proposal.validity_days || 15));
     setDiscountPercent(String(proposal.discount_percent || 0));
     setPaymentTerms(proposal.payment_terms || '');
+    setPaymentMethod(proposal.payment_method || 'Pix');
     setNotes(proposal.notes || '');
     setItems(proposal.items || []);
     setRequiresSignature(!!proposal.requires_signature);
@@ -123,6 +126,7 @@ export function ProposalEditorDialog({ dealId, proposal, open, onOpenChange, dea
       customer_phone: customerPhone,
       notes,
       payment_terms: paymentTerms,
+      payment_method: paymentMethod,
       validity_days: Number(validityDays) || 15,
       discount_percent: Number(discountPercent) || 0,
       items,
@@ -258,6 +262,19 @@ export function ProposalEditorDialog({ dealId, proposal, open, onOpenChange, dea
               <Input type="number" min="0" max="100" step="0.01" value={discountPercent} onChange={(e) => setDiscountPercent(e.target.value)} disabled={!canEdit} />
             </div>
             <div className="space-y-2">
+              <Label>Forma de pagamento</Label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod} disabled={!canEdit}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pix">Pix</SelectItem>
+                  <SelectItem value="Cartão de crédito">Cartão de crédito</SelectItem>
+                  <SelectItem value="Boleto">Boleto</SelectItem>
+                  <SelectItem value="Transferência">Transferência</SelectItem>
+                  <SelectItem value="Dinheiro">Dinheiro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>Condições de pagamento</Label>
               <Input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} disabled={!canEdit} />
             </div>
@@ -298,8 +315,15 @@ export function ProposalEditorDialog({ dealId, proposal, open, onOpenChange, dea
             </>
           )}
           <Button variant="outline" onClick={async () => {
+            let savedProposal = proposal;
+            try {
+              savedProposal = await api<CRMProposal>(`/api/crm/deals/${dealId}/proposals/${proposal.id}`);
+            } catch {
+              savedProposal = proposal;
+            }
+            const effectiveItems = savedProposal.items?.length ? savedProposal.items : items;
             await generateProposalPdf({
-              ...proposal,
+              ...savedProposal,
               title,
               customer_name: customerName,
               customer_document: customerDocument,
@@ -308,8 +332,9 @@ export function ProposalEditorDialog({ dealId, proposal, open, onOpenChange, dea
               validity_days: Number(validityDays),
               discount_percent: Number(discountPercent),
               payment_terms: paymentTerms,
+              payment_method: paymentMethod,
               notes,
-              items,
+              items: effectiveItems,
             }, { dealTitle, companyName });
           }}><FileText className="h-4 w-4 mr-2" />PDF</Button>
         </DialogFooter>

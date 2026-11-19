@@ -87,10 +87,12 @@ function calculateItemTotal(quantity, unitPrice, discountPercent) {
 }
 
 async function replaceProposalItems(proposalId, items) {
+  if (!Array.isArray(items)) return;
   await query('DELETE FROM crm_proposal_items WHERE proposal_id = $1', [proposalId]);
 
   for (let index = 0; index < items.length; index++) {
     const item = items[index];
+    if (!item?.name) continue;
     const total = calculateItemTotal(item.quantity, item.unit_price, item.discount_percent);
     await query(
       `INSERT INTO crm_proposal_items
@@ -4878,8 +4880,8 @@ router.put('/deals/:id/proposals/:proposalId', async (req, res) => {
     const result = await query(
       `UPDATE crm_proposals
        SET title = $1, customer_name = $2, customer_document = $3, customer_email = $4, customer_phone = $5,
-           notes = $6, payment_terms = $7, validity_days = $8, discount_percent = $9, updated_at = NOW()
-       WHERE id = $10 AND organization_id = $11
+           notes = $6, payment_terms = $7, payment_method = $8, validity_days = $9, discount_percent = $10, updated_at = NOW()
+       WHERE id = $11 AND organization_id = $12
        RETURNING *`,
       [
         req.body.title || existing.rows[0].title,
@@ -4889,6 +4891,7 @@ router.put('/deals/:id/proposals/:proposalId', async (req, res) => {
         req.body.customer_phone || null,
         req.body.notes || null,
         req.body.payment_terms || null,
+        req.body.payment_method || null,
         Number(req.body.validity_days || existing.rows[0].validity_days),
         Number(req.body.discount_percent || 0),
         req.params.proposalId,
@@ -4915,7 +4918,10 @@ router.put('/deals/:id/proposals/:proposalId', async (req, res) => {
 router.delete('/deals/:id/proposals/:proposalId', async (req, res) => {
   try {
     const org = await getUserOrg(req.userId);
-    if (!org || !canManage(org.role)) return res.status(403).json({ error: 'Not authorized' });
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const existing = await query('SELECT status FROM crm_proposals WHERE id = $1 AND deal_id = $2 AND organization_id = $3', [req.params.proposalId, req.params.id, org.organization_id]);
+    if (!existing.rows[0]) return res.status(404).json({ error: 'Proposal not found' });
+    if (existing.rows[0].status !== 'draft' && !canManage(org.role)) return res.status(403).json({ error: 'Not authorized' });
     const result = await query(
       'DELETE FROM crm_proposals WHERE id = $1 AND deal_id = $2 AND organization_id = $3 RETURNING id',
       [req.params.proposalId, req.params.id, org.organization_id]

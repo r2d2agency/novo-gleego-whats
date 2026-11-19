@@ -165,9 +165,16 @@ export async function generateProposalPdf(
     doc.text(footerLines, margin, cursorY);
     cursorY += footerLines.length * 4 + 3;
   }
+  if (proposal.payment_method) {
+    doc.setFontSize(10);
+    doc.text(`Forma de pagamento: ${proposal.payment_method}`, margin, cursorY, {
+      maxWidth: pageWidth - margin * 2,
+    });
+    cursorY += 6;
+  }
   if (proposal.payment_terms) {
     doc.setFontSize(10);
-    doc.text(`Pagamento: ${proposal.payment_terms}`, margin, cursorY, {
+    doc.text(`Condições: ${proposal.payment_terms}`, margin, cursorY, {
       maxWidth: pageWidth - margin * 2,
     });
     cursorY += 6;

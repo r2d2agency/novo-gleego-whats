@@ -337,6 +337,7 @@ ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS signature_image TEXT;
 ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS signed_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS opened_count INTEGER DEFAULT 0;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS payment_method TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_crm_user_groups_org ON crm_user_groups(organization_id);
 CREATE INDEX IF NOT EXISTS idx_crm_user_group_members_group ON crm_user_group_members(group_id);
