@@ -160,6 +160,9 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
   const [proposalDiscount, setProposalDiscount] = useState("0");
   const [proposalValidity, setProposalValidity] = useState("15");
   const [proposalCustomerName, setProposalCustomerName] = useState("");
+  const [proposalCompanySearchOpen, setProposalCompanySearchOpen] = useState(false);
+  const [proposalCompanySearch, setProposalCompanySearch] = useState("");
+  const { data: proposalCompanies = [] } = useCRMCompanies(proposalCompanySearch);
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
   const [editCustomFields, setEditCustomFields] = useState<Record<string, any>>({});
   const [isEditingCustomFields, setIsEditingCustomFields] = useState(false);
@@ -463,6 +466,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
           setProposalDiscount("0");
           setProposalValidity("15");
           setProposalCustomerName("");
+          setProposalCompanySearch("");
         },
         onError: (error: any) => toast.error(error?.message || "Erro ao criar proposta"),
       }
@@ -2177,11 +2181,56 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                       />
                     </div>
                     <div className="space-y-2 md:col-span-2">
-                      <Label>Cliente</Label>
+                      <Label>Empresa do cliente</Label>
+                      <Popover open={proposalCompanySearchOpen} onOpenChange={setProposalCompanySearchOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-start">
+                            <Search className="h-3 w-3 mr-2" />
+                            {proposalCustomerName || currentDeal?.company_name || "Buscar empresa cadastrada"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                          <Command>
+                            <CommandInput
+                              placeholder="Buscar empresa pelo nome ou CNPJ..."
+                              value={proposalCompanySearch}
+                              onValueChange={setProposalCompanySearch}
+                            />
+                            <CommandList>
+                              <CommandEmpty>Nenhuma empresa encontrada.</CommandEmpty>
+                              <CommandGroup>
+                                {proposalCompanies?.slice(0, 10).map((company) => (
+                                  <CommandItem
+                                    key={company.id}
+                                    value={company.name}
+                                    onSelect={() => {
+                                      setProposalCustomerName(company.name);
+                                      if (currentDeal?.company_id !== company.id) {
+                                        updateDeal.mutate({ id: deal.id, company_id: company.id } as any);
+                                      }
+                                      setProposalCompanySearchOpen(false);
+                                      setProposalCompanySearch("");
+                                      toast.success(`Empresa vinculada: ${company.name}`);
+                                    }}
+                                  >
+                                    <Building2 className="h-4 w-4 mr-2" />
+                                    <div>
+                                      <p className="font-medium">{company.name}</p>
+                                      {company.cnpj && (
+                                        <p className="text-xs text-muted-foreground">{company.cnpj}</p>
+                                      )}
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                       <Input
                         value={proposalCustomerName}
                         onChange={(e) => setProposalCustomerName(e.target.value)}
-                        placeholder={currentDeal?.contacts?.[0]?.name || currentDeal?.company_name || "Nome do cliente"}
+                        placeholder={currentDeal?.contacts?.[0]?.name || currentDeal?.company_name || "Nome exibido na proposta"}
                       />
                     </div>
                     <div className="space-y-2">

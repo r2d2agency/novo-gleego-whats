@@ -27,19 +27,33 @@ export async function generateProposalPdf(
 
   if (proposal.template_logo_url) {
     try {
-      const response = await fetch(proposal.template_logo_url);
-      const blob = await response.blob();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-      const imageFormat = blob.type.includes("png") ? "PNG" : "JPEG";
-      doc.addImage(dataUrl, imageFormat, margin, cursorY, 32, 18);
-      cursorY += 22;
+      const imageProps = doc.getImageProperties(proposal.template_logo_url);
+      const maxWidth = 50;
+      const maxHeight = 22;
+      const ratio = Math.min(maxWidth / imageProps.width, maxHeight / imageProps.height);
+      const width = imageProps.width * ratio;
+      const height = imageProps.height * ratio;
+      doc.addImage(proposal.template_logo_url, imageProps.fileType, margin, cursorY, width, height);
+      cursorY += height + 4;
     } catch {
-      // Keep generating the PDF without the logo if it cannot be loaded.
+      try {
+        const response = await fetch(proposal.template_logo_url);
+        const blob = await response.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        const imageProps = doc.getImageProperties(dataUrl);
+        const maxWidth = 50;
+        const maxHeight = 22;
+        const ratio = Math.min(maxWidth / imageProps.width, maxHeight / imageProps.height);
+        doc.addImage(dataUrl, imageProps.fileType, margin, cursorY, imageProps.width * ratio, imageProps.height * ratio);
+        cursorY += imageProps.height * ratio + 4;
+      } catch {
+        // Keep generating the PDF without the logo if it cannot be loaded.
+      }
     }
   }
 

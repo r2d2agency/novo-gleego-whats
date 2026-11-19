@@ -4852,7 +4852,8 @@ router.post('/deals/:id/proposals', async (req, res) => {
     );
     const proposal = result.rows[0];
     await replaceProposalItems(proposal.id, itemsResult.rows);
-    res.status(201).json(serializeProposal(proposal, itemsResult.rows));
+    const createdItems = await query('SELECT * FROM crm_proposal_items WHERE proposal_id = $1 ORDER BY position ASC', [proposal.id]);
+    res.status(201).json(serializeProposal(proposal, createdItems.rows));
   } catch (error) {
     console.error('Error creating proposal:', error);
     res.status(500).json({ error: error.message });
@@ -4923,7 +4924,14 @@ router.post('/deals/:id/proposals/:proposalId/send', async (req, res) => {
 
 publicRouter.get('/:token', async (req, res) => {
   try {
-    const proposal = await getProposalBase(null, req.params.token);
+    const proposal = await query(
+      `SELECT p.*, d.title AS deal_title, d.company_id, c.name AS company_name
+       FROM crm_proposals p
+       JOIN crm_deals d ON d.id = p.deal_id
+       LEFT JOIN crm_companies c ON c.id = d.company_id
+       WHERE p.public_token = $1`,
+      [req.params.token]
+    ).then((result) => result.rows[0]);
     if (!proposal || proposal.status === 'draft') return res.status(404).json({ error: 'Proposta indisponível' });
     const items = await query('SELECT * FROM crm_proposal_items WHERE proposal_id = $1 ORDER BY position ASC', [proposal.id]);
     res.json(serializeProposal(proposal, items.rows));

@@ -87,7 +87,7 @@ export default function PropostaPublica() {
               <img
                 src={proposal.template_logo_url}
                 alt="Logo da proposta"
-                className="mb-4 max-h-20 max-w-44 object-contain"
+                className="mb-4 h-16 w-auto object-contain"
               />
             )}
             {proposal.template_header_text && (

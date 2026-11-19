@@ -4092,6 +4092,10 @@ CREATE INDEX IF NOT EXISTS idx_crm_proposals_deal ON crm_proposals(deal_id);
 CREATE INDEX IF NOT EXISTS idx_crm_proposals_org ON crm_proposals(organization_id);
 CREATE INDEX IF NOT EXISTS idx_crm_proposals_token ON crm_proposals(public_token);
 CREATE INDEX IF NOT EXISTS idx_crm_proposal_items_proposal ON crm_proposal_items(proposal_id);
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_logo_url TEXT;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_header_text TEXT;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_description TEXT;
+ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS template_footer_text TEXT;
 `;
 
 const migrationSteps = [
