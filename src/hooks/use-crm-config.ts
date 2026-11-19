@@ -463,6 +463,8 @@ export interface CRMProposal {
   requires_signature?: boolean;
   signature_image?: string | null;
   signed_at?: string | null;
+  opened_at?: string | null;
+  opened_count?: number;
   customer_name?: string;
   customer_document?: string;
   customer_email?: string;
@@ -610,6 +612,17 @@ export function useProposalMutations(dealId: string | null) {
     onSuccess: () => { invalidate(); toast({ title: "Proposta criada" }); },
     onError: (e: any) => toast({ title: "Erro ao criar proposta", description: e.message, variant: "destructive" }),
   });
+  const updateProposal = useMutation({
+    mutationFn: ({ id, ...data }: Partial<CRMProposal> & { id: string }) =>
+      api<CRMProposal>(`/api/crm/deals/${dealId}/proposals/${id}`, { method: "PUT", body: data }),
+    onSuccess: () => { invalidate(); toast({ title: "Proposta atualizada" }); },
+    onError: (e: any) => toast({ title: "Erro ao salvar proposta", description: e.message, variant: "destructive" }),
+  });
+  const deleteProposal = useMutation({
+    mutationFn: (id: string) => api<void>(`/api/crm/deals/${dealId}/proposals/${id}`, { method: "DELETE" }),
+    onSuccess: () => { invalidate(); toast({ title: "Proposta excluída" }); },
+    onError: (e: any) => toast({ title: "Erro ao excluir proposta", description: e.message, variant: "destructive" }),
+  });
   const sendProposal = useMutation({
     mutationFn: ({ id, requires_signature }: { id: string; requires_signature: boolean }) =>
       api<CRMProposal>(`/api/crm/deals/${dealId}/proposals/${id}/send`, { method: "POST", body: { requires_signature } }),
@@ -617,5 +630,5 @@ export function useProposalMutations(dealId: string | null) {
     onError: (e: any) => toast({ title: "Erro ao enviar proposta", description: e.message, variant: "destructive" }),
   });
 
-  return { createProposal, sendProposal };
+  return { createProposal, updateProposal, deleteProposal, sendProposal };
 }

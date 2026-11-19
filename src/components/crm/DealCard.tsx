@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CRMDeal } from "@/hooks/use-crm";
 import { cn } from "@/lib/utils";
-import { Building2, User, Clock, AlertTriangle, CheckSquare, Trophy, XCircle, Pause, Video, CalendarClock, Flame, Thermometer, Snowflake, TrendingUp, TrendingDown, Activity, FolderKanban, Webhook, MessageSquareWarning, ThumbsUp, ThumbsDown, Play, Zap } from "lucide-react";
+import { Building2, User, Clock, AlertTriangle, CheckSquare, Trophy, XCircle, Pause, Video, CalendarClock, Flame, Thermometer, Snowflake, TrendingUp, TrendingDown, Activity, FolderKanban, Webhook, MessageSquareWarning, ThumbsUp, ThumbsDown, Play, Zap, FileText } from "lucide-react";
 import { differenceInHours, parseISO } from "date-fns";
 import { analyzeDeal } from "./PredictiveAnalytics";
 
@@ -141,8 +141,20 @@ export const DealCard = forwardRef<HTMLDivElement, DealCardProps>(
       >
         {/* Status Badge + Quick Action Buttons */}
         <div className="flex items-center justify-between mb-2">
-          {getStatusBadge() || <span />}
-          
+          <div className="flex items-center gap-1">
+            {getStatusBadge() || <span />}
+            {Number(deal.proposal_count || 0) > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="secondary" className="text-[10px] px-1.5 flex items-center gap-0.5">
+                    <FileText className="h-3 w-3" /> {deal.proposal_count}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>{deal.proposal_count} proposta(s) nesta negociação</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+
           {/* Quick status buttons */}
           {onStatusChange && (
             <div 

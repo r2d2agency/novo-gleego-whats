@@ -122,6 +122,7 @@ export interface CRMDeal {
   upcoming_meetings?: number;
   scheduled_messages?: number;
   project_count?: number;
+  proposal_count?: number;
   contacts?: CRMDealContact[];
   attachments?: DealAttachment[];
   last_activity_at: string;

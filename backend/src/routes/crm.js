@@ -998,6 +998,7 @@ router.get('/funnels/:funnelId/deals', async (req, res) => {
            )
         ) as scheduled_messages,
         (SELECT COUNT(*) FROM projects WHERE deal_id = d.id) as project_count,
+        (SELECT COUNT(*) FROM crm_proposals WHERE deal_id = d.id) as proposal_count,
         (SELECT json_agg(json_build_object('id', dc.contact_id, 'name', cnt.name, 'phone', cnt.phone, 'is_primary', dc.is_primary))
          FROM crm_deal_contacts dc
          JOIN contacts cnt ON cnt.id = dc.contact_id
@@ -4807,15 +4808,23 @@ router.post('/deals/:id/proposals', async (req, res) => {
     const deal = await query('SELECT * FROM crm_deals WHERE id = $1 AND organization_id = $2', [req.params.id, org.organization_id]);
     if (!deal.rows[0]) return res.status(404).json({ error: 'Deal not found' });
 
-    const itemsResult = await query('SELECT * FROM crm_deal_items WHERE deal_id = $1 AND organization_id = $2 ORDER BY created_at ASC', [req.params.id, org.organization_id]);
-    if (!itemsResult.rows.length) return res.status(400).json({ error: 'Adicione pelo menos um item à negociação' });
+    const contactResult = await query(
+      `SELECT cnt.name, cnt.phone, cnt.email
+       FROM crm_deal_contacts dc
+       JOIN contacts cnt ON cnt.id = dc.contact_id
+       WHERE dc.deal_id = $1
+       ORDER BY dc.is_primary DESC, dc.created_at ASC
+       LIMIT 1`,
+      [req.params.id]
+    );
+    const contact = contactResult.rows[0];
 
     const title = String(req.body.title || `Proposta - ${deal.rows[0].title}`).trim();
     const validityDays = Number(req.body.validity_days || 15);
     const globalDiscount = Number(req.body.discount_percent || 0);
-    const subtotal = itemsResult.rows.reduce((sum, item) => sum + calculateItemTotal(item.quantity, item.unit_price, item.discount_percent), 0);
-    const discountAmount = Math.round(subtotal * (globalDiscount / 100) * 100) / 100;
-    const total = Math.round((subtotal - discountAmount) * 100) / 100;
+    const subtotal = 0;
+    const discountAmount = 0;
+    const total = 0;
     const { randomUUID } = await import('node:crypto');
     const templateResult = await query('SELECT * FROM crm_proposal_templates WHERE organization_id = $1', [org.organization_id]);
     const template = templateResult.rows[0];
@@ -4835,10 +4844,10 @@ router.post('/deals/:id/proposals', async (req, res) => {
         template?.header_text || null,
         template?.description || null,
         template?.footer_text || null,
-        req.body.customer_name || deal.rows[0].title || null,
+        req.body.customer_name || contact?.name || deal.rows[0].title || null,
         req.body.customer_document || null,
-        req.body.customer_email || null,
-        req.body.customer_phone || null,
+        req.body.customer_email || contact?.email || null,
+        req.body.customer_phone || contact?.phone || null,
         req.body.notes || null,
         req.body.payment_terms || null,
         validityDays,
@@ -4851,9 +4860,7 @@ router.post('/deals/:id/proposals', async (req, res) => {
       ]
     );
     const proposal = result.rows[0];
-    await replaceProposalItems(proposal.id, itemsResult.rows);
-    const createdItems = await query('SELECT * FROM crm_proposal_items WHERE proposal_id = $1 ORDER BY position ASC', [proposal.id]);
-    res.status(201).json(serializeProposal(proposal, createdItems.rows));
+    res.status(201).json(serializeProposal(proposal, []));
   } catch (error) {
     console.error('Error creating proposal:', error);
     res.status(500).json({ error: error.message });
@@ -4890,7 +4897,7 @@ router.put('/deals/:id/proposals/:proposalId', async (req, res) => {
     );
 
     let items = (await query('SELECT * FROM crm_proposal_items WHERE proposal_id = $1 ORDER BY position ASC', [req.params.proposalId])).rows;
-    if (Array.isArray(req.body.items) && req.body.items.length) {
+    if (Array.isArray(req.body.items)) {
       await replaceProposalItems(req.params.proposalId, req.body.items);
       items = (await query('SELECT * FROM crm_proposal_items WHERE proposal_id = $1 ORDER BY position ASC', [req.params.proposalId])).rows;
     }
@@ -4901,6 +4908,22 @@ router.put('/deals/:id/proposals/:proposalId', async (req, res) => {
     res.json(serializeProposal(totals.rows[0], items));
   } catch (error) {
     console.error('Error updating proposal:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/deals/:id/proposals/:proposalId', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org || !canManage(org.role)) return res.status(403).json({ error: 'Not authorized' });
+    const result = await query(
+      'DELETE FROM crm_proposals WHERE id = $1 AND deal_id = $2 AND organization_id = $3 RETURNING id',
+      [req.params.proposalId, req.params.id, org.organization_id]
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: 'Proposal not found' });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting proposal:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -4936,6 +4959,7 @@ publicRouter.get('/:token', async (req, res) => {
       [req.params.token]
     ).then((result) => result.rows[0]);
     if (!proposal) return res.status(404).json({ error: 'Proposta indisponível' });
+    await query('UPDATE crm_proposals SET opened_at = COALESCE(opened_at, NOW()), opened_count = COALESCE(opened_count, 0) + 1 WHERE id = $1', [proposal.id]);
     const items = await query('SELECT * FROM crm_proposal_items WHERE proposal_id = $1 ORDER BY position ASC', [proposal.id]);
     res.json(serializeProposal(proposal, items.rows));
   } catch (error) {
@@ -4966,6 +4990,9 @@ publicRouter.post('/:token/decision', async (req, res) => {
       [decision, req.body.notes || null, proposal.id, signatureImage]
     );
     if (!result.rows[0]) return res.status(400).json({ error: 'Proposta já respondida' });
+    if (decision === 'approved') {
+      await query('UPDATE crm_deals SET value = $1, last_activity_at = NOW() WHERE id = $2', [proposal.total, proposal.deal_id]);
+    }
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error recording proposal decision:', error);

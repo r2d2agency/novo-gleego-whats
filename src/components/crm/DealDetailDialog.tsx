@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
  import { LossReasonDialog } from "./LossReasonDialog";
 import { useCRMCustomFields, CRMCustomField, useCRMCatalogItems, useDealItems, useDealItemMutations, useDealProposals, useProposalMutations, type CRMDealItem, type CRMProposal, type CRMCatalogItem } from "@/hooks/use-crm-config";
 import { generateProposalPdf } from "./ProposalPdf";
+import { ProposalEditorDialog } from "./ProposalEditorDialog";
 import { api } from "@/lib/api";
 import { Building2, User, Phone, Calendar as CalendarIcon, Clock, CheckCircle, Plus, Trash2, Paperclip, MessageSquare, ChevronRight, Edit2, Save, X, FileText, Image, Loader2, Upload, Search, UserPlus, Building, Mail, Video, Send, ClipboardList, RefreshCw, Flame, FileSignature, ThumbsUp, ThumbsDown, Pause, Play, Sparkles } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -167,6 +168,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
   const [proposalCustomerPhone, setProposalCustomerPhone] = useState("");
   const [proposalContactName, setProposalContactName] = useState("");
   const [proposalSignatureRequired, setProposalSignatureRequired] = useState<Record<string, boolean>>({});
+  const [editingProposal, setEditingProposal] = useState<CRMProposal | null>(null);
   const { data: proposalCompanies = [] } = useCRMCompanies(proposalCompanySearch);
   const [generatingPdfId, setGeneratingPdfId] = useState<string | null>(null);
   const [editCustomFields, setEditCustomFields] = useState<Record<string, any>>({});
@@ -470,16 +472,9 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
         validity_days: validityDays,
       },
       {
-        onSuccess: () => {
-          setProposalTitle("");
-          setProposalDiscount("0");
-          setProposalValidity("15");
-          setProposalCustomerName("");
-          setProposalCompanySearch("");
-          setProposalCustomerDocument("");
-          setProposalCustomerEmail("");
-          setProposalCustomerPhone("");
-          setProposalContactName("");
+        onSuccess: (created) => {
+          setEditingProposal(created);
+          toast.success("Proposta criada. Configure os itens e os dados antes de enviar.");
         },
         onError: (error: any) => toast.error(error?.message || "Erro ao criar proposta"),
       }
@@ -2178,6 +2173,14 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
             </TabsContent>
 
             <TabsContent value="proposals" className="m-0">
+              <ProposalEditorDialog
+                dealId={deal.id}
+                proposal={editingProposal}
+                open={!!editingProposal}
+                onOpenChange={(value) => !value && setEditingProposal(null)}
+                dealTitle={currentDeal?.title}
+                companyName={currentDeal?.company_name}
+              />
               <div className="space-y-4">
                 <Card className="p-4">
                   <h4 className="font-medium mb-3 flex items-center gap-2">
@@ -2320,9 +2323,14 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                     <Card key={proposal.id} className="p-4">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          <p className="font-medium">{proposal.title}</p>
+                          <button className="font-medium hover:underline" onClick={() => setEditingProposal(proposal)}>{proposal.title}</button>
                           <p className="text-xs text-muted-foreground">
                             {proposal.number} • Total {formatCurrency(Number(proposal.total || 0))}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {proposal.opened_count ? `Aberta ${proposal.opened_count}x em ${new Date(proposal.opened_at!).toLocaleString('pt-BR')}` : 'Ainda não aberta'}
+                            {proposal.status === 'approved' && ' • Aceita'}
+                            {proposal.status === 'rejected' && ' • Recusada'}
                           </p>
                         </div>
                         <Badge variant={proposal.status === "approved" ? "default" : proposal.status === "rejected" ? "destructive" : "secondary"}>
@@ -2341,26 +2349,9 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                         <Button size="sm" variant="outline" onClick={() => handleCopyProposalLink(proposal)}>
                           Copiar link público
                         </Button>
-                        {proposal.status === "draft" && (
-                          <>
-                            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <input
-                                type="checkbox"
-                                checked={proposalSignatureRequired[proposal.id] || false}
-                                onChange={(event) => setProposalSignatureRequired((current) => ({ ...current, [proposal.id]: event.target.checked }))}
-                              />
-                              Exigir assinatura digital
-                            </label>
-                            <Button
-                              size="sm"
-                              onClick={() => sendProposal.mutate({ id: proposal.id, requires_signature: !!proposalSignatureRequired[proposal.id] })}
-                              disabled={sendProposal.isPending}
-                            >
-                              <Send className="h-4 w-4 mr-2" />
-                              Marcar como enviada
-                            </Button>
-                          </>
-                        )}
+                        <Button size="sm" variant="outline" onClick={() => setEditingProposal(proposal)}>
+                          <FileSignature className="h-4 w-4 mr-2" /> Editar proposta
+                        </Button>
                         {proposal.requires_signature && (
                           <Badge variant="outline">Assinatura digital {proposal.signed_at ? 'coletada' : 'obrigatória'}</Badge>
                         )}
