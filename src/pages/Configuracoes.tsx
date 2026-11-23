@@ -27,6 +27,7 @@ import { GoogleCalendarPanel } from "@/components/crm/GoogleCalendarPanel";
 import { api as apiCall } from "@/lib/api";
 import { applyThemeColors, invalidateBranding } from "@/hooks/use-branding";
 import { SystemUpdateCard } from "@/components/settings/SystemUpdateCard";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 
 const Configuracoes = () => {
   const { user } = useAuth();
@@ -39,6 +40,7 @@ const Configuracoes = () => {
     previewSound,
     isPushSupported,
   } = useNotificationSound();
+  const { isSubscribed: isPushSubscribed, subscribe: subscribePush, permission: pushSubscriptionPermission } = usePushNotifications();
 
   const isAdminOrOwner = user?.role === 'owner' || user?.role === 'admin';
   const [orgThemePreset, setOrgThemePreset] = useState<string | null>(null);
@@ -113,10 +115,15 @@ const Configuracoes = () => {
 
   const handleRequestPush = async () => {
     const granted = await requestPushPermission();
-    if (granted) {
-      toast.success("Notificações push ativadas!");
-    } else {
+    if (!granted) {
       toast.error("Permissão negada. Ative nas configurações do navegador.");
+      return;
+    }
+    const subscribed = await subscribePush();
+    if (subscribed) {
+      toast.success("Notificações push ativadas neste dispositivo!");
+    } else {
+      toast.error("Permissão concedida, mas não foi possível registrar este dispositivo. Verifique o service worker.");
     }
   };
 
@@ -359,9 +366,9 @@ const Configuracoes = () => {
                         variant="outline"
                         size="sm"
                         onClick={handleRequestPush}
-                        disabled={pushPermission === 'granted'}
+                        disabled={isPushSubscribed || pushPermission === 'granted' && pushSubscriptionPermission === 'granted'}
                       >
-                        {pushPermission === 'granted' ? 'Ativadas' : 'Ativar'}
+                        {isPushSubscribed ? 'Ativadas neste dispositivo' : 'Ativar neste dispositivo'}
                       </Button>
                     </div>
                   )}

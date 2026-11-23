@@ -93,7 +93,7 @@ self.addEventListener('push', function(event) {
           (c) => c.visibilityState === 'visible' && c.focused
         );
         if (hasVisibleClient) {
-          return; // app is in foreground — skip OS notification
+          return; // app is focused — skip OS notification
         }
       }
 

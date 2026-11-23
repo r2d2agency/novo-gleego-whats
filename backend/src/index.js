@@ -46,7 +46,7 @@ import groupSecretaryRoutes from './routes/group-secretary.js';
 import ghostRoutes from './routes/ghost.js';
 import projectsRoutes from './routes/projects.js';
 import devWorkspaceRoutes from './routes/dev-workspace.js';
-import pushRoutes from './routes/push.js';
+import pushRoutes, { sendPushToOrgUsers } from './routes/push.js';
 import taskBoardsRoutes from './routes/task-boards.js';
 import leadGleegoRoutes from './routes/lead-gleego.js';
 import globalAgentsRoutes from './routes/global-agents.js';
@@ -834,6 +834,39 @@ app.post('/api/meta/webhook', async (req, res) => {
               messageId,
             });
             console.log(`[Meta Webhook] Message saved: ${msgType} (as ${effectiveType}) from ${normalizedPhone} in conversation ${conversationId}`);
+
+            if (connection.organization_id) {
+              (async () => {
+                try {
+                  const convInfo = await dbQuery(
+                    `SELECT is_muted, COALESCE(is_group, false) AS is_group, group_name, contact_name, contact_phone
+                     FROM conversations WHERE id = $1`,
+                    [conversationId]
+                  );
+                  const conv = convInfo.rows[0];
+                  if (!conv || conv.is_muted) return;
+
+                  const titleName = conv.contact_name || conv.contact_phone || contactName || 'Nova mensagem';
+                  let preview = '';
+                  if (effectiveType === 'text') preview = String(content || '').slice(0, 120);
+                  else if (effectiveType === 'image') preview = '📷 Foto';
+                  else if (effectiveType === 'audio') preview = '🎤 Áudio';
+                  else if (effectiveType === 'video') preview = '🎥 Vídeo';
+                  else if (effectiveType === 'document') preview = '📎 Documento';
+                  else preview = 'Nova mensagem';
+
+                  await sendPushToOrgUsers(connection.organization_id, {
+                    title: titleName,
+                    body: preview,
+                    url: `/chat?conversation=${conversationId}`,
+                    tag: `conv-${conversationId}`,
+                    data: { conversation_id: conversationId, type: 'new_message', is_group: !!conv.is_group },
+                  });
+                } catch (pushErr) {
+                  console.error('[Meta Webhook] push notify error:', pushErr.message);
+                }
+              })();
+            }
 
             handleAutoReplies(connection, remoteJid, content).catch(err => {
               console.error('[Meta] Auto-reply error:', err.message);
