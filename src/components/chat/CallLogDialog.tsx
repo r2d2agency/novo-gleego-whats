@@ -25,11 +25,13 @@ interface CallLogDialogProps {
   onOpenChange: (open: boolean) => void;
   contactName: string | null;
   contactPhone: string | null;
+  deal?: { id: string; title: string } | null;
   onLogCall: (callData: {
     call_type: 'outgoing' | 'incoming' | 'missed';
     duration_seconds: number;
     outcome: string;
     notes: string;
+    deal_id?: string | null;
   }) => Promise<void>;
   saving?: boolean;
 }
@@ -39,6 +41,7 @@ export function CallLogDialog({
   onOpenChange,
   contactName,
   contactPhone,
+  deal,
   onLogCall,
   saving = false,
 }: CallLogDialogProps) {
@@ -71,6 +74,7 @@ export function CallLogDialog({
       duration_seconds: totalSeconds,
       outcome: outcome || 'Sem resultado definido',
       notes,
+      deal_id: deal?.id || null,
     });
     
     // Reset form
@@ -107,6 +111,12 @@ export function CallLogDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {deal && (
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+              <p className="text-xs text-muted-foreground">Será vinculada à negociação</p>
+              <p className="font-medium">{deal.title}</p>
+            </div>
+          )}
           {/* Open WhatsApp Button */}
           {!callStarted && (
             <Button

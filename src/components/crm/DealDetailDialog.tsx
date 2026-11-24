@@ -17,6 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useCRMCustomFields, CRMCustomField, useCRMCatalogItems, useDealItems, useDealItemMutations, useDealProposals, useProposalMutations, type CRMDealItem, type CRMProposal, type CRMCatalogItem } from "@/hooks/use-crm-config";
 import { generateProposalPdf } from "./ProposalPdf";
 import { ProposalEditorDialog } from "./ProposalEditorDialog";
+import { DealCallsSection } from "./DealCallsSection";
 import { api } from "@/lib/api";
 import { Building2, User, Phone, Calendar as CalendarIcon, Clock, CheckCircle, Plus, Trash2, Paperclip, MessageSquare, ChevronRight, Edit2, Save, X, FileText, Image, Loader2, Upload, Search, UserPlus, Building, Mail, Video, Send, ClipboardList, RefreshCw, Flame, FileSignature, ThumbsUp, ThumbsDown, Pause, Play, Sparkles } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1049,6 +1050,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
               )}
             </TabsTrigger>
             <TabsTrigger value="contacts">Contatos</TabsTrigger>
+            <TabsTrigger value="calls">Ligações</TabsTrigger>
             <TabsTrigger value="items">
               Itens
               {dealItems.length > 0 && (
@@ -2020,6 +2022,14 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                   </p>
                 )}
               </div>
+            </TabsContent>
+
+            <TabsContent value="calls" className="m-0">
+              <DealCallsSection
+                dealId={deal.id}
+                contactName={currentDeal?.contacts?.find(c => c.is_primary)?.name || currentDeal?.contacts?.[0]?.name}
+                contactPhone={currentDeal?.contacts?.find(c => c.is_primary)?.phone || currentDeal?.contacts?.[0]?.phone}
+              />
             </TabsContent>
 
             <TabsContent value="items" className="m-0">

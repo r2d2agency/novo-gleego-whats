@@ -4747,6 +4747,106 @@ router.post('/conversations', authenticate, async (req, res) => {
 // CALL LOGS - Voice call tracking
 // ==========================================
 
+const typeLabels = {
+  outgoing: '📞 Ligação realizada',
+  incoming: '📲 Ligação recebida',
+  missed: '📵 Ligação perdida',
+};
+
+router.post('/deals/:dealId/call-log', authenticate, async (req, res) => {
+  try {
+    const userOrg = await getUserOrganization(req.userId);
+    if (!userOrg) return res.status(403).json({ error: 'No organization' });
+
+    const dealResult = await query(
+      `SELECT d.id, cnt.phone
+       FROM crm_deals d
+       LEFT JOIN crm_deal_contacts dc ON dc.deal_id = d.id AND dc.is_primary = true
+       LEFT JOIN contacts cnt ON cnt.id = dc.contact_id
+       WHERE d.id = $1 AND d.organization_id = $2
+       LIMIT 1`,
+      [req.params.dealId, userOrg.organization_id]
+    );
+    const deal = dealResult.rows[0];
+    if (!deal) return res.status(404).json({ error: 'Negociação não encontrada' });
+
+    const digits = String(deal.phone || '').replace(/\D/g, '');
+    let conversationId = null;
+    if (digits.length >= 8) {
+      const convResult = await query(
+        `SELECT id FROM conversations
+         WHERE connection_id IN (SELECT id FROM connections WHERE organization_id = $1)
+           AND regexp_replace(COALESCE(contact_phone, ''), '\\D', '', 'g') LIKE $2
+         ORDER BY last_message_at DESC NULLS LAST
+         LIMIT 1`,
+        [userOrg.organization_id, `%${digits.slice(-11)}%`]
+      );
+      conversationId = convResult.rows[0]?.id || null;
+    }
+
+    const { call_type, outcome, duration_seconds, notes } = req.body;
+    const result = await query(
+      `INSERT INTO chat_messages
+        (conversation_id, message_id, from_me, sender_id, content, message_type, status, timestamp)
+       VALUES ($1, $2, true, $3, $4, 'call_log', 'sent', NOW())
+       RETURNING *`,
+      [
+        conversationId,
+        `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        req.userId,
+        `${typeLabels[call_type] || '📞 Chamada'} - ${outcome || 'Sem resultado'}`,
+      ]
+    ).catch(() => null);
+
+    await query(
+      `INSERT INTO call_logs
+       (organization_id, conversation_id, deal_id, user_id, contact_name, contact_phone,
+        call_type, outcome, duration_seconds, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        userOrg.organization_id,
+        conversationId,
+        req.params.dealId,
+        req.userId,
+        null,
+        deal.phone || null,
+        call_type || 'outgoing',
+        outcome || 'answered',
+        Number(duration_seconds || 0),
+        notes || null,
+      ]
+    );
+
+    await query(`UPDATE crm_deals SET last_activity_at = NOW() WHERE id = $1`, [req.params.dealId]);
+    res.status(201).json(result?.rows?.[0] || { success: true });
+  } catch (error) {
+    if (error.code === '42P01') return res.status(500).json({ error: 'Tabela de ligações ainda não foi criada. Reinicie o backend.' });
+    console.error('Error logging deal call:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/deals/:dealId/call-logs', authenticate, async (req, res) => {
+  try {
+    const userOrg = await getUserOrganization(req.userId);
+    if (!userOrg) return res.status(403).json({ error: 'No organization' });
+    const result = await query(
+      `SELECT cl.*, u.name AS user_name
+       FROM call_logs cl
+       LEFT JOIN users u ON u.id = cl.user_id
+       WHERE cl.deal_id = $1 AND cl.organization_id = $2
+       ORDER BY cl.created_at DESC
+       LIMIT 200`,
+      [req.params.dealId, userOrg.organization_id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    if (error.code === '42P01') return res.json([]);
+    console.error('Error fetching deal call logs:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.get('/call-logs/report', authenticate, async (req, res) => {
   try {
     const userOrg = await getUserOrganization(req.userId);
@@ -4839,6 +4939,7 @@ router.get('/call-logs/report', authenticate, async (req, res) => {
 // Log a voice call (records it as a special message type in the conversation)
 router.post('/conversations/:id/call-log', authenticate, async (req, res) => {
   try {
+    const { deal_id } = req.body;
     const userOrg = await getUserOrganization(req.userId);
     if (userOrg && isViewOnlyRole(userOrg.role)) {
       return res.status(403).json({ error: 'Supervisores não podem registrar chamadas' });
@@ -4903,12 +5004,13 @@ router.post('/conversations/:id/call-log', authenticate, async (req, res) => {
 
     await query(
       `INSERT INTO call_logs
-       (organization_id, conversation_id, user_id, contact_id, contact_name, contact_phone,
+       (organization_id, conversation_id, deal_id, user_id, contact_name, contact_phone,
         call_type, outcome, duration_seconds, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
       [
         userOrg?.organization_id || null,
         id,
+        deal_id || null,
         req.userId,
         conversation.contact_name || null,
         conversation.contact_phone || null,

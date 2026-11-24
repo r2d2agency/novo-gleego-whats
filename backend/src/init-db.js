@@ -4123,6 +4123,8 @@ CREATE INDEX IF NOT EXISTS idx_call_logs_org ON call_logs(organization_id);
 CREATE INDEX IF NOT EXISTS idx_call_logs_created ON call_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_call_logs_user ON call_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_call_logs_conversation ON call_logs(conversation_id);
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS deal_id UUID REFERENCES crm_deals(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_call_logs_deal ON call_logs(deal_id);
 `;
 
 const migrationSteps = [

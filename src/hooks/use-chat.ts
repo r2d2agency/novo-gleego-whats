@@ -717,6 +717,7 @@ export const useChat = () => {
     duration_seconds: number;
     outcome: string;
     notes: string;
+    deal_id?: string | null;
   }): Promise<ChatMessage | null> => {
     try {
       const data = await api<ChatMessage>(`/api/chat/conversations/${conversationId}/call-log`, {

@@ -1858,7 +1858,7 @@ export function ChatArea({
       )}
       {conversation && <DealLinkDialog open={showDealDialog} onOpenChange={setShowDealDialog} contactName={conversation.contact_name} contactPhone={conversation.contact_phone} />}
       {conversation && (
-        <CallLogDialog open={showCallDialog} onOpenChange={setShowCallDialog} contactName={conversation.contact_name} contactPhone={conversation.contact_phone} saving={savingCall}
+        <CallLogDialog open={showCallDialog} onOpenChange={setShowCallDialog} contactName={conversation.contact_name} contactPhone={conversation.contact_phone} deal={openDeals[0] ? { id: openDeals[0].id, title: openDeals[0].title } : null} saving={savingCall}
           onLogCall={async (callData) => { setSavingCall(true); try { const result = await logCall(conversation.id, callData); if (result) { toast.success('Chamada registrada'); setShowCallDialog(false); } } finally { setSavingCall(false); } }}
         />
       )}
