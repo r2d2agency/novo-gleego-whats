@@ -112,7 +112,8 @@ export interface OperationalReport {
     cards: number;
   }>;
   daily: Array<{
-    day: string;
+    period: string;
+    day?: string;
     chats: number;
     calls: number;
     scheduled_sent: number;
@@ -204,10 +205,19 @@ export function useDealsDetailReport(params: { startDate?: string; endDate?: str
   });
 }
 
-export function useOperationalReport(params: { startDate?: string; endDate?: string }) {
+export function useOperationalReport(params: {
+  startDate?: string;
+  endDate?: string;
+  userId?: string;
+  funnelId?: string;
+  groupBy?: 'day' | 'week' | 'month';
+}) {
   const searchParams = new URLSearchParams();
   if (params.startDate) searchParams.append('start_date', params.startDate);
   if (params.endDate) searchParams.append('end_date', params.endDate);
+  if (params.userId) searchParams.append('user_id', params.userId);
+  if (params.funnelId) searchParams.append('funnel_id', params.funnelId);
+  if (params.groupBy) searchParams.append('group_by', params.groupBy);
 
   return useQuery({
     queryKey: ["crm-operational-report", params],

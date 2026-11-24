@@ -3062,6 +3062,12 @@ router.get('/reports/operational', async (req, res) => {
     const endDate = req.query.end_date || new Date().toISOString().split('T')[0];
     const startDate = req.query.start_date || new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const params = [org.organization_id, startDate, endDate];
+    const userIdFilter = req.query.user_id && req.query.user_id !== 'all' ? req.query.user_id : null;
+    const funnelIdFilter = req.query.funnel_id && req.query.funnel_id !== 'all' ? req.query.funnel_id : null;
+    const periodColumn = req.query.group_by === 'month' ? "date_trunc('month', %s::timestamp)"
+      : req.query.group_by === 'week' ? "date_trunc('week', %s::timestamp)"
+      : "%s::date";
+    const bucket = (column) => periodColumn.replace('%s', column);
 
     const [byUser, daily, calls, scheduled, followups, byFunnel, tasksByFunnel, tasksByType, assignedCards] = await Promise.all([
       query(
@@ -3083,34 +3089,42 @@ router.get('/reports/operational', async (req, res) => {
         params
       ),
       query(
-        `SELECT day::date AS day,
-                COUNT(DISTINCT conv.id) AS chats,
-                COUNT(DISTINCT cl.id) AS calls,
-                COUNT(DISTINCT sm.id) AS scheduled_sent,
-                COUNT(DISTINCT t.id) AS tasks
-         FROM generate_series($2::date, $3::date, interval '1 day') day
-         LEFT JOIN conversations conv ON conv.connection_id IN (SELECT id FROM connections WHERE organization_id = $1)
-           AND conv.accepted_at::date = day::date
-         LEFT JOIN chat_messages cl ON cl.message_type = 'call_log' AND cl.sender_id IN (SELECT user_id FROM organization_members WHERE organization_id = $1)
-           AND cl.timestamp::date = day::date
-         LEFT JOIN scheduled_messages sm ON sm.sender_id IN (SELECT user_id FROM organization_members WHERE organization_id = $1)
-           AND sm.sent_at::date = day::date
-         LEFT JOIN crm_tasks t ON t.organization_id = $1 AND t.created_at::date = day::date
-         GROUP BY day::date
-         ORDER BY day::date`,
-        params
+        `WITH buckets AS (
+           SELECT generate_series(
+             date_trunc('${req.query.group_by === 'month' ? 'month' : req.query.group_by === 'week' ? 'week' : 'day'}', $2::timestamp),
+             date_trunc('${req.query.group_by === 'month' ? 'month' : req.query.group_by === 'week' ? 'week' : 'day'}', $3::timestamp),
+             interval '1 ${req.query.group_by === 'month' ? 'month' : req.query.group_by === 'week' ? 'week' : 'day'}'
+           ) AS period
+         )
+         SELECT b.period,
+                (SELECT COUNT(*) FROM conversations conv WHERE conv.connection_id IN (SELECT id FROM connections WHERE organization_id = $1)
+                   AND conv.accepted_at >= b.period AND conv.accepted_at < b.period + interval '1 ${req.query.group_by === 'month' ? 'month' : req.query.group_by === 'week' ? 'week' : 'day'}'
+                   ${userIdFilter ? 'AND (conv.assigned_to = $4 OR conv.accepted_by = $4)' : ''}) AS chats,
+                (SELECT COUNT(*) FROM call_logs cl WHERE cl.organization_id = $1
+                   AND cl.created_at >= b.period AND cl.created_at < b.period + interval '1 ${req.query.group_by === 'month' ? 'month' : req.query.group_by === 'week' ? 'week' : 'day'}'
+                   ${userIdFilter ? 'AND cl.user_id = $4' : ''}) AS calls,
+                (SELECT COUNT(*) FROM scheduled_messages sm WHERE sm.connection_id IN (SELECT id FROM connections WHERE organization_id = $1)
+                   AND sm.sent_at >= b.period AND sm.sent_at < b.period + interval '1 ${req.query.group_by === 'month' ? 'month' : req.query.group_by === 'week' ? 'week' : 'day'}'
+                   ${userIdFilter ? 'AND sm.sender_id = $4' : ''}) AS scheduled_sent,
+                (SELECT COUNT(*) FROM crm_tasks t WHERE t.organization_id = $1
+                   AND t.created_at >= b.period AND t.created_at < b.period + interval '1 ${req.query.group_by === 'month' ? 'month' : req.query.group_by === 'week' ? 'week' : 'day'}'
+                   ${userIdFilter ? 'AND t.assigned_to = $4' : ''}
+                   ${funnelIdFilter ? 'AND t.deal_id IN (SELECT id FROM crm_deals WHERE funnel_id = $5)' : ''}) AS tasks
+         FROM buckets b ORDER BY b.period`,
+        userIdFilter && funnelIdFilter ? [...params, userIdFilter, funnelIdFilter]
+          : userIdFilter ? [...params, userIdFilter] : params
       ),
       query(
         `SELECT u.id AS user_id, u.name AS user_name, COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE cm.content LIKE '📞%') AS outgoing
-         FROM chat_messages cm
-         JOIN users u ON u.id = cm.sender_id
-         WHERE cm.message_type = 'call_log'
-           AND cm.timestamp >= $2::date AND cm.timestamp < ($3::date + interval '1 day')
-           AND cm.conversation_id IN (SELECT id FROM conversations WHERE connection_id IN (SELECT id FROM connections WHERE organization_id = $1))
+                COUNT(*) FILTER (WHERE cl.call_type = 'outgoing') AS outgoing
+         FROM call_logs cl
+         JOIN users u ON u.id = cl.user_id
+         WHERE cl.organization_id = $1
+           AND cl.created_at >= $2::date AND cl.created_at < ($3::date + interval '1 day')
+           ${userIdFilter ? 'AND cl.user_id = $4' : ''}
          GROUP BY u.id, u.name
          ORDER BY total DESC`,
-        params
+        userIdFilter ? [...params, userIdFilter] : params
       ),
       query(
         `SELECT u.id AS user_id, u.name AS user_name,
