@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/table';
 import { BarChart3, Download, Loader2, Phone, CalendarClock, MessageSquare, ClipboardList, Users, Target } from 'lucide-react';
 import { toast } from 'sonner';
-import { useOperationalReport } from '@/hooks/use-crm-reports';
+import { useOperationalReport, useDealsDetailReport } from '@/hooks/use-crm-reports';
 
 const number = (value: unknown) => Number(value || 0);
 const money = (value: unknown) =>
@@ -35,6 +35,7 @@ export default function RelatoriosOperacionais() {
   const [startDate, setStartDate] = useState(format(subDays(new Date(), 29), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const { data, isLoading, refetch } = useOperationalReport({ startDate, endDate });
+  const { data: dealsReport, refetch: refetchDeals } = useDealsDetailReport({ startDate, endDate });
 
   const totals = useMemo(() => {
     if (!data) return { chats: 0, calls: 0, scheduled: 0, followups: 0, cards: 0 };
@@ -84,7 +85,7 @@ export default function RelatoriosOperacionais() {
               <Label className="text-xs">Até</Label>
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-40" />
             </div>
-            <Button onClick={() => refetch()} disabled={isLoading}>
+            <Button onClick={() => { refetch(); refetchDeals(); }} disabled={isLoading}>
               {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <BarChart3 className="h-4 w-4 mr-2" />}
               Atualizar
             </Button>
@@ -282,6 +283,101 @@ export default function RelatoriosOperacionais() {
                 </Table>
               </CardContent>
             </Card>
+
+            {dealsReport && (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  {[
+                    { label: 'Negociações criadas', value: number(dealsReport.summary.created) },
+                    { label: 'Ganhas', value: number(dealsReport.summary.won) },
+                    { label: 'Perdidas', value: number(dealsReport.summary.lost) },
+                    { label: 'Valor total', value: money(dealsReport.summary.total_value) },
+                    { label: 'Idade média (dias)', value: number(dealsReport.summary.avg_days).toFixed(1) },
+                  ].map(({ label, value }) => (
+                    <Card key={label}>
+                      <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground">{label}</p>
+                        <p className="text-xl font-bold">{value}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader className="pb-3"><CardTitle className="text-base">Negociações por funil</CardTitle></CardHeader>
+                    <CardContent className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow><TableHead>Funil</TableHead><TableHead className="text-right">Criadas</TableHead><TableHead className="text-right">Ganhas</TableHead><TableHead className="text-right">Valor total</TableHead><TableHead className="text-right">Valor ganho</TableHead></TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {dealsReport.byFunnel.map((row) => (
+                            <TableRow key={row.funnel_id}>
+                              <TableCell className="font-medium">{row.funnel_name}</TableCell>
+                              <TableCell className="text-right">{number(row.created)}</TableCell>
+                              <TableCell className="text-right">{number(row.won)}</TableCell>
+                              <TableCell className="text-right">{money(row.total_value)}</TableCell>
+                              <TableCell className="text-right">{money(row.won_value)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-3"><CardTitle className="text-base">Negociações por etapa</CardTitle></CardHeader>
+                    <CardContent className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow><TableHead>Funil</TableHead><TableHead>Etapa</TableHead><TableHead className="text-right">Cards</TableHead><TableHead className="text-right">Valor</TableHead><TableHead className="text-right">Tempo médio</TableHead></TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {dealsReport.byStage.map((row) => (
+                            <TableRow key={row.stage_id}>
+                              <TableCell>{row.funnel_name}</TableCell>
+                              <TableCell className="font-medium">{row.stage_name}</TableCell>
+                              <TableCell className="text-right">{number(row.total)}</TableCell>
+                              <TableCell className="text-right">{money(row.total_value)}</TableCell>
+                              <TableCell className="text-right">{number(row.avg_days).toFixed(1)} dias</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader className="pb-3"><CardTitle className="text-base">Tempo dos cards e valor por negociação</CardTitle></CardHeader>
+                  <CardContent className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Negociação</TableHead><TableHead>Funil</TableHead><TableHead>Etapa</TableHead>
+                          <TableHead>Responsável</TableHead><TableHead className="text-right">Valor</TableHead>
+                          <TableHead className="text-right">Idade</TableHead><TableHead>Criação</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {dealsReport.deals.map((deal) => (
+                          <TableRow key={deal.id}>
+                            <TableCell className="font-medium">{deal.title}</TableCell>
+                            <TableCell>{deal.funnel_name || '-'}</TableCell>
+                            <TableCell>{deal.stage_name || '-'}</TableCell>
+                            <TableCell>{deal.owner_name || '-'}</TableCell>
+                            <TableCell className="text-right">{money(deal.value)}</TableCell>
+                            <TableCell className="text-right">{number(deal.age_days).toFixed(1)} dias</TableCell>
+                            <TableCell>{format(new Date(deal.created_at), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </>
         )}
       </div>

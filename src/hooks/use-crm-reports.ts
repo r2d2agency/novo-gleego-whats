@@ -168,6 +168,42 @@ export function useCallLogReport(params: {
   });
 }
 
+export interface DealsDetailReport {
+  period: { start_date: string; end_date: string };
+  summary: {
+    created: number;
+    won: number;
+    lost: number;
+    open: number;
+    total_value: number;
+    won_value: number;
+    avg_days: number;
+  };
+  byFunnel: Array<{
+    funnel_id: string; funnel_name: string; created: number; won: number; total_value: number; won_value: number;
+  }>;
+  byStage: Array<{
+    funnel_id: string; funnel_name: string; stage_id: string; stage_name: string;
+    total: number; won: number; total_value: number; avg_days: number;
+  }>;
+  deals: Array<{
+    id: string; title: string; value: number; status: string; created_at: string;
+    won_at?: string; lost_at?: string; last_activity_at: string;
+    funnel_name?: string; stage_name?: string; owner_name?: string; company_name?: string; age_days: number;
+  }>;
+}
+
+export function useDealsDetailReport(params: { startDate?: string; endDate?: string }) {
+  const searchParams = new URLSearchParams();
+  if (params.startDate) searchParams.append('start_date', params.startDate);
+  if (params.endDate) searchParams.append('end_date', params.endDate);
+
+  return useQuery({
+    queryKey: ["crm-deals-detail-report", params],
+    queryFn: () => api<DealsDetailReport>(`/api/crm/reports/deals-detail?${searchParams.toString()}`),
+  });
+}
+
 export function useOperationalReport(params: { startDate?: string; endDate?: string }) {
   const searchParams = new URLSearchParams();
   if (params.startDate) searchParams.append('start_date', params.startDate);

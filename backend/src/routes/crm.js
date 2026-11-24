@@ -2960,6 +2960,97 @@ router.get('/reports/conversion', async (req, res) => {
 });
 
 // =============================================================================
+// DETAILED CRM REPORT
+// =============================================================================
+
+router.get('/reports/deals-detail', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+
+    const endDate = req.query.end_date || new Date().toISOString().split('T')[0];
+    const startDate = req.query.start_date || new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const params = [org.organization_id, startDate, endDate];
+    let extra = '';
+    if (req.query.funnel_id && req.query.funnel_id !== 'all') {
+      params.push(req.query.funnel_id);
+      extra += ` AND d.funnel_id = $${params.length}`;
+    }
+    if (req.query.owner_id && req.query.owner_id !== 'all') {
+      params.push(req.query.owner_id);
+      extra += ` AND d.owner_id = $${params.length}`;
+    }
+
+    const [summary, byFunnel, byStage, deals] = await Promise.all([
+      query(
+        `SELECT COUNT(*)::int AS created,
+                COUNT(*) FILTER (WHERE d.status = 'won')::int AS won,
+                COUNT(*) FILTER (WHERE d.status = 'lost')::int AS lost,
+                COUNT(*) FILTER (WHERE d.status = 'open')::int AS open,
+                COALESCE(SUM(d.value), 0) AS total_value,
+                COALESCE(SUM(d.value) FILTER (WHERE d.status = 'won'), 0) AS won_value,
+                ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(d.won_at, d.lost_at, NOW()) - d.created_at)) / 86400)::numeric, 1) AS avg_days
+         FROM crm_deals d
+         WHERE d.organization_id = $1 AND d.created_at >= $2::date AND d.created_at < ($3::date + interval '1 day') ${extra}`,
+        params
+      ),
+      query(
+        `SELECT f.id AS funnel_id, f.name AS funnel_name,
+                COUNT(d.id)::int AS created,
+                COUNT(d.id) FILTER (WHERE d.status = 'won')::int AS won,
+                COALESCE(SUM(d.value), 0) AS total_value,
+                COALESCE(SUM(d.value) FILTER (WHERE d.status = 'won'), 0) AS won_value
+         FROM crm_funnels f
+         LEFT JOIN crm_deals d ON d.funnel_id = f.id AND d.organization_id = $1
+           AND d.created_at >= $2::date AND d.created_at < ($3::date + interval '1 day')
+         WHERE f.organization_id = $1
+         GROUP BY f.id, f.name ORDER BY created DESC`,
+        [org.organization_id, startDate, endDate]
+      ),
+      query(
+        `SELECT f.id AS funnel_id, f.name AS funnel_name, s.id AS stage_id, s.name AS stage_name,
+                COUNT(d.id)::int AS total,
+                COUNT(d.id) FILTER (WHERE d.status = 'won')::int AS won,
+                COALESCE(SUM(d.value), 0) AS total_value,
+                ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(d.last_activity_at, NOW()) - d.created_at)) / 86400)::numeric, 1) AS avg_days
+         FROM crm_stages s
+         JOIN crm_funnels f ON f.id = s.funnel_id
+         LEFT JOIN crm_deals d ON d.stage_id = s.id AND d.organization_id = $1
+           AND d.created_at >= $2::date AND d.created_at < ($3::date + interval '1 day')
+         WHERE f.organization_id = $1
+         GROUP BY f.id, f.name, s.id, s.name
+         ORDER BY f.name, s.position`,
+        [org.organization_id, startDate, endDate]
+      ),
+      query(
+        `SELECT d.id, d.title, d.value, d.status, d.created_at, d.won_at, d.lost_at, d.last_activity_at,
+                f.name AS funnel_name, s.name AS stage_name, u.name AS owner_name, c.name AS company_name,
+                ROUND(EXTRACT(EPOCH FROM (COALESCE(d.won_at, d.lost_at, NOW()) - d.created_at)) / 86400)::numeric AS age_days
+         FROM crm_deals d
+         LEFT JOIN crm_funnels f ON f.id = d.funnel_id
+         LEFT JOIN crm_stages s ON s.id = d.stage_id
+         LEFT JOIN users u ON u.id = d.owner_id
+         LEFT JOIN crm_companies c ON c.id = d.company_id
+         WHERE d.organization_id = $1 AND d.created_at >= $2::date AND d.created_at < ($3::date + interval '1 day') ${extra}
+         ORDER BY d.created_at DESC LIMIT 500`,
+        params
+      ),
+    ]);
+
+    res.json({
+      period: { start_date: startDate, end_date: endDate },
+      summary: summary.rows[0] || {},
+      byFunnel: byFunnel.rows,
+      byStage: byStage.rows,
+      deals: deals.rows,
+    });
+  } catch (error) {
+    console.error('Error fetching detailed CRM report:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
 // OPERATIONAL REPORTS
 // =============================================================================
 
