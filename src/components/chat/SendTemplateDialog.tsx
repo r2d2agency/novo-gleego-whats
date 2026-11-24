@@ -168,7 +168,7 @@ export function SendTemplateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary" />
@@ -188,7 +188,7 @@ export function SendTemplateDialog({
               />
             </div>
 
-            <ScrollArea className="flex-1 min-h-[300px]">
+            <ScrollArea className="h-[min(52vh,420px)] min-h-[240px] w-full pr-2">
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
