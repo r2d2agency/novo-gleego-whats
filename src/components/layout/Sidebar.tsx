@@ -44,6 +44,7 @@ import {
   Target as TargetIcon,
   Star,
   Package,
+  Phone,
 } from "lucide-react";
 import { API_URL, getAuthToken } from "@/lib/api";
 import gleegoLogo from "@/assets/gleego-logo.png";
@@ -106,6 +107,8 @@ const getNavSections = (hasConnections: boolean): NavSection[] => [
       { name: "Agenda", href: "/crm/agenda", icon: CalendarDays, pageKey: 'crm_agenda' },
       { name: "Tarefas", href: "/tarefas", icon: ClipboardList, pageKey: 'crm_tarefas' },
       { name: "Relatórios", href: "/crm/relatorios", icon: BarChart3, pageKey: 'crm_relatorios' },
+      { name: "Relatórios Operacionais", href: "/relatorios-operacionais", icon: BarChart4, pageKey: 'relatorios_operacionais', adminOnly: true },
+      { name: "Relatório de Chamadas", href: "/relatorio-chamadas", icon: Phone, pageKey: 'relatorio_chamadas', adminOnly: true },
       { name: "Revenue Intel", href: "/revenue-intelligence", icon: Brain, pageKey: 'revenue_intelligence', adminOnly: true },
       { name: "Fantasma", href: "/modulo-fantasma", icon: Ghost, pageKey: 'modulo_fantasma', ownerOnly: true, moduleKey: 'ghost' },
       { name: "Workspace Dev", href: "/workspace", icon: Code, pageKey: 'workspace_dev', ownerOnly: true },

@@ -4104,7 +4104,29 @@ ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS opened_count INTEGER DEFAULT 
 ALTER TABLE crm_proposals ADD COLUMN IF NOT EXISTS payment_method TEXT;
 `;
 
+const step44CallLogs = `
+CREATE TABLE IF NOT EXISTS call_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE NOT NULL,
+    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    contact_name VARCHAR(255),
+    contact_phone VARCHAR(50),
+    call_type VARCHAR(20) DEFAULT 'outgoing',
+    outcome VARCHAR(50) DEFAULT 'answered',
+    duration_seconds INTEGER DEFAULT 0,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_call_logs_org ON call_logs(organization_id);
+CREATE INDEX IF NOT EXISTS idx_call_logs_created ON call_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_call_logs_user ON call_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_call_logs_conversation ON call_logs(conversation_id);
+`;
+
 const migrationSteps = [
+  { name: 'Call Logs', sql: step44CallLogs, critical: false },
   { name: 'CRM Catalog & Proposals', sql: step43CRMCatalog, critical: false },
   { name: 'AppBarber Commercial Configuration', sql: step30AppBarberCommercial, critical: false },
   { name: 'Enums', sql: step1Enums, critical: true },

@@ -56,6 +56,8 @@ const LeadWebhooks = lazy(() => import("./pages/LeadWebhooks"));
 const SequenciasNurturing = lazy(() => import("./pages/SequenciasNurturing"));
 const CTWAAnalytics = lazy(() => import("./pages/CTWAAnalytics"));
 const RevenueIntelligence = lazy(() => import("./pages/RevenueIntelligence"));
+const RelatoriosOperacionais = lazy(() => import("./pages/RelatoriosOperacionais"));
+const RelatorioChamadas = lazy(() => import("./pages/RelatorioChamadas"));
 const SecretariaGrupos = lazy(() => import("./pages/SecretariaGrupos"));
 const ModuloFantasma = lazy(() => import("./pages/ModuloFantasma"));
 const SalesSEOAnalytics = lazy(() => import("./pages/SalesSEOAnalytics"));
@@ -182,6 +184,8 @@ const App = () => (
             <Route path="/sequencias" element={<ProtectedRoute><SequenciasNurturing /></ProtectedRoute>} />
             <Route path="/ctwa-analytics" element={<ProtectedRoute><CTWAAnalytics /></ProtectedRoute>} />
             <Route path="/revenue-intelligence" element={<ProtectedRoute><RevenueIntelligence /></ProtectedRoute>} />
+            <Route path="/relatorios-operacionais" element={<ProtectedRoute><RelatoriosOperacionais /></ProtectedRoute>} />
+            <Route path="/relatorio-chamadas" element={<ProtectedRoute><RelatorioChamadas /></ProtectedRoute>} />
             <Route path="/secretaria-grupos" element={<ProtectedRoute><SecretariaGrupos /></ProtectedRoute>} />
             <Route path="/modulo-fantasma" element={<ProtectedRoute><ModuloFantasma /></ProtectedRoute>} />
             <Route path="/sales-seo" element={<ProtectedRoute><SalesSEOAnalytics /></ProtectedRoute>} />

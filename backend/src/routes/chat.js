@@ -4747,6 +4747,95 @@ router.post('/conversations', authenticate, async (req, res) => {
 // CALL LOGS - Voice call tracking
 // ==========================================
 
+router.get('/call-logs/report', authenticate, async (req, res) => {
+  try {
+    const userOrg = await getUserOrganization(req.userId);
+    if (!userOrg) return res.status(403).json({ error: 'No organization' });
+
+    const endDate = req.query.end_date || new Date().toISOString().split('T')[0];
+    const startDate = req.query.start_date || new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const params = [userOrg.organization_id, startDate, endDate];
+    let extra = '';
+    if (req.query.user_id && req.query.user_id !== 'all') {
+      params.push(req.query.user_id);
+      extra += ` AND cl.user_id = $${params.length}`;
+    }
+    if (req.query.outcome && req.query.outcome !== 'all') {
+      params.push(req.query.outcome);
+      extra += ` AND cl.outcome = $${params.length}`;
+    }
+    if (req.query.contact) {
+      params.push(`%${req.query.contact}%`);
+      extra += ` AND (cl.contact_name ILIKE $${params.length} OR cl.contact_phone ILIKE $${params.length})`;
+    }
+
+    const [summary, byUser, byOutcome, daily, calls] = await Promise.all([
+      query(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE cl.outcome = 'answered')::int AS answered,
+                COALESCE(SUM(cl.duration_seconds), 0)::int AS duration_seconds,
+                COUNT(DISTINCT cl.contact_phone)::int AS contacts
+         FROM call_logs cl
+         WHERE cl.organization_id = $1 AND cl.created_at >= $2::date AND cl.created_at < ($3::date + interval '1 day') ${extra}`,
+        params
+      ),
+      query(
+        `SELECT u.id AS user_id, u.name AS user_name, COUNT(*)::int AS total,
+                COALESCE(SUM(cl.duration_seconds), 0)::int AS duration_seconds,
+                COUNT(*) FILTER (WHERE cl.outcome = 'answered')::int AS answered
+         FROM call_logs cl LEFT JOIN users u ON u.id = cl.user_id
+         WHERE cl.organization_id = $1 AND cl.created_at >= $2::date AND cl.created_at < ($3::date + interval '1 day') ${extra}
+         GROUP BY u.id, u.name ORDER BY total DESC`,
+        params
+      ),
+      query(
+        `SELECT cl.outcome, COUNT(*)::int AS total, COALESCE(SUM(cl.duration_seconds), 0)::int AS duration_seconds
+         FROM call_logs cl
+         WHERE cl.organization_id = $1 AND cl.created_at >= $2::date AND cl.created_at < ($3::date + interval '1 day') ${extra}
+         GROUP BY cl.outcome ORDER BY total DESC`,
+        params
+      ),
+      query(
+        `SELECT cl.created_at::date AS day, COUNT(*)::int AS total,
+                COALESCE(SUM(cl.duration_seconds), 0)::int AS duration_seconds
+         FROM call_logs cl
+         WHERE cl.organization_id = $1 AND cl.created_at >= $2::date AND cl.created_at < ($3::date + interval '1 day') ${extra}
+         GROUP BY cl.created_at::date ORDER BY day`,
+        params
+      ),
+      query(
+        `SELECT cl.id, cl.created_at, cl.call_type, cl.outcome, cl.duration_seconds, cl.notes,
+                cl.contact_name, cl.contact_phone, u.name AS user_name, cl.conversation_id,
+                conv.contact_name AS conversation_contact
+         FROM call_logs cl
+         LEFT JOIN users u ON u.id = cl.user_id
+         LEFT JOIN conversations conv ON conv.id = cl.conversation_id
+         WHERE cl.organization_id = $1 AND cl.created_at >= $2::date AND cl.created_at < ($3::date + interval '1 day') ${extra}
+         ORDER BY cl.created_at DESC LIMIT 500`,
+        params
+      ),
+    ]);
+
+    res.json({
+      period: { start_date: startDate, end_date: endDate },
+      summary: summary.rows[0] || { total: 0, answered: 0, duration_seconds: 0, contacts: 0 },
+      byUser: byUser.rows,
+      byOutcome: byOutcome.rows,
+      daily: daily.rows,
+      calls: calls.rows,
+    });
+  } catch (error) {
+    if (error.code === '42P01') {
+      return res.json({
+        period: {}, summary: { total: 0, answered: 0, duration_seconds: 0, contacts: 0 },
+        byUser: [], byOutcome: [], daily: [], calls: [],
+      });
+    }
+    console.error('Error fetching call log report:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Log a voice call (records it as a special message type in the conversation)
 router.post('/conversations/:id/call-log', authenticate, async (req, res) => {
   try {
@@ -4769,6 +4858,7 @@ router.post('/conversations/:id/call-log', authenticate, async (req, res) => {
     if (convResult.rows.length === 0) {
       return res.status(404).json({ error: 'Conversa não encontrada' });
     }
+    const conversation = convResult.rows[0];
 
     // Format duration for display
     const minutes = Math.floor(duration_seconds / 60);
@@ -4810,6 +4900,24 @@ router.post('/conversations/:id/call-log', authenticate, async (req, res) => {
       `UPDATE conversations SET last_message_at = NOW(), updated_at = NOW() WHERE id = $1`,
       [id]
     );
+
+    await query(
+      `INSERT INTO call_logs
+       (organization_id, conversation_id, user_id, contact_id, contact_name, contact_phone,
+        call_type, outcome, duration_seconds, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        userOrg?.organization_id || null,
+        id,
+        req.userId,
+        conversation.contact_name || null,
+        conversation.contact_phone || null,
+        call_type || 'outgoing',
+        outcome || 'answered',
+        Number(duration_seconds || 0),
+        notes || null,
+      ]
+    ).catch((err) => console.error('Error saving structured call log:', err.message));
 
     // Also add to conversation notes for CRM purposes
     await query(

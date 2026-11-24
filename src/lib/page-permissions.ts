@@ -22,6 +22,8 @@ export const PAGE_PERMISSIONS = [
   { key: 'crm_agenda', label: 'Agenda', section: 'CRM', icon: 'CalendarDays' },
   { key: 'crm_tarefas', label: 'Tarefas', section: 'CRM', icon: 'ClipboardList' },
   { key: 'crm_relatorios', label: 'Relatórios', section: 'CRM', icon: 'BarChart3' },
+  { key: 'relatorios_operacionais', label: 'Relatórios Operacionais', section: 'CRM', icon: 'BarChart4' },
+  { key: 'relatorio_chamadas', label: 'Relatório de Chamadas', section: 'CRM', icon: 'Phone' },
   { key: 'revenue_intelligence', label: 'Revenue Intel', section: 'CRM', icon: 'Brain' },
   { key: 'modulo_fantasma', label: 'Módulo Fantasma', section: 'CRM', icon: 'Ghost' },
   { key: 'crm_configuracoes', label: 'Configurações CRM', section: 'CRM', icon: 'Settings' },

@@ -2960,6 +2960,159 @@ router.get('/reports/conversion', async (req, res) => {
 });
 
 // =============================================================================
+// OPERATIONAL REPORTS
+// =============================================================================
+
+router.get('/reports/operational', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+
+    const endDate = req.query.end_date || new Date().toISOString().split('T')[0];
+    const startDate = req.query.start_date || new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const params = [org.organization_id, startDate, endDate];
+
+    const [byUser, daily, calls, scheduled, followups, byFunnel, tasksByFunnel, tasksByType, assignedCards] = await Promise.all([
+      query(
+        `SELECT u.id AS user_id, u.name AS user_name,
+                COUNT(DISTINCT conv.id) FILTER (WHERE conv.accepted_at >= $2::date AND conv.accepted_at < ($3::date + interval '1 day')) AS chats,
+                COUNT(DISTINCT sm.id) FILTER (WHERE sm.sent_at >= $2::date AND sm.sent_at < ($3::date + interval '1 day')) AS scheduled_sent,
+                COUNT(DISTINCT cl.id) FILTER (WHERE cl.timestamp >= $2::date AND cl.timestamp < ($3::date + interval '1 day')) AS calls,
+                COUNT(DISTINCT crm_t.id) FILTER (WHERE crm_t.type = 'follow_up' AND crm_t.created_at >= $2::date AND crm_t.created_at < ($3::date + interval '1 day')) AS followups,
+                COUNT(DISTINCT d.id) FILTER (WHERE d.created_at >= $2::date AND d.created_at < ($3::date + interval '1 day')) AS cards
+         FROM users u
+         LEFT JOIN conversations conv ON (conv.assigned_to = u.id OR conv.accepted_by = u.id) AND conv.connection_id IN (SELECT id FROM connections WHERE organization_id = $1)
+         LEFT JOIN scheduled_messages sm ON sm.sender_id = u.id AND sm.sent_at >= $2::date AND sm.sent_at < ($3::date + interval '1 day')
+         LEFT JOIN chat_messages cl ON cl.sender_id = u.id AND cl.message_type = 'call_log' AND cl.timestamp >= $2::date AND cl.timestamp < ($3::date + interval '1 day')
+         LEFT JOIN crm_tasks crm_t ON crm_t.assigned_to = u.id AND crm_t.organization_id = $1
+         LEFT JOIN crm_deals d ON d.owner_id = u.id AND d.organization_id = $1
+         WHERE u.id IN (SELECT user_id FROM organization_members WHERE organization_id = $1)
+         GROUP BY u.id, u.name
+         ORDER BY chats DESC, u.name`,
+        params
+      ),
+      query(
+        `SELECT day::date AS day,
+                COUNT(DISTINCT conv.id) AS chats,
+                COUNT(DISTINCT cl.id) AS calls,
+                COUNT(DISTINCT sm.id) AS scheduled_sent,
+                COUNT(DISTINCT t.id) AS tasks
+         FROM generate_series($2::date, $3::date, interval '1 day') day
+         LEFT JOIN conversations conv ON conv.connection_id IN (SELECT id FROM connections WHERE organization_id = $1)
+           AND conv.accepted_at::date = day::date
+         LEFT JOIN chat_messages cl ON cl.message_type = 'call_log' AND cl.sender_id IN (SELECT user_id FROM organization_members WHERE organization_id = $1)
+           AND cl.timestamp::date = day::date
+         LEFT JOIN scheduled_messages sm ON sm.sender_id IN (SELECT user_id FROM organization_members WHERE organization_id = $1)
+           AND sm.sent_at::date = day::date
+         LEFT JOIN crm_tasks t ON t.organization_id = $1 AND t.created_at::date = day::date
+         GROUP BY day::date
+         ORDER BY day::date`,
+        params
+      ),
+      query(
+        `SELECT u.id AS user_id, u.name AS user_name, COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE cm.content LIKE '📞%') AS outgoing
+         FROM chat_messages cm
+         JOIN users u ON u.id = cm.sender_id
+         WHERE cm.message_type = 'call_log'
+           AND cm.timestamp >= $2::date AND cm.timestamp < ($3::date + interval '1 day')
+           AND cm.conversation_id IN (SELECT id FROM conversations WHERE connection_id IN (SELECT id FROM connections WHERE organization_id = $1))
+         GROUP BY u.id, u.name
+         ORDER BY total DESC`,
+        params
+      ),
+      query(
+        `SELECT u.id AS user_id, u.name AS user_name,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE sm.status = 'sent') AS sent,
+                COUNT(*) FILTER (WHERE sm.status = 'pending') AS pending,
+                COUNT(*) FILTER (WHERE sm.status = 'failed') AS failed
+         FROM scheduled_messages sm
+         LEFT JOIN users u ON u.id = sm.sender_id
+         WHERE sm.created_at >= $2::date AND sm.created_at < ($3::date + interval '1 day')
+           AND sm.connection_id IN (SELECT id FROM connections WHERE organization_id = $1)
+         GROUP BY u.id, u.name
+         ORDER BY total DESC`,
+        params
+      ),
+      query(
+        `SELECT u.id AS user_id, u.name AS user_name,
+                COUNT(*) FILTER (WHERE t.type = 'follow_up') AS followups,
+                COUNT(*) FILTER (WHERE t.type = 'follow_up' AND t.status = 'completed') AS completed
+         FROM crm_tasks t
+         LEFT JOIN users u ON u.id = t.assigned_to
+         WHERE t.organization_id = $1 AND t.created_at >= $2::date AND t.created_at < ($3::date + interval '1 day')
+         GROUP BY u.id, u.name
+         ORDER BY followups DESC`,
+        params
+      ),
+      query(
+        `SELECT f.id AS funnel_id, f.name AS funnel_name,
+                COUNT(DISTINCT d.id) AS total,
+                COUNT(DISTINCT d.id) FILTER (WHERE d.status = 'won') AS won,
+                COUNT(DISTINCT d.id) FILTER (WHERE d.status = 'open') AS open,
+                COALESCE(SUM(d.value), 0) AS total_value
+         FROM crm_funnels f
+         LEFT JOIN crm_deals d ON d.funnel_id = f.id AND d.organization_id = $1
+           AND d.created_at >= $2::date AND d.created_at < ($3::date + interval '1 day')
+         WHERE f.organization_id = $1
+         GROUP BY f.id, f.name
+         ORDER BY total DESC`,
+        params
+      ),
+      query(
+        `SELECT f.id AS funnel_id, f.name AS funnel_name, t.type AS task_type,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE t.status = 'completed') AS completed,
+                COUNT(*) FILTER (WHERE t.status = 'pending') AS pending
+         FROM crm_tasks t
+         JOIN crm_deals d ON d.id = t.deal_id
+         JOIN crm_funnels f ON f.id = d.funnel_id
+         WHERE t.organization_id = $1 AND t.created_at >= $2::date AND t.created_at < ($3::date + interval '1 day')
+         GROUP BY f.id, f.name, t.type
+         ORDER BY f.name, total DESC`,
+        params
+      ),
+      query(
+        `SELECT t.type, COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE t.status = 'completed') AS completed,
+                COUNT(*) FILTER (WHERE t.status = 'pending') AS pending
+         FROM crm_tasks t
+         WHERE t.organization_id = $1 AND t.created_at >= $2::date AND t.created_at < ($3::date + interval '1 day')
+         GROUP BY t.type
+         ORDER BY total DESC`,
+        params
+      ),
+    ]);
+
+    const assignedCardsResult = await query(
+      `SELECT COUNT(*)::int AS total
+       FROM crm_deals
+       WHERE organization_id = $1
+         AND owner_id IS NOT NULL
+         AND created_at >= $2::date AND created_at < ($3::date + interval '1 day')`,
+      params
+    );
+
+    res.json({
+      period: { start_date: startDate, end_date: endDate },
+      byUser: byUser.rows,
+      daily: daily.rows,
+      calls: calls.rows,
+      scheduled: scheduled.rows,
+      followups: followups.rows,
+      byFunnel: byFunnel.rows,
+      tasksByFunnel: tasksByFunnel.rows,
+      tasksByType: tasksByType.rows,
+      assignedCards: Number(assignedCardsResult.rows[0]?.total || 0),
+    });
+  } catch (error) {
+    console.error('Error fetching operational report:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =============================================================================
 // PROSPECTS
 // =============================================================================
 

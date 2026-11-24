@@ -100,6 +100,85 @@ export function useCRMSalesReport(params: {
   });
 }
 
+export interface OperationalReport {
+  period: { start_date: string; end_date: string };
+  byUser: Array<{
+    user_id: string;
+    user_name: string;
+    chats: number;
+    scheduled_sent: number;
+    calls: number;
+    followups: number;
+    cards: number;
+  }>;
+  daily: Array<{
+    day: string;
+    chats: number;
+    calls: number;
+    scheduled_sent: number;
+    tasks: number;
+  }>;
+  calls: Array<{ user_id: string; user_name: string; total: number; outgoing: number }>;
+  scheduled: Array<{ user_id: string; user_name: string; total: number; sent: number; pending: number; failed: number }>;
+  followups: Array<{ user_id: string; user_name: string; followups: number; completed: number }>;
+  byFunnel: Array<{ funnel_id: string; funnel_name: string; total: number; won: number; open: number; total_value: number }>;
+  tasksByFunnel: Array<{ funnel_id: string; funnel_name: string; task_type: string; total: number; completed: number; pending: number }>;
+  tasksByType: Array<{ type: string; total: number; completed: number; pending: number }>;
+  assignedCards: number;
+}
+
+export interface CallLogReport {
+  period: { start_date: string; end_date: string };
+  summary: { total: number; answered: number; duration_seconds: number; contacts: number };
+  byUser: Array<{ user_id: string; user_name: string; total: number; duration_seconds: number; answered: number }>;
+  byOutcome: Array<{ outcome: string; total: number; duration_seconds: number }>;
+  daily: Array<{ day: string; total: number; duration_seconds: number }>;
+  calls: Array<{
+    id: string;
+    created_at: string;
+    call_type: string;
+    outcome: string;
+    duration_seconds: number;
+    notes?: string;
+    contact_name?: string;
+    contact_phone?: string;
+    user_name?: string;
+    conversation_id: string;
+    conversation_contact?: string;
+  }>;
+}
+
+export function useCallLogReport(params: {
+  startDate?: string;
+  endDate?: string;
+  userId?: string;
+  outcome?: string;
+  contact?: string;
+}) {
+  const searchParams = new URLSearchParams();
+  if (params.startDate) searchParams.append('start_date', params.startDate);
+  if (params.endDate) searchParams.append('end_date', params.endDate);
+  if (params.userId) searchParams.append('user_id', params.userId);
+  if (params.outcome) searchParams.append('outcome', params.outcome);
+  if (params.contact) searchParams.append('contact', params.contact);
+
+  return useQuery({
+    queryKey: ["call-log-report", params],
+    queryFn: () => api<CallLogReport>(`/api/chat/call-logs/report?${searchParams.toString()}`),
+  });
+}
+
+export function useOperationalReport(params: { startDate?: string; endDate?: string }) {
+  const searchParams = new URLSearchParams();
+  if (params.startDate) searchParams.append('start_date', params.startDate);
+  if (params.endDate) searchParams.append('end_date', params.endDate);
+
+  return useQuery({
+    queryKey: ["crm-operational-report", params],
+    queryFn: () => api<OperationalReport>(`/api/crm/reports/operational?${searchParams.toString()}`),
+  });
+}
+
 export function useCRMConversionReport(params: {
   funnelId: string;
   startDate?: string;
