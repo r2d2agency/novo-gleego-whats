@@ -477,7 +477,15 @@ export default function Organizacoes() {
       body.lead_gleego_deal_title_template = gleegoDealTitleTemplate || '{nome}';
 
       await api('/api/lead-gleego/settings', { method: 'PUT', body });
-      toast.success('Configurações do Lead Gleego salvas!');
+      if (selectedOrg) {
+        await api(`/api/organizations/${selectedOrg.id}`, {
+          method: 'PATCH',
+          body: { modules_enabled: { ...modulesEnabled, lead_gleego: true } },
+        });
+        setModulesEnabled((prev) => ({ ...prev, lead_gleego: true }));
+        await refreshUser();
+      }
+      toast.success('Módulo e configurações do Lead Gleego salvos!');
       setLeadGleegoApiKey('');
       if (selectedOrg) loadModules(selectedOrg.id);
     } catch (error: any) {
