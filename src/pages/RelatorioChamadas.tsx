@@ -21,6 +21,12 @@ import { toast } from 'sonner';
 import { useCallLogReport } from '@/hooks/use-crm-reports';
 
 const number = (value: unknown) => Number(value || 0);
+const safeFormat = (value: unknown, pattern: string) => {
+  if (!value) return '-';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return '-';
+  return format(date, pattern, { locale: ptBR });
+};
 const duration = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -67,7 +73,7 @@ export default function RelatorioChamadas() {
     const rows = [
       ['Data', 'Vendedor', 'Contato', 'Telefone', 'Tipo', 'Status', 'Duração (s)', 'Notas'],
       ...data.calls.map((call) => [
-        format(new Date(call.created_at), 'dd/MM/yyyy HH:mm'),
+        safeFormat(call.created_at, 'dd/MM/yyyy HH:mm'),
         call.user_name || '',
         call.contact_name || call.conversation_contact || '',
         call.contact_phone || '',
@@ -170,7 +176,7 @@ export default function RelatorioChamadas() {
                 <CardContent className="space-y-2">
                   {data.daily.map((row) => (
                     <div key={row.day} className="grid grid-cols-[80px_1fr_110px] items-center gap-3 text-sm">
-                      <span className="text-muted-foreground">{format(new Date(`${row.day}T12:00:00`), 'dd/MM', { locale: ptBR })}</span>
+                      <span className="text-muted-foreground">{safeFormat(String(row.day).slice(0, 10), 'dd/MM')}</span>
                       <div className="h-2 rounded-full bg-muted">
                         <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.max((number(row.total) / maxDaily) * 100, number(row.total) ? 4 : 0)}%` }} />
                       </div>
@@ -231,7 +237,7 @@ export default function RelatorioChamadas() {
                   <TableBody>
                     {data.calls.map((call) => (
                       <TableRow key={call.id}>
-                        <TableCell>{format(new Date(call.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}</TableCell>
+                        <TableCell>{safeFormat(call.created_at, 'dd/MM/yyyy HH:mm')}</TableCell>
                         <TableCell>{call.user_name || '-'}</TableCell>
                         <TableCell>
                           <p className="font-medium">{call.contact_name || call.conversation_contact || '-'}</p>

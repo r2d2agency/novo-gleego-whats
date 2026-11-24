@@ -4108,7 +4108,7 @@ const step44CallLogs = `
 CREATE TABLE IF NOT EXISTS call_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE NOT NULL,
-    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE NOT NULL,
+    conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     contact_name VARCHAR(255),
     contact_phone VARCHAR(50),
@@ -4124,6 +4124,7 @@ CREATE INDEX IF NOT EXISTS idx_call_logs_created ON call_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_call_logs_user ON call_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_call_logs_conversation ON call_logs(conversation_id);
 ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS deal_id UUID REFERENCES crm_deals(id) ON DELETE CASCADE;
+ALTER TABLE call_logs ALTER COLUMN conversation_id DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_call_logs_deal ON call_logs(deal_id);
 `;
 

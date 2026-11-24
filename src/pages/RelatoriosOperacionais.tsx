@@ -19,6 +19,12 @@ import { toast } from 'sonner';
 import { useOperationalReport, useDealsDetailReport } from '@/hooks/use-crm-reports';
 
 const number = (value: unknown) => Number(value || 0);
+const safeFormat = (value: unknown, pattern: string) => {
+  if (!value) return '-';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return '-';
+  return format(date, pattern, { locale: ptBR });
+};
 const money = (value: unknown) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(number(value));
 
@@ -129,7 +135,7 @@ export default function RelatoriosOperacionais() {
                 <div className="space-y-2">
                   {data.daily.map((row) => (
                     <div key={row.day} className="grid grid-cols-[90px_1fr_190px] items-center gap-3 text-sm">
-                      <span className="text-muted-foreground">{format(new Date(`${row.day}T12:00:00`), 'dd/MM', { locale: ptBR })}</span>
+                      <span className="text-muted-foreground">{safeFormat(String(row.day).slice(0, 10), 'dd/MM')}</span>
                       <MiniBar value={number(row.chats)} max={maxDaily} />
                       <span className="text-right text-xs text-muted-foreground">
                         {number(row.chats)} chats · {number(row.calls)} lig. · {number(row.scheduled_sent)} agend. · {number(row.tasks)} tarefas
@@ -369,7 +375,7 @@ export default function RelatoriosOperacionais() {
                             <TableCell>{deal.owner_name || '-'}</TableCell>
                             <TableCell className="text-right">{money(deal.value)}</TableCell>
                             <TableCell className="text-right">{number(deal.age_days).toFixed(1)} dias</TableCell>
-                            <TableCell>{format(new Date(deal.created_at), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
+                            <TableCell>{safeFormat(deal.created_at, 'dd/MM/yyyy')}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

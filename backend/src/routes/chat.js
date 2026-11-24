@@ -4759,10 +4759,8 @@ router.post('/deals/:dealId/call-log', authenticate, async (req, res) => {
     if (!userOrg) return res.status(403).json({ error: 'No organization' });
 
     const dealResult = await query(
-      `SELECT d.id, cnt.phone
+      `SELECT d.id, d.title
        FROM crm_deals d
-       LEFT JOIN crm_deal_contacts dc ON dc.deal_id = d.id AND dc.is_primary = true
-       LEFT JOIN contacts cnt ON cnt.id = dc.contact_id
        WHERE d.id = $1 AND d.organization_id = $2
        LIMIT 1`,
       [req.params.dealId, userOrg.organization_id]
@@ -4770,9 +4768,21 @@ router.post('/deals/:dealId/call-log', authenticate, async (req, res) => {
     const deal = dealResult.rows[0];
     if (!deal) return res.status(404).json({ error: 'Negociação não encontrada' });
 
-    const digits = String(deal.phone || '').replace(/\D/g, '');
+    const phonesResult = await query(
+      `SELECT COALESCE(cnt.phone, cc.phone) AS phone
+       FROM crm_deal_contacts dc
+       LEFT JOIN contacts cnt ON cnt.id = dc.contact_id
+       LEFT JOIN chat_contacts cc ON cc.id = dc.contact_id
+       WHERE dc.deal_id = $1`,
+      [req.params.dealId]
+    );
+
     let conversationId = null;
-    if (digits.length >= 8) {
+    let contactPhone = null;
+    for (const row of phonesResult.rows) {
+      const digits = String(row.phone || '').replace(/\D/g, '');
+      if (digits.length < 8) continue;
+      contactPhone = row.phone;
       const convResult = await query(
         `SELECT id FROM conversations
          WHERE connection_id IN (SELECT id FROM connections WHERE organization_id = $1)
@@ -4781,22 +4791,27 @@ router.post('/deals/:dealId/call-log', authenticate, async (req, res) => {
          LIMIT 1`,
         [userOrg.organization_id, `%${digits.slice(-11)}%`]
       );
-      conversationId = convResult.rows[0]?.id || null;
+      if (convResult.rows[0]?.id) {
+        conversationId = convResult.rows[0].id;
+        break;
+      }
     }
 
     const { call_type, outcome, duration_seconds, notes } = req.body;
-    const result = await query(
-      `INSERT INTO chat_messages
-        (conversation_id, message_id, from_me, sender_id, content, message_type, status, timestamp)
-       VALUES ($1, $2, true, $3, $4, 'call_log', 'sent', NOW())
-       RETURNING *`,
-      [
-        conversationId,
-        `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        req.userId,
-        `${typeLabels[call_type] || '📞 Chamada'} - ${outcome || 'Sem resultado'}`,
-      ]
-    ).catch(() => null);
+    const result = conversationId
+      ? await query(
+          `INSERT INTO chat_messages
+            (conversation_id, message_id, from_me, sender_id, content, message_type, status, timestamp)
+           VALUES ($1, $2, true, $3, $4, 'call_log', 'sent', NOW())
+           RETURNING *`,
+          [
+            conversationId,
+            `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            req.userId,
+            `${typeLabels[call_type] || '📞 Chamada'} - ${outcome || 'Sem resultado'}`,
+          ]
+        ).catch(() => null)
+      : null;
 
     await query(
       `INSERT INTO call_logs
@@ -4809,7 +4824,7 @@ router.post('/deals/:dealId/call-log', authenticate, async (req, res) => {
         req.params.dealId,
         req.userId,
         null,
-        deal.phone || null,
+        contactPhone,
         call_type || 'outgoing',
         outcome || 'answered',
         Number(duration_seconds || 0),
