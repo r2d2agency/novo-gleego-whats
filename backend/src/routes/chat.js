@@ -1233,6 +1233,37 @@ router.get('/stats', authenticate, async (req, res) => {
   }
 });
 
+// List all conversations for a phone number (read-only, no auto-create)
+router.get('/conversations/list-by-phone/:phone', authenticate, async (req, res) => {
+  try {
+    const connectionIds = await getUserConnections(req.userId);
+    if (connectionIds.length === 0) return res.json([]);
+    const digits = String(req.params.phone || '').replace(/\D/g, '');
+    const needle = digits.length > 11 ? digits.slice(-11) : digits;
+    if (!needle) return res.json([]);
+    const result = await query(
+      `SELECT conv.id, conv.contact_name, conv.contact_phone, conv.remote_jid,
+              conv.last_message_at, conv.created_at, conv.attendance_status,
+              conn.name AS connection_name, u.name AS assigned_name
+       FROM conversations conv
+       JOIN connections conn ON conn.id = conv.connection_id
+       LEFT JOIN users u ON u.id = conv.assigned_to
+       WHERE conv.connection_id = ANY($1)
+         AND (
+           regexp_replace(COALESCE(conv.contact_phone, ''), '\\D', '', 'g') LIKE '%' || $2 || '%'
+           OR regexp_replace(COALESCE(conv.remote_jid, ''), '\\D', '', 'g') LIKE '%' || $2 || '%'
+         )
+       ORDER BY conv.last_message_at DESC NULLS LAST
+       LIMIT 100`,
+      [connectionIds, needle]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error listing conversations by phone:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Find conversation by phone number
 router.get('/conversations/by-phone/:phone', authenticate, async (req, res) => {
   try {
@@ -4843,6 +4874,62 @@ router.post('/deals/:dealId/call-log', authenticate, async (req, res) => {
   } catch (error) {
     if (error.code === '42P01') return res.status(500).json({ error: 'Tabela de ligações ainda não foi criada. Reinicie o backend.' });
     console.error('Error logging deal call:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/prospects/:prospectId/call-log', authenticate, async (req, res) => {
+  try {
+    const userOrg = await getUserOrganization(req.userId);
+    if (!userOrg) return res.status(403).json({ error: 'No organization' });
+    const prospectResult = await query(
+      `SELECT id, name, phone FROM crm_prospects WHERE id = $1 AND organization_id = $2 LIMIT 1`,
+      [req.params.prospectId, userOrg.organization_id]
+    );
+    const prospect = prospectResult.rows[0];
+    if (!prospect) return res.status(404).json({ error: 'Prospect não encontrado' });
+
+    const { call_type, outcome, duration_seconds, notes } = req.body;
+    await query(
+      `INSERT INTO call_logs
+       (organization_id, conversation_id, prospect_id, user_id, contact_name, contact_phone,
+        call_type, outcome, duration_seconds, notes)
+       VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        userOrg.organization_id,
+        prospect.id,
+        req.userId,
+        prospect.name,
+        prospect.phone,
+        call_type || 'outgoing',
+        outcome || 'answered',
+        Number(duration_seconds || 0),
+        notes || null,
+      ]
+    );
+    res.status(201).json({ success: true });
+  } catch (error) {
+    if (error.code === '42P01') return res.status(500).json({ error: 'Tabela de ligações ainda não foi criada. Reinicie o backend.' });
+    console.error('Error logging prospect call:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/prospects/:prospectId/call-logs', authenticate, async (req, res) => {
+  try {
+    const userOrg = await getUserOrganization(req.userId);
+    if (!userOrg) return res.status(403).json({ error: 'No organization' });
+    const result = await query(
+      `SELECT cl.*, u.name AS user_name
+       FROM call_logs cl LEFT JOIN users u ON u.id = cl.user_id
+       WHERE cl.prospect_id = $1 AND cl.organization_id = $2
+       ORDER BY cl.created_at DESC LIMIT 200`,
+      [req.params.prospectId, userOrg.organization_id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    if (error.code === '42P01') return res.json([]);
+    console.error('Error fetching prospect call logs:', error);
     res.status(500).json({ error: error.message });
   }
 });

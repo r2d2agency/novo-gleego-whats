@@ -18,6 +18,7 @@ import { useCRMCustomFields, CRMCustomField, useCRMCatalogItems, useDealItems, u
 import { generateProposalPdf } from "./ProposalPdf";
 import { ProposalEditorDialog } from "./ProposalEditorDialog";
 import { DealCallsSection } from "./DealCallsSection";
+import { DealConversationLinker } from "./DealConversationLinker";
 import { api } from "@/lib/api";
 import { Building2, User, Phone, Calendar as CalendarIcon, Clock, CheckCircle, Plus, Trash2, Paperclip, MessageSquare, ChevronRight, Edit2, Save, X, FileText, Image, Loader2, Upload, Search, UserPlus, Building, Mail, Video, Send, ClipboardList, RefreshCw, Flame, FileSignature, ThumbsUp, ThumbsDown, Pause, Play, Sparkles } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1051,6 +1052,7 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
             </TabsTrigger>
             <TabsTrigger value="contacts">Contatos</TabsTrigger>
             <TabsTrigger value="calls">Ligações</TabsTrigger>
+            <TabsTrigger value="conversations">Conversas</TabsTrigger>
             <TabsTrigger value="items">
               Itens
               {dealItems.length > 0 && (
@@ -2029,6 +2031,14 @@ export function DealDetailDialog({ deal, open, onOpenChange }: DealDetailDialogP
                 dealId={deal.id}
                 contactName={currentDeal?.contacts?.find(c => c.is_primary)?.name || currentDeal?.contacts?.[0]?.name}
                 contactPhone={currentDeal?.contacts?.find(c => c.is_primary)?.phone || currentDeal?.contacts?.[0]?.phone}
+              />
+            </TabsContent>
+
+            <TabsContent value="conversations" className="m-0">
+              <DealConversationLinker
+                dealId={deal.id}
+                contactPhone={currentDeal?.contacts?.find(c => c.is_primary)?.phone || currentDeal?.contacts?.[0]?.phone}
+                onLinked={() => queryClient.invalidateQueries({ queryKey: ['crm-deal', deal.id] })}
               />
             </TabsContent>
 

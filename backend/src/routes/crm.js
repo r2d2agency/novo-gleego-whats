@@ -3548,6 +3548,12 @@ router.post('/prospects/:id/convert', async (req, res) => {
     );
     const deal_id = dealResult.rows[0].id;
 
+    await query(
+      `UPDATE call_logs SET deal_id = $1, prospect_id = NULL
+       WHERE prospect_id = $2 AND organization_id = $3`,
+      [deal_id, req.params.id, org.organization_id]
+    ).catch((err) => console.error('Error transferring prospect call logs:', err.message));
+
     // Mark prospect as converted
     await query(
       `UPDATE crm_prospects SET converted_at = NOW(), converted_deal_id = $1 WHERE id = $2`,
@@ -3656,6 +3662,12 @@ router.post('/prospects/bulk-convert', async (req, res) => {
            RETURNING id`,
           [org.organization_id, funnel_id, stage_id, prospect.name, contactId, companyId, req.userId]
         );
+
+        await query(
+          `UPDATE call_logs SET deal_id = $1, prospect_id = NULL
+           WHERE prospect_id = $2 AND organization_id = $3`,
+          [dealResult.rows[0].id, prospect_id, org.organization_id]
+        ).catch((err) => console.error('Error transferring prospect call logs:', err.message));
 
         // Mark prospect as converted
         await query(

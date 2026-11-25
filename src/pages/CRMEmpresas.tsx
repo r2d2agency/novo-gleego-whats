@@ -9,7 +9,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { CompanyDialog } from "@/components/crm/CompanyDialog";
 import { CompanyImportDialog } from "@/components/crm/CompanyImportDialog";
 import { useCRMCompanies, useCRMCompanyMutations, CRMCompany, useCRMFunnels } from "@/hooks/use-crm";
-import { Plus, Search, MoreHorizontal, Building2, Phone, Mail, Trash2, Edit, Loader2, FileSpreadsheet, Tag, HandshakeIcon } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Building2, Phone, Mail, Trash2, Edit, Loader2, FileSpreadsheet, Tag, HandshakeIcon, Download } from "lucide-react";
+import * as XLSX from "xlsx";
+import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { DealFormDialog } from "@/components/crm/DealFormDialog";
 
@@ -58,6 +60,39 @@ export default function CRMEmpresas() {
     }
   };
 
+  const handleExport = () => {
+    const source = filteredCompanies.length > 0 ? filteredCompanies : companies || [];
+    if (source.length === 0) {
+      toast.error("Nenhuma empresa para exportar");
+      return;
+    }
+    const rows = source.map((company) => ({
+      "Nome": company.name || "",
+      "Razão Social": company.razao_social || "",
+      "Nome Fantasia": company.nome_fantasia || "",
+      "CNPJ": company.cnpj || "",
+      "Inscrição Estadual": company.inscricao_estadual || "",
+      "Inscrição Municipal": company.inscricao_municipal || "",
+      "Porte": company.porte || "",
+      "CNAE": company.cnae || "",
+      "E-mail": company.email || "",
+      "Telefone": company.phone || "",
+      "Website": company.website || "",
+      "Endereço": company.address || "",
+      "Cidade": company.city || "",
+      "Estado": company.state || "",
+      "CEP": company.zip_code || "",
+      "Observações": company.notes || "",
+      "Responsável": company.owner_name || "",
+      "Data de cadastro": company.created_at ? format(parseISO(company.created_at), "dd/MM/yyyy") : "",
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Empresas");
+    XLSX.writeFile(workbook, `empresas_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+    toast.success(`${rows.length} empresa(s) exportada(s)!`);
+  };
+
   return (
     <MainLayout>
       <div className="p-6 space-y-6">
@@ -68,6 +103,10 @@ export default function CRMEmpresas() {
             <p className="text-muted-foreground">Gerencie sua base de empresas</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={handleExport} disabled={isLoading}>
+              <Download className="h-4 w-4 mr-2" />
+              Exportar Excel
+            </Button>
             <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               Importar Excel

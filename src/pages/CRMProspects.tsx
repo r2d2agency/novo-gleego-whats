@@ -39,10 +39,12 @@ import {
   Trash2,
   Upload,
   Users,
+  Phone,
 } from "lucide-react";
 import { useProspects, Prospect } from "@/hooks/use-prospects";
 import { useCRMFunnels } from "@/hooks/use-crm";
 import ProspectImportDialog from "@/components/crm/ProspectImportDialog";
+import { ProspectCallsDialog } from "@/components/crm/ProspectCallsDialog";
 
 export default function CRMProspects() {
   const [search, setSearch] = useState("");
@@ -52,6 +54,7 @@ export default function CRMProspects() {
   const [showConvertDialog, setShowConvertDialog] = useState(false);
   const [showBulkConvertDialog, setShowBulkConvertDialog] = useState(false);
   const [convertingProspect, setConvertingProspect] = useState<Prospect | null>(null);
+  const [callProspect, setCallProspect] = useState<Prospect | null>(null);
   
   const { prospects, isLoading, createProspect, deleteProspect, convertToDeal, bulkDelete, bulkConvert } = useProspects();
   const { data: funnels } = useCRMFunnels();
@@ -411,6 +414,10 @@ export default function CRMProspects() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setCallProspect(prospect)}>
+                              <Phone className="h-4 w-4 mr-2" />
+                              Registrar ligação
+                            </DropdownMenuItem>
                             {!prospect.converted_at && (
                               <DropdownMenuItem onClick={() => openConvertDialog(prospect)}>
                                 <ArrowRight className="h-4 w-4 mr-2" />
@@ -685,6 +692,16 @@ export default function CRMProspects() {
 
       {/* Import Dialog */}
       <ProspectImportDialog open={showImport} onOpenChange={setShowImport} />
+
+      {callProspect && (
+        <ProspectCallsDialog
+          open={!!callProspect}
+          onOpenChange={(open) => !open && setCallProspect(null)}
+          prospectId={callProspect.id}
+          prospectName={callProspect.name}
+          prospectPhone={callProspect.phone}
+        />
+      )}
     </MainLayout>
   );
 }
