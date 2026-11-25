@@ -297,8 +297,8 @@ export function ScheduleMessageDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={cn(
-        "max-w-md overflow-y-auto",
-        isMobile ? "h-[100dvh] max-h-[100dvh] w-full rounded-none p-4" : "max-h-[90vh]"
+        "w-[calc(100vw-2rem)] max-w-2xl overflow-hidden",
+        isMobile ? "h-[100dvh] max-h-[100dvh] rounded-none p-4 overflow-y-auto" : "max-h-[88vh]"
       )}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -310,7 +310,10 @@ export function ScheduleMessageDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className={cn(
+          "space-y-4 pr-1 min-h-0",
+          isMobile ? "" : "overflow-y-auto flex-1"
+        )}>
           {/* Image/Document Upload */}
           <div className="space-y-2">
             <Label>Anexos (opcional) {attachments.length > 0 && `— ${attachments.length}`}</Label>
@@ -400,7 +403,7 @@ export function ScheduleMessageDialog({
                           onChange={(e) => setTemplateSearch(e.target.value)}
                         />
                       </div>
-                      <div className="max-h-40 overflow-y-auto space-y-1">
+                      <div className="max-h-[180px] w-full min-w-0 overflow-y-auto overflow-x-hidden space-y-1 pr-1">
                         {templates
                           .filter((t) => t.name.toLowerCase().includes(templateSearch.toLowerCase()))
                           .map((template) => (
@@ -409,7 +412,7 @@ export function ScheduleMessageDialog({
                               type="button"
                               onClick={() => { setSelectedTemplateId(template.id); setTemplateParams({}); }}
                               className={cn(
-                                "w-full rounded-md border p-2 text-left text-sm",
+                                "w-full min-w-0 overflow-hidden rounded-md border p-2 text-left text-sm",
                                 selectedTemplateId === template.id ? "border-primary bg-primary/10" : "hover:bg-accent"
                               )}
                             >
