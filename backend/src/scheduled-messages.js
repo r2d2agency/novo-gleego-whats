@@ -39,7 +39,11 @@ async function sendScheduledMetaTemplate(msg) {
       const err = result?.error || {};
       return { error: err.error_user_msg || err.message || `HTTP ${response.status}` };
     }
-    return { messageId: result?.messages?.[0]?.id || `template_scheduled_${msg.id}`, content: msg.content || msg.template_name };
+    return {
+      success: true,
+      messageId: result?.messages?.[0]?.id || `template_scheduled_${msg.id}`,
+      content: msg.content || msg.template_name,
+    };
   } catch (error) {
     return { error: error.message || 'Erro ao enviar template Meta' };
   }
@@ -166,8 +170,10 @@ export async function executeScheduledMessages() {
       // Check if connection is still active
       // For W-API, accept if has instance_id and wapi_token
       const provider = whatsappProvider.detectProvider(msg);
-      const isConnected = msg.connection_status === 'connected' || 
-        (provider === 'wapi' && msg.instance_id && msg.wapi_token);
+      const isConnected = msg.connection_status === 'connected' ||
+        (provider === 'wapi' && msg.instance_id && msg.wapi_token) ||
+        (provider === 'meta' && msg.meta_token && msg.meta_phone_number_id) ||
+        (provider === 'uazapi' && msg.uazapi_url && msg.uazapi_token);
 
       if (!isConnected) {
         console.log(`  ⚠ Connection not active for message ${msg.id}, marking as failed`);
