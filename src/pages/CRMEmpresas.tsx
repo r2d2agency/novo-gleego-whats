@@ -294,6 +294,11 @@ export default function CRMEmpresas() {
         funnel={funnels?.[0] || null}
         open={dealDialogOpen}
         onOpenChange={setDealDialogOpen}
+        initialCompany={selectedCompanyForDeal ? {
+          id: selectedCompanyForDeal.id,
+          name: selectedCompanyForDeal.name,
+          phone: selectedCompanyForDeal.phone,
+        } : null}
       />
     </MainLayout>
   );

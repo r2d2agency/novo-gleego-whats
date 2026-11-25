@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CRMFunnel, useCRMDealMutations, useCRMCompanies, useCRMFunnel, useCRMGroups } from "@/hooks/use-crm";
+import { CRMFunnel, useCRMDealMutations, useCRMCompanies, useCRMFunnel, useCRMGroups, useCRMFunnels } from "@/hooks/use-crm";
 import { Slider } from "@/components/ui/slider";
 import { Building2, User, Search, Loader2, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,6 +20,7 @@ interface DealFormDialogProps {
   funnel: CRMFunnel | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialCompany?: { id: string; name: string; phone?: string } | null;
 }
 
 function useMyGroups() {
@@ -29,7 +30,7 @@ function useMyGroups() {
   });
 }
 
-export function DealFormDialog({ funnel, open, onOpenChange }: DealFormDialogProps) {
+export function DealFormDialog({ funnel, open, onOpenChange, initialCompany }: DealFormDialogProps) {
   const { user } = useAuth();
   const canManage = user?.role && ['owner', 'admin', 'manager'].includes(user.role);
 
@@ -53,9 +54,13 @@ export function DealFormDialog({ funnel, open, onOpenChange }: DealFormDialogPro
   const [leadSourceId, setLeadSourceId] = useState("");
   const [newSourceName, setNewSourceName] = useState("");
   const [showNewSource, setShowNewSource] = useState(false);
+  const [selectedFunnelId, setSelectedFunnelId] = useState(funnel?.id || '');
+  const [companyContacts, setCompanyContacts] = useState<Array<{ id: string; name: string; phone: string }>>([]);
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
 
   const { data: companies } = useCRMCompanies(companySearchQuery.length >= 2 ? companySearchQuery : undefined);
-  const { data: funnelData } = useCRMFunnel(funnel?.id || null);
+  const { data: funnels } = useCRMFunnels();
+  const { data: funnelData } = useCRMFunnel(selectedFunnelId || null);
   const { data: groups } = useCRMGroups();
   const { data: myGroups } = useMyGroups();
   const { createDeal } = useCRMDealMutations();
@@ -103,6 +108,23 @@ export function DealFormDialog({ funnel, open, onOpenChange }: DealFormDialogPro
   }, [canManage, myGroups, groupId]);
 
   useEffect(() => {
+    if (!open) return;
+    if (!selectedFunnelId && funnel?.id) setSelectedFunnelId(funnel.id);
+    if (initialCompany) {
+      setCompanyId(initialCompany.id);
+      setSelectedCompanyName(initialCompany.name);
+      setMode('company');
+      setTitle((current) => current || initialCompany.name);
+      api<Array<{ id: string; name: string; phone: string }>>(`/api/crm/companies/${initialCompany.id}/contacts`)
+        .then((contacts) => {
+          setCompanyContacts(contacts || []);
+          setSelectedContactIds((contacts || []).map((c) => c.id));
+        })
+        .catch(() => { setCompanyContacts([]); setSelectedContactIds([]); });
+    }
+  }, [open, initialCompany, funnel?.id, selectedFunnelId]);
+
+  useEffect(() => {
     if (open && funnelData?.stages?.length) {
       const firstStage = funnelData.stages.find((s) => !s.is_final);
       if (firstStage?.id) {
@@ -112,12 +134,12 @@ export function DealFormDialog({ funnel, open, onOpenChange }: DealFormDialogPro
   }, [open, funnelData]);
 
   const handleSave = () => {
-    if (!funnel || !title.trim() || !stageId) return;
+    if (!selectedFunnelId || !title.trim() || !stageId) return;
     if (mode === "company" && !companyId) return;
     if (mode === "contact" && (!contactName.trim() || !contactPhone.trim())) return;
 
     createDeal.mutate({
-      funnel_id: funnel.id,
+      funnel_id: selectedFunnelId,
       stage_id: stageId,
       company_id: mode === "company" ? companyId : undefined,
       title,
@@ -130,6 +152,7 @@ export function DealFormDialog({ funnel, open, onOpenChange }: DealFormDialogPro
       lead_source_id: leadSourceId || undefined,
       contact_name: mode === "contact" ? contactName : undefined,
       contact_phone: mode === "contact" ? contactPhone : undefined,
+      contact_ids: mode === "company" && selectedContactIds.length > 0 ? selectedContactIds : undefined,
     } as any);
 
     resetForm();
@@ -154,6 +177,8 @@ export function DealFormDialog({ funnel, open, onOpenChange }: DealFormDialogPro
     setLeadSourceId("");
     setNewSourceName("");
     setShowNewSource(false);
+    setSelectedContactIds([]);
+    setCompanyContacts([]);
   };
 
   const handleCreateSource = async () => {
@@ -298,6 +323,40 @@ export function DealFormDialog({ funnel, open, onOpenChange }: DealFormDialogPro
                 </TabsContent>
               </Tabs>
             </div>
+
+            <div className="space-y-2">
+              <Label>Funil *</Label>
+              <Select value={selectedFunnelId} onValueChange={(value) => { setSelectedFunnelId(value); setStageId(''); }}>
+                <SelectTrigger><SelectValue placeholder="Selecione o funil" /></SelectTrigger>
+                <SelectContent>
+                  {(funnels || []).map((item) => (
+                    <SelectItem key={item.id} value={item.id!}>{item.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {mode === 'company' && companyContacts.length > 0 && (
+              <div className="space-y-2 rounded-lg border p-3">
+                <Label>Contatos da empresa</Label>
+                <div className="max-h-28 overflow-y-auto space-y-1">
+                  {companyContacts.map((contact) => (
+                    <label key={contact.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selectedContactIds.includes(contact.id)}
+                        onChange={() => setSelectedContactIds((current) =>
+                          current.includes(contact.id)
+                            ? current.filter((id) => id !== contact.id)
+                            : [...current, contact.id]
+                        )}
+                      />
+                      <span className="truncate">{contact.name} {contact.phone ? `— ${contact.phone}` : ''}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Etapa *</Label>

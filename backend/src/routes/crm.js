@@ -712,6 +712,26 @@ router.get('/companies', async (req, res) => {
   }
 });
 
+router.get('/companies/:id/contacts', async (req, res) => {
+  try {
+    const org = await getUserOrg(req.userId);
+    if (!org) return res.status(403).json({ error: 'No organization' });
+    const result = await query(
+      `SELECT DISTINCT cnt.id, cnt.name, cnt.phone, cnt.email
+       FROM crm_deals d
+       JOIN crm_deal_contacts dc ON dc.deal_id = d.id
+       JOIN contacts cnt ON cnt.id = dc.contact_id
+       WHERE d.organization_id = $1 AND d.company_id = $2
+       ORDER BY cnt.name`,
+      [org.organization_id, req.params.id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching company contacts:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get company
 router.get('/companies/:id', async (req, res) => {
   try {
