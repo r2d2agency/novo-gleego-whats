@@ -3569,12 +3569,21 @@ router.post('/prospects/:id/convert', async (req, res) => {
     // Create deal with company if applicable
     const resolvedCompanyId = company_id || (await ensureDefaultCompanyId(org.organization_id, req.userId));
     const dealResult = await query(
-      `INSERT INTO crm_deals (organization_id, funnel_id, stage_id, title, contact_id, company_id, assigned_to, source)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'prospect')
+      `INSERT INTO crm_deals (organization_id, funnel_id, stage_id, title, company_id, owner_id, source)
+       VALUES ($1, $2, $3, $4, $5, $6, 'prospect')
        RETURNING id`,
-      [org.organization_id, funnel_id, stage_id, title || prospect.name, contact_id, resolvedCompanyId, req.userId]
+      [org.organization_id, funnel_id, stage_id, title || prospect.name, resolvedCompanyId, req.userId]
     );
     const deal_id = dealResult.rows[0].id;
+
+    if (contact_id) {
+      await query(
+        `INSERT INTO crm_deal_contacts (deal_id, contact_id, is_primary)
+         VALUES ($1, $2, true)
+         ON CONFLICT (deal_id, contact_id) DO NOTHING`,
+        [deal_id, contact_id]
+      );
+    }
 
     await query(
       `UPDATE call_logs SET deal_id = $1, prospect_id = NULL
@@ -3693,11 +3702,20 @@ router.post('/prospects/bulk-convert', async (req, res) => {
         // Create deal
         const resolvedCompanyId = companyId || (await ensureDefaultCompanyId(org.organization_id, req.userId));
         const dealResult = await query(
-          `INSERT INTO crm_deals (organization_id, funnel_id, stage_id, title, contact_id, company_id, source, responsible_id)
-           VALUES ($1, $2, $3, $4, $5, $6, 'prospect', $7)
+          `INSERT INTO crm_deals (organization_id, funnel_id, stage_id, title, company_id, owner_id, source)
+           VALUES ($1, $2, $3, $4, $5, $6, 'prospect')
            RETURNING id`,
-          [org.organization_id, funnel_id, stage_id, prospect.name, contactId, resolvedCompanyId, req.userId]
+          [org.organization_id, funnel_id, stage_id, prospect.name, resolvedCompanyId, req.userId]
         );
+
+        if (contactId) {
+          await query(
+            `INSERT INTO crm_deal_contacts (deal_id, contact_id, is_primary)
+             VALUES ($1, $2, true)
+             ON CONFLICT (deal_id, contact_id) DO NOTHING`,
+            [dealResult.rows[0].id, contactId]
+          );
+        }
 
         await query(
           `UPDATE call_logs SET deal_id = $1, prospect_id = NULL
