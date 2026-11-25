@@ -657,6 +657,10 @@ export const useChat = () => {
     scheduled_at: string;
     timezone?: string;
     send_text_separate?: boolean;
+    template_name?: string;
+    template_language?: string;
+    template_components?: unknown;
+    template_params?: Record<string, string>;
   }): Promise<ScheduledMessage> => {
     const data = await api<ScheduledMessage>(`/api/chat/conversations/${conversationId}/schedule`, {
       method: 'POST',

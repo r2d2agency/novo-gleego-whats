@@ -3578,7 +3578,8 @@ router.get('/conversations/:id/scheduled', authenticate, async (req, res) => {
 router.post('/conversations/:id/schedule', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
-    const { content, message_type = 'text', media_url, media_mimetype, scheduled_at, timezone = 'America/Sao_Paulo', send_text_separate = false } = req.body;
+    const { content, message_type = 'text', media_url, media_mimetype, scheduled_at, timezone = 'America/Sao_Paulo', send_text_separate = false,
+      template_name, template_language = 'pt_BR', template_components = null, template_params = null } = req.body;
     const connectionIds = await getUserConnections(req.userId);
 
     if (!scheduled_at) {
@@ -3601,21 +3602,26 @@ router.post('/conversations/:id/schedule', authenticate, async (req, res) => {
     }
 
     const result = await query(
-      `INSERT INTO scheduled_messages 
-        (conversation_id, connection_id, sender_id, content, message_type, media_url, media_mimetype, scheduled_at, timezone, send_text_separate)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO scheduled_messages
+        (conversation_id, connection_id, sender_id, content, message_type, media_url, media_mimetype, scheduled_at, timezone, send_text_separate,
+         template_name, template_language, template_components, template_params)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
         id,
         convResult.rows[0].connection_id,
         req.userId,
         content,
-        message_type,
+        template_name ? 'template' : message_type,
         media_url || null,
         media_mimetype || null,
         scheduledDate,
         timezone,
-        send_text_separate
+        send_text_separate,
+        template_name || null,
+        template_language || 'pt_BR',
+        template_components ? JSON.stringify(template_components) : null,
+        template_params ? JSON.stringify(template_params) : null,
       ]
     );
 

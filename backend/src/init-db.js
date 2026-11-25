@@ -1005,6 +1005,10 @@ CREATE TABLE IF NOT EXISTS scheduled_messages (
 );
 
 ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS send_text_separate BOOLEAN DEFAULT false;
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS template_name VARCHAR(255);
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS template_language VARCHAR(20) DEFAULT 'pt_BR';
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS template_components JSONB;
+ALTER TABLE scheduled_messages ADD COLUMN IF NOT EXISTS template_params JSONB;
 
 -- Quick Replies (Chat productivity)
 CREATE TABLE IF NOT EXISTS quick_replies (

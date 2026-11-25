@@ -1,5 +1,49 @@
 import { query } from './db.js';
 import * as whatsappProvider from './lib/whatsapp-provider.js';
+import { buildTemplateComponents } from './lib/meta-template-send.js';
+
+async function sendScheduledMetaTemplate(msg) {
+  if (!msg.meta_token || !msg.meta_phone_number_id) {
+    return { error: 'Conexão Meta sem token ou phone number ID configurado' };
+  }
+  const cleanPhone = String(msg.contact_phone || msg.remote_jid || '').replace(/\D/g, '');
+  if (!cleanPhone) return { error: 'Telefone do contato não encontrado' };
+
+  let components = null;
+  let paramValues = {};
+  try { components = msg.template_components ? JSON.parse(msg.template_components) : null; } catch {}
+  try { paramValues = msg.template_params ? JSON.parse(msg.template_params) : {}; } catch {}
+
+  const builtComponents = buildTemplateComponents(components || [], paramValues, {
+    name: msg.contact_name,
+    phone: cleanPhone,
+  });
+  const body = {
+    messaging_product: 'whatsapp',
+    to: cleanPhone,
+    type: 'template',
+    template: {
+      name: msg.template_name,
+      language: { code: msg.template_language || 'pt_BR' },
+      ...(builtComponents.length ? { components: builtComponents } : {}),
+    },
+  };
+  try {
+    const response = await fetch(`https://graph.facebook.com/v21.0/${msg.meta_phone_number_id}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${msg.meta_token}` },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const err = result?.error || {};
+      return { error: err.error_user_msg || err.message || `HTTP ${response.status}` };
+    }
+    return { messageId: result?.messages?.[0]?.id || `template_scheduled_${msg.id}`, content: msg.content || msg.template_name };
+  } catch (error) {
+    return { error: error.message || 'Erro ao enviar template Meta' };
+  }
+}
 
 // Send message via unified WhatsApp provider
 async function sendWhatsAppMessage(connection, phone, content, messageType, mediaUrl) {
@@ -83,6 +127,9 @@ export async function executeScheduledMessages() {
         conn.wapi_token,
         conn.uazapi_url,
         conn.uazapi_token,
+        conn.meta_token,
+        conn.meta_phone_number_id,
+        conv.contact_phone,
         conn.status as connection_status
       FROM scheduled_messages sm
       JOIN conversations conv ON conv.id = sm.conversation_id
@@ -220,13 +267,15 @@ export async function executeScheduledMessages() {
 
       } else {
         // Standard: send as single message (media with caption or text only)
-        var result = await sendWhatsAppMessage(
-          connection,
-          msg.remote_jid,
-          msg.content,
-          msg.message_type,
-          msg.media_url
-        );
+        var result = msg.template_name
+          ? await sendScheduledMetaTemplate(msg)
+          : await sendWhatsAppMessage(
+              connection,
+              msg.remote_jid,
+              msg.content,
+              msg.message_type,
+              msg.media_url
+            );
 
         if (!result.success) {
           await query(

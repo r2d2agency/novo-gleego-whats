@@ -1771,6 +1771,7 @@ export function ChatArea({
       {/* Dialogs */}
       <ScheduleMessageDialog
         open={showScheduleDialog} onOpenChange={setShowScheduleDialog} scheduledMessages={scheduledMessages} sending={schedulingMessage}
+        connectionId={conversation?.connection_id} isMetaConnection={isMetaConnection}
         onSchedule={async (data) => {
           if (!conversation?.id) return;
           setSchedulingMessage(true);

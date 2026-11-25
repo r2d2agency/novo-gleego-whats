@@ -21,11 +21,14 @@ import { Calendar } from "@/components/ui/calendar";
 import { CalendarClock, Loader2, Trash2, Image, X, FileText, SplitSquareHorizontal } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ScheduledMessage } from "@/hooks/use-chat";
 import { useUpload } from "@/hooks/use-upload";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { api } from "@/lib/api";
+import { Search } from "lucide-react";
 
 interface ScheduleMessageDialogProps {
   open: boolean;
@@ -37,10 +40,16 @@ interface ScheduleMessageDialogProps {
     media_mimetype?: string;
     scheduled_at: string;
     send_text_separate?: boolean;
+    template_name?: string;
+    template_language?: string;
+    template_components?: unknown;
+    template_params?: Record<string, string>;
   }) => Promise<void>;
   scheduledMessages: ScheduledMessage[];
   onCancelScheduled: (id: string) => Promise<void>;
   sending?: boolean;
+  connectionId?: string;
+  isMetaConnection?: boolean;
 }
 
 interface Attachment {
@@ -50,6 +59,13 @@ interface Attachment {
   preview: string | null;
   name: string;
 }
+interface MetaTemplate {
+  id: string;
+  name: string;
+  language: string;
+  status: string;
+  components: any[];
+}
 
 export function ScheduleMessageDialog({
   open,
@@ -58,6 +74,8 @@ export function ScheduleMessageDialog({
   scheduledMessages,
   onCancelScheduled,
   sending,
+  connectionId,
+  isMetaConnection,
 }: ScheduleMessageDialogProps) {
   const isMobile = useIsMobile();
   const [content, setContent] = useState("");
@@ -66,9 +84,33 @@ export function ScheduleMessageDialog({
   const [showCalendar, setShowCalendar] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [sendTextSeparate, setSendTextSeparate] = useState(false);
+  const [useTemplate, setUseTemplate] = useState(false);
+  const [templates, setTemplates] = useState<MetaTemplate[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [templateParams, setTemplateParams] = useState<Record<string, string>>({});
+  const [templateSearch, setTemplateSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const { uploadFile, isUploading } = useUpload();
+
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) || null;
+
+  useEffect(() => {
+    if (!open || !useTemplate || !isMetaConnection || !connectionId) return;
+    setLoadingTemplates(true);
+    api<MetaTemplate[]>(`/api/meta/${connectionId}/templates?sync=true`)
+      .then((data) => setTemplates((data || []).filter((t) => String(t.status).toUpperCase() === 'APPROVED')))
+      .catch(() => toast.error('Erro ao carregar templates Meta'))
+      .finally(() => setLoadingTemplates(false));
+  }, [open, useTemplate, isMetaConnection, connectionId]);
+
+  const getTemplateText = (template: MetaTemplate) =>
+    (template.components || []).map((c) => c.text || '').join(' ') || template.name;
+
+  const templateParamKeys = selectedTemplate
+    ? [...new Set(getTemplateText(selectedTemplate).match(/\{\{\d+\}\}/g) || [])]
+    : [];
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -122,11 +164,6 @@ export function ScheduleMessageDialog({
   const handleSchedule = async () => {
     if (!date) return;
 
-    if (!content.trim() && attachments.length === 0) {
-      toast.error("Adicione uma mensagem ou imagem");
-      return;
-    }
-
     const [hours, minutes] = time.split(":").map(Number);
     const scheduledDate = new Date(date);
     scheduledDate.setHours(hours, minutes, 0, 0);
@@ -134,6 +171,37 @@ export function ScheduleMessageDialog({
     const trimmedContent = content.trim();
 
     try {
+      if (useTemplate) {
+        if (!selectedTemplate) {
+          toast.error("Selecione um template aprovado");
+          return;
+        }
+        const missing = templateParamKeys.some((key) => !templateParams[key]?.trim());
+        if (missing) {
+          toast.error("Preencha todos os parâmetros do template");
+          return;
+        }
+        await onSchedule({
+          content: getTemplateText(selectedTemplate).replace(/\{\{(\d+)\}\}/g, (_, num) => templateParams[`{{${num}}}`] || ''),
+          message_type: "template",
+          scheduled_at: baseIso,
+          template_name: selectedTemplate.name,
+          template_language: selectedTemplate.language,
+          template_components: selectedTemplate.components,
+          template_params: templateParams,
+        });
+        setUseTemplate(false);
+        setSelectedTemplateId("");
+        setTemplateParams({});
+        onOpenChange(false);
+        return;
+      }
+
+      if (!content.trim() && attachments.length === 0) {
+        toast.error("Adicione uma mensagem ou imagem");
+        return;
+      }
+
       if (attachments.length === 0) {
         // Only text
         await onSchedule({
@@ -309,7 +377,72 @@ export function ScheduleMessageDialog({
             )}
           </div>
 
+          {isMetaConnection && (
+            <div className="space-y-3 rounded-lg border p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={useTemplate} onChange={(e) => setUseTemplate(e.target.checked)} />
+                Usar template Meta aprovado
+              </label>
+              {useTemplate && (
+                <>
+                  {loadingTemplates ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Carregando templates...
+                    </div>
+                  ) : (
+                    <>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          className="pl-9"
+                          placeholder="Buscar template..."
+                          value={templateSearch}
+                          onChange={(e) => setTemplateSearch(e.target.value)}
+                        />
+                      </div>
+                      <div className="max-h-40 overflow-y-auto space-y-1">
+                        {templates
+                          .filter((t) => t.name.toLowerCase().includes(templateSearch.toLowerCase()))
+                          .map((template) => (
+                            <button
+                              key={template.id}
+                              type="button"
+                              onClick={() => { setSelectedTemplateId(template.id); setTemplateParams({}); }}
+                              className={cn(
+                                "w-full rounded-md border p-2 text-left text-sm",
+                                selectedTemplateId === template.id ? "border-primary bg-primary/10" : "hover:bg-accent"
+                              )}
+                            >
+                              <span className="font-medium">{template.name}</span>
+                              <span className="ml-2 text-xs text-muted-foreground">{template.language}</span>
+                              <span className="mt-1 block truncate text-xs text-muted-foreground">{getTemplateText(template)}</span>
+                            </button>
+                          ))}
+                      </div>
+                      {selectedTemplate && templateParamKeys.length > 0 && (
+                        <div className="space-y-2 border-t pt-3">
+                          <p className="text-xs font-medium flex items-center gap-1"><FileText className="h-3 w-3" /> Parâmetros do template</p>
+                          {templateParamKeys.map((key) => (
+                            <div key={key} className="space-y-1">
+                              <Label className="text-xs">{key}</Label>
+                              <Input
+                                value={templateParams[key] || ''}
+                                onChange={(e) => setTemplateParams((prev) => ({ ...prev, [key]: e.target.value }))}
+                                placeholder={`Valor para ${key}`}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           {/* Message content */}
+          {!useTemplate && (
           <div className="space-y-2">
             <Label>Mensagem {attachments.length > 0 ? (sendTextSeparate ? "" : "(legenda do 1º anexo)") : ""}</Label>
             <Textarea
@@ -319,6 +452,7 @@ export function ScheduleMessageDialog({
               rows={3}
             />
           </div>
+          )}
 
           {/* Send text separate toggle - only show when both media and text exist */}
           {attachments.length > 0 && content.trim() && (
