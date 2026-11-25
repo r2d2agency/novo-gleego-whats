@@ -3494,14 +3494,21 @@ router.post('/prospects/:id/convert', async (req, res) => {
     const shouldCreateCompany = create_company === true || prospect.is_company;
     if (shouldCreateCompany) {
       const companyNameToUse = company_name?.trim() || prospect.name;
-      const companyResult = await query(
-        `INSERT INTO crm_companies (organization_id, name, phone, city, state, address, zip_code, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (organization_id, name) DO UPDATE SET updated_at = NOW()
-         RETURNING id`,
-        [org.organization_id, companyNameToUse, prospect.phone, prospect.city, prospect.state, prospect.address, prospect.zip_code, req.userId]
+      const existingCompany = await query(
+        `SELECT id FROM crm_companies WHERE organization_id = $1 AND name = $2 LIMIT 1`,
+        [org.organization_id, companyNameToUse]
       );
-      company_id = companyResult.rows[0].id;
+      if (existingCompany.rows[0]?.id) {
+        company_id = existingCompany.rows[0].id;
+      } else {
+        const companyResult = await query(
+          `INSERT INTO crm_companies (organization_id, name, phone, city, state, address, zip_code, created_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           RETURNING id`,
+          [org.organization_id, companyNameToUse, prospect.phone, prospect.city, prospect.state, prospect.address, prospect.zip_code, req.userId]
+        );
+        company_id = companyResult.rows[0].id;
+      }
     }
 
     // Create or find contact
@@ -3540,11 +3547,12 @@ router.post('/prospects/:id/convert', async (req, res) => {
     }
 
     // Create deal with company if applicable
+    const resolvedCompanyId = company_id || (await ensureDefaultCompanyId(org.organization_id, req.userId));
     const dealResult = await query(
       `INSERT INTO crm_deals (organization_id, funnel_id, stage_id, title, contact_id, company_id, assigned_to, source)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'prospect')
        RETURNING id`,
-      [org.organization_id, funnel_id, stage_id, title || prospect.name, contact_id, company_id, req.userId]
+      [org.organization_id, funnel_id, stage_id, title || prospect.name, contact_id, resolvedCompanyId, req.userId]
     );
     const deal_id = dealResult.rows[0].id;
 
@@ -3644,23 +3652,31 @@ router.post('/prospects/bulk-convert', async (req, res) => {
         let companyId = null;
         const shouldCreateCompany = create_companies === true || prospect.is_company;
         if (shouldCreateCompany) {
-          const companyResult = await query(
-            `INSERT INTO crm_companies (organization_id, name, phone, city, state, address, zip_code, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-             ON CONFLICT (organization_id, name) DO UPDATE SET updated_at = NOW()
-             RETURNING id`,
-            [org.organization_id, prospect.name, prospect.phone, prospect.city, prospect.state, prospect.address, prospect.zip_code, req.userId]
+          const existingCompany = await query(
+            `SELECT id FROM crm_companies WHERE organization_id = $1 AND name = $2 LIMIT 1`,
+            [org.organization_id, prospect.name]
           );
-          companyId = companyResult.rows[0].id;
-          companies_created++;
+          if (existingCompany.rows[0]?.id) {
+            companyId = existingCompany.rows[0].id;
+          } else {
+            const companyResult = await query(
+              `INSERT INTO crm_companies (organization_id, name, phone, city, state, address, zip_code, created_by)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+               RETURNING id`,
+              [org.organization_id, prospect.name, prospect.phone, prospect.city, prospect.state, prospect.address, prospect.zip_code, req.userId]
+            );
+            companyId = companyResult.rows[0].id;
+            companies_created++;
+          }
         }
 
         // Create deal
+        const resolvedCompanyId = companyId || (await ensureDefaultCompanyId(org.organization_id, req.userId));
         const dealResult = await query(
           `INSERT INTO crm_deals (organization_id, funnel_id, stage_id, title, contact_id, company_id, source, responsible_id)
            VALUES ($1, $2, $3, $4, $5, $6, 'prospect', $7)
            RETURNING id`,
-          [org.organization_id, funnel_id, stage_id, prospect.name, contactId, companyId, req.userId]
+          [org.organization_id, funnel_id, stage_id, prospect.name, contactId, resolvedCompanyId, req.userId]
         );
 
         await query(
