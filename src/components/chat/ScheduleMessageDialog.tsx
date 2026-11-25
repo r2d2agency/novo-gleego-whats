@@ -564,7 +564,12 @@ export function ScheduleMessageDialog({
           </Button>
           <Button
             onClick={handleSchedule}
-            disabled={(!content.trim() && attachments.length === 0) || !date || sending || isUploading}
+            disabled={
+              !(useTemplate
+                ? !!selectedTemplate && templateParamKeys.every((key) => !!templateParams[key]?.trim())
+                : !!content.trim() || attachments.length > 0)
+              || !date || sending || isUploading
+            }
           >
             {sending ? (
               <>
