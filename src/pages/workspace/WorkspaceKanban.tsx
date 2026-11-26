@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Calendar, Clock, Loader2, LayoutGrid, MessageSquare, AlertTriangle, GripVertical, User } from "lucide-react";
 import { useDevAllTasks, useDevTaskStatusMutation, useDevTaskUpdateGlobal, useDevModules, DevTaskGlobal } from "@/hooks/use-dev-workspace";
+import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Brain, Layers, Check } from "lucide-react";
@@ -95,7 +96,10 @@ function TaskCardBody({ task, dragHandle, onOpen }: { task: DevTaskGlobal; dragH
   const accent = task.module_color || "#94a3b8";
   return (
     <Card
-      className="border hover:border-primary/40 transition-colors bg-card border-l-4 cursor-pointer"
+      className={cn(
+        "border hover:border-primary/40 transition-colors bg-card border-l-4 cursor-pointer",
+        task.status === 'done' && 'border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500/30'
+      )}
       style={{ borderLeftColor: accent }}
       onClick={() => onOpen?.(task)}
     >
@@ -153,10 +157,18 @@ function TaskCardBody({ task, dragHandle, onOpen }: { task: DevTaskGlobal; dragH
             )}
           </div>
         )}
-        {task.image_url && (
-          <a href={task.image_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="block">
-            <img src={task.image_url} alt="Anexo" className="rounded border max-h-24 object-contain" loading="lazy" />
-          </a>
+        {((task.attachments?.length || 0) > 0 || task.image_url) && (
+          <div className="flex flex-wrap gap-1">
+            {(task.attachments?.length ? task.attachments : [{ url: task.image_url, mimetype: 'image/jpeg' }]).slice(0, 4).map((attachment: any, index: number) =>
+              String(attachment.mimetype || '').startsWith('video/') ? (
+                <video key={index} src={attachment.url} controls className="rounded border h-16 w-24 object-cover" onClick={(e) => e.stopPropagation()} />
+              ) : (
+                <a key={index} href={attachment.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                  <img src={attachment.url} alt="Anexo" className="rounded border h-16 w-24 object-cover" loading="lazy" />
+                </a>
+              )
+            )}
+          </div>
         )}
         {task.client_feedback === "needs_changes" && (
           <div className="text-[11px] text-amber-600 flex items-center gap-1"><MessageSquare className="h-3 w-3" /> Cliente pediu ajustes</div>
@@ -233,6 +245,8 @@ export default function WorkspaceKanban() {
   const [requesterFilter, setRequesterFilter] = useState<string>("all");
   const [sortMode, setSortMode] = useState<SortMode>("oldest");
   const [clientOnly, setClientOnly] = useState(false);
+  const [filterFrom, setFilterFrom] = useState("");
+  const [filterTo, setFilterTo] = useState("");
   const [activeTask, setActiveTask] = useState<DevTaskGlobal | null>(null);
   const [doneTarget, setDoneTarget] = useState<DevTaskGlobal | null>(null);
   const [doneNotes, setDoneNotes] = useState("");
@@ -264,6 +278,8 @@ export default function WorkspaceKanban() {
       (projectFilter === "all" || t.project_id === projectFilter) &&
       (deptFilter === "all" || (t.department || "") === deptFilter) &&
       (requesterFilter === "all" || (t.requester_name || "") === requesterFilter) &&
+      (!filterFrom || (t.created_at && new Date(t.created_at) >= new Date(`${filterFrom}T00:00:00`))) &&
+      (!filterTo || (t.created_at && new Date(t.created_at) <= new Date(`${filterTo}T23:59:59`))) &&
       (!q || t.title.toLowerCase().includes(q) || t.project_name.toLowerCase().includes(q) ||
         (t.requester_name || "").toLowerCase().includes(q) || (t.department || "").toLowerCase().includes(q))
     );
@@ -274,7 +290,7 @@ export default function WorkspaceKanban() {
       if (sortMode === "newest") return ts(b) - ts(a);
       return prio(a.priority) - prio(b.priority) || ts(b) - ts(a);
     });
-  }, [tasks, search, projectFilter, deptFilter, requesterFilter, sortMode]);
+  }, [tasks, search, projectFilter, deptFilter, requesterFilter, filterFrom, filterTo, sortMode, clientOnly]);
 
   const grouped = useMemo(() => {
     const g: Record<string, DevTaskGlobal[]> = {};
@@ -361,6 +377,8 @@ export default function WorkspaceKanban() {
                 </SelectContent>
               </Select>
             )}
+            <Input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className="h-9 w-40" aria-label="Solicitado a partir de" />
+            <Input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className="h-9 w-40" aria-label="Solicitado até" />
             <Select value={sortMode} onValueChange={(v: SortMode) => setSortMode(v)}>
               <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -430,10 +448,18 @@ export default function WorkspaceKanban() {
                     )}
                   </div>
                 )}
-                {detailTask.image_url && (
-                  <a href={detailTask.image_url} target="_blank" rel="noreferrer" className="block">
-                    <img src={detailTask.image_url} alt="Anexo da solicitação" className="rounded border max-h-64 object-contain" loading="lazy" />
-                  </a>
+                {((detailTask.attachments?.length || 0) > 0 || detailTask.image_url) && (
+                  <div className="flex flex-wrap gap-2">
+                    {(detailTask.attachments?.length ? detailTask.attachments : [{ id: 'legacy', task_id: detailTask.id, url: detailTask.image_url!, mimetype: 'image/jpeg' }]).map((attachment) =>
+                      String(attachment.mimetype || '').startsWith('video/') ? (
+                        <video key={attachment.id} src={attachment.url} controls className="rounded border max-h-64 max-w-full" />
+                      ) : (
+                        <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer">
+                          <img src={attachment.url} alt="Anexo da solicitação" className="rounded border max-h-64 object-contain" loading="lazy" />
+                        </a>
+                      )
+                    )}
+                  </div>
                 )}
                 <div className="grid gap-1.5">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Etapa atual</span>

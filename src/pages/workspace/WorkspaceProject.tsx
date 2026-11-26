@@ -15,8 +15,9 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import {
   ArrowLeft, Loader2, Plus, Sparkles, FileText, Upload, Send, Trash2, Copy, ExternalLink,
-  RefreshCw, Calendar, AlertTriangle, Download, Bot, Zap, Bug, Wand2, Map,
+  RefreshCw, Calendar, AlertTriangle, Download, Bot, Zap, Bug, Wand2, Map, Video,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   useDevProject, useDevProjectMutations,
   useDevModules, useDevModuleMutations,
@@ -421,14 +422,18 @@ function TasksTab({ id, modules, phases, tasks }: any) {
   const { create, update, remove } = useDevTaskMutations(id);
   const [filter, setFilter] = useState<string>("all");
   const [q, setQ] = useState("");
+  const [filterFrom, setFilterFrom] = useState("");
+  const [filterTo, setFilterTo] = useState("");
   const [openNew, setOpenNew] = useState(false);
   const [nt, setNt] = useState<any>({ title: "", type: "feature", priority: "medium", module_id: "", phase_id: "" });
 
   const filtered = useMemo(() => (tasks || []).filter((t: any) => {
     if (filter !== "all" && t.status !== filter) return false;
     if (q && !(`${t.title} ${t.description || ""}`.toLowerCase().includes(q.toLowerCase()))) return false;
+    if (filterFrom && (!t.created_at || new Date(t.created_at) < new Date(`${filterFrom}T00:00:00`))) return false;
+    if (filterTo && (!t.created_at || new Date(t.created_at) > new Date(`${filterTo}T23:59:59`))) return false;
     return true;
-  }), [tasks, filter, q]);
+  }), [tasks, filter, q, filterFrom, filterTo]);
 
   return (
     <Card>
@@ -458,6 +463,8 @@ function TasksTab({ id, modules, phases, tasks }: any) {
         <div className="flex gap-2 flex-wrap">
           <Input placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
           <Select value={filter} onValueChange={setFilter}><SelectTrigger className="w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Todas</SelectItem>{TASK_STATUS.map(s => <SelectItem key={s.v} value={s.v}>{s.label}</SelectItem>)}</SelectContent></Select>
+          <Input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className="w-40" />
+          <Input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className="w-40" />
         </div>
         <TriagePanel projectId={id} tasks={tasks || []} />
         <div className="space-y-2">
@@ -465,7 +472,7 @@ function TasksTab({ id, modules, phases, tasks }: any) {
             const mod = modules.find((m: any) => m.id === t.module_id);
             const ph = phases.find((p: any) => p.id === t.phase_id);
             return (
-              <div key={t.id} className="border rounded p-2 space-y-1">
+              <div key={t.id} className={cn("border rounded p-2 space-y-1", t.status === 'done' && 'border-emerald-500 bg-emerald-500/5 ring-1 ring-emerald-500/20')}>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="outline">{TASK_TYPE_LABEL[t.type] || t.type}</Badge>
                   <Badge variant={t.priority === "high" ? "destructive" : "secondary"}>{t.priority}</Badge>
@@ -502,6 +509,19 @@ function TasksTab({ id, modules, phases, tasks }: any) {
                 </div>
                 {(mod || ph) && <div className="text-xs text-muted-foreground pl-1">{mod ? moduleLabel(mod, modules) : ""} {ph && `• ${ph.name}`}</div>}
                 {t.description && <p className="text-xs text-muted-foreground pl-1 whitespace-pre-wrap">{t.description}</p>}
+                {((t.attachments?.length || 0) > 0 || t.image_url) && (
+                  <div className="flex flex-wrap gap-2 pl-1">
+                    {(t.attachments?.length ? t.attachments : [{ id: 'legacy', url: t.image_url, mimetype: 'image/jpeg' }]).map((attachment: any) =>
+                      String(attachment.mimetype || '').startsWith('video/') ? (
+                        <video key={attachment.id} src={attachment.url} controls className="rounded border h-20 w-28 object-cover" />
+                      ) : (
+                        <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer">
+                          <img src={attachment.url} alt="Anexo" className="rounded border h-20 w-28 object-cover" />
+                        </a>
+                      )
+                    )}
+                  </div>
+                )}
                 {t.ai_reasoning && <p className="text-xs text-purple-600 italic pl-1">IA: {t.ai_reasoning}</p>}
                 <SolutionEditor task={t} update={update} />
               </div>

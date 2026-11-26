@@ -7,12 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Send, CheckCircle2, ThumbsUp, RefreshCw, Sparkles, List, Plus, ImagePlus, X, User, Building2, Filter } from "lucide-react";
+import { Loader2, Send, CheckCircle2, ThumbsUp, RefreshCw, Sparkles, List, Plus, ImagePlus, X, User, Building2, Filter, Video } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL } from "@/lib/api";
 import {
   useDevPortal, submitPortalRequest, submitPortalFeedback, submitPortalBulkRequests,
-  fetchPortalDepartments, createPortalDepartment, uploadPortalImage,
+  fetchPortalDepartments, createPortalDepartment, uploadPortalMedia,
 } from "@/hooks/use-dev-workspace";
 
 const STATUS_LABEL: Record<string, { label: string; tone: string }> = {
@@ -20,7 +20,7 @@ const STATUS_LABEL: Record<string, { label: string; tone: string }> = {
   backlog: { label: "Na fila", tone: "bg-slate-500/15 text-slate-700 dark:text-slate-300" },
   in_progress: { label: "Em andamento", tone: "bg-blue-500/15 text-blue-700 dark:text-blue-300" },
   testing: { label: "Em teste — sua vez!", tone: "bg-purple-500/15 text-purple-700 dark:text-purple-300" },
-  done: { label: "Concluído", tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
+  done: { label: "Concluído", tone: "border border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
 };
 
 export default function ClientPortal() {
@@ -38,10 +38,10 @@ export default function ClientPortal() {
   const [addingDept, setAddingDept] = useState(false);
   const [newDeptName, setNewDeptName] = useState("");
   const [savingDept, setSavingDept] = useState(false);
-  // Imagem anexada à solicitação
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  // Arquivos anexados à solicitação
+  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaPreviews, setMediaPreviews] = useState<Array<{ url: string; type: string }>>([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // Lista de solicitações (colapsada atrás de botão) + filtros + paginação
   const [showList, setShowList] = useState(false);
@@ -112,14 +112,23 @@ export default function ClientPortal() {
     return `${API_URL}${url.startsWith("/") ? "" : "/"}${url}`;
   };
 
-  const handleSelectImage = (file: File | undefined) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) { toast.error("Selecione um arquivo de imagem."); return; }
-    if (file.size > 10 * 1024 * 1024) { toast.error("A imagem deve ter no máximo 10MB."); return; }
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(String(reader.result || ""));
-    reader.readAsDataURL(file);
+  const handleSelectMedia = (files: FileList | null) => {
+    if (!files) return;
+    const selected = Array.from(files).slice(0, 10);
+    const valid = selected.filter((file) => {
+      const isImage = file.type.startsWith("image/");
+      const isVideo = file.type.startsWith("video/");
+      const max = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
+      if (!isImage && !isVideo) { toast.error(`Tipo não permitido: ${file.name}`); return false; }
+      if (file.size > max) { toast.error(`Arquivo muito grande: ${file.name}`); return false; }
+      return true;
+    });
+    setMediaFiles((current) => [...current, ...valid].slice(0, 10));
+    valid.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => setMediaPreviews((current) => [...current, { url: String(reader.result || ''), type: file.type }].slice(-10));
+      reader.readAsDataURL(file);
+    });
   };
 
   const handleAddDepartment = async () => {
@@ -140,19 +149,23 @@ export default function ClientPortal() {
     if (!form.title) return;
     setSending(true);
     try {
-      let image_url: string | undefined;
-      if (imageFile) {
-        setUploadingImage(true);
+      let attachments: Array<{ url: string; mimetype?: string; filename?: string; size?: number }> = [];
+      if (mediaFiles.length > 0) {
+        setUploadingMedia(true);
         try {
-          const up = await uploadPortalImage(token, imageFile);
-          image_url = up.url;
-        } finally { setUploadingImage(false); }
+          const up = await uploadPortalMedia(token, mediaFiles);
+          attachments = up.items || [];
+        } finally { setUploadingMedia(false); }
       }
-      await submitPortalRequest(token, { ...form, image_url });
+      await submitPortalRequest(token, {
+        ...form,
+        image_url: attachments[0]?.url,
+        attachments,
+      });
       toast.success("Pedido enviado! A equipe já foi notificada.");
       setForm({ title: "", description: "", contact_email: form.contact_email, requester_name: form.requester_name, department: form.department });
-      setImageFile(null);
-      setImagePreview(null);
+      setMediaFiles([]);
+      setMediaPreviews([]);
       refetch();
     } catch (e: any) { toast.error(e.message); } finally { setSending(false); }
   };
@@ -256,13 +269,23 @@ export default function ClientPortal() {
                           )}
                         </div>
                       )}
-                      {t.image_url && (
-                        <a href={resolveImageUrl(t.image_url)} target="_blank" rel="noreferrer" className="block mt-2">
-                          <img src={resolveImageUrl(t.image_url)} alt="Anexo da solicitação" className="rounded border max-h-48 object-contain" loading="lazy" />
-                        </a>
+                      {((t.attachments?.length > 0) || t.image_url) && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {(t.attachments?.length ? t.attachments : [{ url: t.image_url, mimetype: 'image/jpeg' }]).map((attachment: any, index: number) => {
+                            const url = resolveImageUrl(attachment.url);
+                            const isVideo = String(attachment.mimetype || '').startsWith('video/');
+                            return isVideo ? (
+                              <video key={index} src={url} controls className="rounded border max-h-48 max-w-full" />
+                            ) : (
+                              <a key={index} href={url} target="_blank" rel="noreferrer">
+                                <img src={url} alt="Anexo da solicitação" className="rounded border max-h-48 object-contain" loading="lazy" />
+                              </a>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
-                    <Badge className={`${st.tone} border-0 shrink-0`}>{st.label}</Badge>
+                    <Badge className={`${st.tone} shrink-0`}>{st.label}</Badge>
                   </div>
                   {t.client_feedback === "approved" && (
                     <div className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5" /> Você aprovou esta entrega</div>
@@ -407,35 +430,47 @@ export default function ClientPortal() {
                 <div><Label>Título</Label><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Resumo do que você precisa" /></div>
                 <div><Label>Detalhes</Label><Textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descreva o pedido, contexto…" /></div>
                 <div>
-                  <Label className="flex items-center gap-1"><ImagePlus className="h-3.5 w-3.5" /> Imagem (opcional)</Label>
+                  <Label className="flex items-center gap-1"><ImagePlus className="h-3.5 w-3.5" /> Fotos e vídeos (opcional)</Label>
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,video/*"
+                    multiple
                     className="hidden"
-                    onChange={(e) => handleSelectImage(e.target.files?.[0])}
+                    onChange={(e) => { handleSelectMedia(e.target.files); e.target.value = ''; }}
                   />
-                  {!imagePreview ? (
-                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                      <ImagePlus className="h-4 w-4 mr-2" /> Anexar imagem
-                    </Button>
-                  ) : (
-                    <div className="relative inline-block">
-                      <img src={imagePreview} alt="Prévia" className="rounded border max-h-40 object-contain" />
-                      <Button
-                        type="button" size="icon" variant="destructive"
-                        className="absolute top-1 right-1 h-6 w-6"
-                        onClick={() => { setImageFile(null); setImagePreview(null); }}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
+                  <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={uploadingMedia}>
+                    {uploadingMedia ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ImagePlus className="h-4 w-4 mr-2" />}
+                    Anexar arquivos
+                  </Button>
+                  {mediaPreviews.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {mediaPreviews.map((preview, index) => (
+                        <div key={`${preview.url}-${index}`} className="relative">
+                          {preview.type.startsWith('video/') ? (
+                            <video src={preview.url} className="rounded border h-20 w-28 object-cover" muted />
+                          ) : (
+                            <img src={preview.url} alt="Prévia" className="rounded border h-20 w-28 object-cover" />
+                          )}
+                          <Button
+                            type="button" size="icon" variant="destructive"
+                            className="absolute -top-1 -right-1 h-5 w-5"
+                            onClick={() => {
+                              setMediaFiles((current) => current.filter((_, i) => i !== index));
+                              setMediaPreviews((current) => current.filter((_, i) => i !== index));
+                            }}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
                     </div>
                   )}
-                  <p className="text-xs text-muted-foreground mt-1">JPG, PNG, GIF ou WEBP — até 10MB.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Até 10 arquivos. Imagens até 10MB; vídeos até 100MB (convertidos para versão leve).</p>
                 </div>
                 <div><Label>Seu e-mail (opcional)</Label><Input type="email" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} /></div>
-                <Button onClick={send} disabled={!form.title || sending || uploadingImage}>
-                  {sending || uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="h-4 w-4 mr-2" /> Enviar</>}
+                <Button onClick={send} disabled={!form.title || sending || uploadingMedia}>
+                  {sending || uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="h-4 w-4 mr-2" /> Enviar</>}
                 </Button>
               </>
             ) : (

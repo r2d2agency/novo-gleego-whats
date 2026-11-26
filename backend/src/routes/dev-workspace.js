@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { spawn } from 'child_process';
 import { authenticate } from '../middleware/auth.js';
 import { query } from '../db.js';
 import {
@@ -18,9 +19,9 @@ import { logInfo, logError } from '../logger.js';
 
 const router = Router();
 
-// Upload de imagens do portal do cliente (público via token) — pasta uploads/ compartilhada
+// Upload de mídia do portal do cliente (público via token) — pasta uploads/ compartilhada
 const portalUploadsDir = path.join(process.cwd(), 'uploads');
-const portalImageUpload = multer({
+const portalMediaUpload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => {
       try { fs.mkdirSync(portalUploadsDir, { recursive: true }); } catch (_) {}
@@ -30,17 +31,52 @@ const portalImageUpload = multer({
       const mimeToExt = {
         'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif',
         'image/webp': '.webp', 'image/bmp': '.bmp', 'image/jfif': '.jpg',
+        'video/mp4': '.mp4', 'video/webm': '.webm', 'video/quicktime': '.mov',
+        'video/ogg': '.ogv', 'video/x-m4v': '.m4v',
       };
-      const ext = mimeToExt[file.mimetype] || path.extname(file.originalname || '') || '.jpg';
+      const ext = mimeToExt[file.mimetype] || path.extname(file.originalname || '') || '.bin';
       cb(null, `portal-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`);
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (/^image\/(jpeg|png|gif|webp|bmp|jfif)$/.test(file.mimetype)) return cb(null, true);
-    cb(new Error(`Tipo de arquivo não permitido: ${file.mimetype}. Envie uma imagem (JPG, PNG, GIF ou WEBP).`), false);
+    const mimetype = String(file.mimetype || '').toLowerCase();
+    if (/^(image\/(jpeg|png|gif|webp|bmp|jfif)|video\/(mp4|webm|quicktime|ogg|x-m4v))$/.test(mimetype)) {
+      return cb(null, true);
+    }
+    cb(new Error('Envie imagens (JPG, PNG, GIF, WEBP) ou vídeos (MP4, WEBV, MOV).'), false);
   },
 });
+
+async function convertPortalVideo(inputPath) {
+  if (!/\.mp4$/i.test(inputPath)) {
+    const outputPath = inputPath.replace(path.extname(inputPath), '-light.mp4');
+    await new Promise((resolve, reject) => {
+      const ffmpeg = spawn('ffmpeg', [
+        '-y', '-i', inputPath,
+        '-vf', 'scale=-2:720',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+        '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+        '-c:a', 'aac', '-b:a', '96k',
+        outputPath,
+      ], { stdio: 'ignore' });
+      const timer = setTimeout(() => { try { ffmpeg.kill('SIGKILL'); } catch (_) {} }, 180000);
+      ffmpeg.on('error', (err) => { clearTimeout(timer); reject(err); });
+      ffmpeg.on('close', (code) => {
+        clearTimeout(timer);
+        if (code === 0 && fs.existsSync(outputPath)) {
+          try { fs.unlinkSync(inputPath); } catch (_) {}
+          resolve(outputPath);
+        } else {
+          try { fs.unlinkSync(outputPath); } catch (_) {}
+          resolve(inputPath);
+        }
+      });
+    });
+    return outputPath;
+  }
+  return inputPath;
+}
 
 // -------------------- Self-heal schema --------------------
 (async () => {
@@ -131,6 +167,15 @@ const portalImageUpload = multer({
     await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS contact_email TEXT`);
     await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS completion_notes TEXT`);
     await query(`ALTER TABLE dev_tasks ADD COLUMN IF NOT EXISTS knowledge_id UUID`);
+    await query(`CREATE TABLE IF NOT EXISTS dev_task_attachments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      task_id UUID NOT NULL REFERENCES dev_tasks(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      mimetype TEXT,
+      filename TEXT,
+      size BIGINT DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
     // Sub-modules: hierarchical modules via parent_id
     await query(`ALTER TABLE dev_modules ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES dev_modules(id) ON DELETE CASCADE`);
     await query(`CREATE INDEX IF NOT EXISTS idx_dev_modules_parent ON dev_modules(parent_id)`);
@@ -526,12 +571,28 @@ router.get('/portal/:token', async (req, res) => {
       `SELECT id, name FROM dev_departments WHERE project_id = $1 ORDER BY name ASC`,
       [project.id]
     );
+    const attachmentsQ = await query(
+      `SELECT a.id, a.task_id, a.url, a.mimetype, a.filename, a.size, a.created_at
+       FROM dev_task_attachments a
+       JOIN dev_tasks t ON t.id = a.task_id
+       WHERE t.project_id = $1
+       ORDER BY a.created_at ASC`,
+      [project.id]
+    ).catch(() => ({ rows: [] }));
+    const attachmentsByTask = {};
+    for (const attachment of attachmentsQ.rows) {
+      if (!attachmentsByTask[attachment.task_id]) attachmentsByTask[attachment.task_id] = [];
+      attachmentsByTask[attachment.task_id].push(attachment);
+    }
 
     res.json({
       project,
       modules: modules.rows,
       phases: phases.rows.map((ph) => ({ ...ph, task_stats: cmap[ph.id] || { total: 0, done: 0 } })),
-      tasks: tasksQ.rows,
+      tasks: tasksQ.rows.map((task) => ({
+        ...task,
+        attachments: attachmentsByTask[task.id] || [],
+      })),
       departments: departmentsQ.rows,
     });
   } catch (e) {
@@ -542,7 +603,7 @@ router.get('/portal/:token', async (req, res) => {
 
 router.post('/portal/:token/requests', async (req, res) => {
   try {
-    const { title, description, contact_email, requester_name, department, image_url } = req.body || {};
+    const { title, description, contact_email, requester_name, department, image_url, attachments = [] } = req.body || {};
     if (!title) return res.status(400).json({ error: 'title obrigatório' });
     const p = await query(
       `SELECT id, organization_id, owner_user_id FROM dev_projects WHERE portal_token = $1 AND portal_enabled = true LIMIT 1`,
@@ -560,6 +621,17 @@ router.post('/portal/:token/requests', async (req, res) => {
     if (contact_email) {
       try { await query(`UPDATE dev_tasks SET contact_email = $1 WHERE id = $2`, [contact_email, ins.rows[0].id]); } catch (_) {}
     }
+
+    const attachmentList = Array.isArray(attachments) ? attachments : (image_url ? [{ url: image_url, mimetype: 'image/jpeg' }] : []);
+    for (const attachment of attachmentList.slice(0, 10)) {
+      if (!attachment?.url) continue;
+      await query(
+        `INSERT INTO dev_task_attachments (task_id, url, mimetype, filename, size)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [ins.rows[0].id, attachment.url, attachment.mimetype || null, attachment.filename || null, Number(attachment.size || 0)]
+      ).catch((err) => logError('dev_workspace.attachment_insert_error', err));
+    }
+
     await logActivity(project.id, 'client', 'request_created', { task_id: ins.rows[0].id, contact_email, requester_name, department });
 
     // Async: classify with AI (fire and forget)
@@ -771,26 +843,41 @@ router.post('/portal/:token/departments', async (req, res) => {
   }
 });
 
-// Upload de imagem junto com a solicitação (público via portal token)
-router.post('/portal/:token/upload-image', (req, res) => {
-  portalImageUpload.single('image')(req, res, async (uploadErr) => {
+// Upload de imagens/vídeos junto com a solicitação (público via portal token)
+router.post('/portal/:token/upload-media', (req, res) => {
+  portalMediaUpload.array('files', 10)(req, res, async (uploadErr) => {
     try {
       if (uploadErr) return res.status(400).json({ error: uploadErr.message });
-      if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' });
+      const files = req.files || [];
+      if (files.length === 0) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
       const p = await query(
         `SELECT id FROM dev_projects WHERE portal_token = $1 AND portal_enabled = true LIMIT 1`,
         [req.params.token]
       );
       if (p.rows.length === 0) {
-        try { fs.unlinkSync(req.file.path); } catch (_) {}
+        files.forEach((file) => { try { fs.unlinkSync(file.path); } catch (_) {} });
         return res.status(404).json({ error: 'Portal não encontrado' });
       }
       const baseUrl = String(process.env.API_BASE_URL || '').trim().replace(/\/+$/, '');
-      const url = baseUrl ? `${baseUrl}/uploads/${req.file.filename}` : `/uploads/${req.file.filename}`;
-      res.json({ ok: true, url });
+      const items = [];
+      for (const file of files) {
+        let filePath = file.path;
+        if (String(file.mimetype || '').startsWith('video/')) {
+          try { filePath = await convertPortalVideo(filePath); } catch (_) {}
+        }
+        const filename = path.basename(filePath);
+        const mimetype = /\.mp4$/i.test(filename) ? 'video/mp4' : file.mimetype;
+        items.push({
+          url: baseUrl ? `${baseUrl}/uploads/${filename}` : `/uploads/${filename}`,
+          mimetype,
+          filename,
+          size: fs.existsSync(filePath) ? fs.statSync(filePath).size : file.size,
+        });
+      }
+      res.json({ ok: true, items, url: items[0]?.url });
     } catch (e) {
       logError('dev_workspace.portal_upload_error', e);
-      res.status(500).json({ error: 'Erro ao enviar imagem' });
+      res.status(500).json({ error: 'Erro ao enviar arquivos' });
     }
   });
 });
@@ -819,7 +906,22 @@ router.get('/tasks-all', async (req, res) => {
         LIMIT 1000`,
       [org.organization_id, req.userId, isAdmin(org.role)]
     );
-    res.json(rows.rows);
+    const attachmentIds = rows.rows.map((row) => row.id);
+    const attachmentsQ = attachmentIds.length
+      ? await query(
+          `SELECT id, task_id, url, mimetype, filename, size, created_at
+           FROM dev_task_attachments
+           WHERE task_id = ANY($1::uuid[])
+           ORDER BY created_at ASC`,
+          [attachmentIds]
+        ).catch(() => ({ rows: [] }))
+      : { rows: [] };
+    const byTask = {};
+    for (const attachment of attachmentsQ.rows) {
+      if (!byTask[attachment.task_id]) byTask[attachment.task_id] = [];
+      byTask[attachment.task_id].push(attachment);
+    }
+    res.json(rows.rows.map((row) => ({ ...row, attachments: byTask[row.id] || [] })));
   } catch (e) { logError('dev.tasks_all', e); res.status(500).json({ error: e.message }); }
 });
 
@@ -995,7 +1097,18 @@ router.get('/projects/:id/tasks', async (req, res) => {
   const acc = await assertProjectAccess(req.userId, req.params.id);
   if (!acc) return res.status(404).json({ error: 'Projeto não encontrado' });
   const r = await query(`SELECT * FROM dev_tasks WHERE project_id = $1 ORDER BY created_at DESC`, [req.params.id]);
-  res.json(r.rows);
+  const att = await query(
+    `SELECT a.id, a.task_id, a.url, a.mimetype, a.filename, a.size, a.created_at
+     FROM dev_task_attachments a JOIN dev_tasks t ON t.id = a.task_id
+     WHERE t.project_id = $1 ORDER BY a.created_at ASC`,
+    [req.params.id]
+  ).catch(() => ({ rows: [] }));
+  const byTask = {};
+  for (const attachment of att.rows) {
+    if (!byTask[attachment.task_id]) byTask[attachment.task_id] = [];
+    byTask[attachment.task_id].push(attachment);
+  }
+  res.json(r.rows.map((task) => ({ ...task, attachments: byTask[task.id] || [] })));
 });
 
 router.post('/projects/:id/tasks', async (req, res) => {
