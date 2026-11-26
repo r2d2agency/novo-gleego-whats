@@ -40,6 +40,7 @@ import {
   Sparkles,
   Loader2,
   Info,
+  RefreshCw,
 } from "lucide-react";
 import { useSalesSeo, SalesSeoTracker, SalesSeoAnalytics, SalesSeoLead } from "@/hooks/use-sales-seo";
 import { useConnections } from "@/hooks/use-connections";
@@ -61,7 +62,8 @@ import {
 import { toast } from "sonner";
 
 export default function SalesSEOAnalytics() {
-  const { getTrackers, createTracker, deleteTracker, getAnalytics, getLeads, analyzeIA } = useSalesSeo();
+  const { getTrackers, createTracker, deleteTracker, getAnalytics, getLeads, analyzeIA, importRetroactive } = useSalesSeo();
+  const [importing, setImporting] = useState(false);
   const { data: connections } = useConnections();
   
   const [trackers, setTrackers] = useState<SalesSeoTracker[]>([]);
@@ -249,6 +251,25 @@ export default function SalesSEOAnalytics() {
               </SelectContent>
             </Select>
 
+            <Button
+              variant="outline"
+              disabled={importing}
+              onClick={async () => {
+                setImporting(true);
+                try {
+                  const result = await importRetroactive(7);
+                  toast.success(`Varredura concluída: ${result.processed} mensagens lidas, ${result.matched} leads encontrados`);
+                  await fetchData();
+                } catch (error: any) {
+                  toast.error(error?.message || 'Erro na leitura retroativa');
+                } finally {
+                  setImporting(false);
+                }
+              }}
+            >
+              {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              Ler últimos 7 dias
+            </Button>
             <Button onClick={() => setShowCreateDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Novo Canal

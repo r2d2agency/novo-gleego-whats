@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { query } from '../db.js';
 import { authenticate } from '../middleware/auth.js';
 import { callAI } from '../lib/ai-caller.js';
+import { detectSalesSeoLead } from '../lib/sales-seo-service.js';
 
 const router = Router();
 router.use(authenticate);
@@ -55,6 +56,54 @@ async function getAIConfig(organizationId) {
     apiKey: org.ai_api_key,
   };
 }
+
+router.post('/import-retroactive', async (req, res) => {
+  try {
+    const org = await getUserOrganization(req.userId);
+    if (!org) return res.status(403).json({ error: 'Organização não encontrada' });
+    const days = Math.min(Math.max(Number(req.body?.days || 7), 1), 30);
+
+    const result = await query(
+      `SELECT m.id, m.conversation_id, m.content, m.message_type, m.sender_name, m.sender_phone,
+              c.connection_id, conv.contact_name, conv.contact_phone
+       FROM chat_messages m
+       JOIN conversations conv ON conv.id = m.conversation_id
+       JOIN connections c ON c.id = conv.connection_id
+       WHERE c.organization_id = $1
+         AND m.from_me = false
+         AND m.timestamp >= NOW() - make_interval(days => $2::int)
+       ORDER BY m.timestamp ASC
+       LIMIT 5000`,
+      [org.organization_id, days]
+    );
+
+    let processed = 0;
+    let matched = 0;
+    const errors = [];
+    for (const row of result.rows) {
+      processed++;
+      try {
+        const before = await query(`SELECT COUNT(*)::int AS count FROM sales_seo_leads WHERE conversation_id = $1`, [row.conversation_id]);
+        await detectSalesSeoLead(row.connection_id, row.conversation_id, {
+          content: row.content,
+          message_type: row.message_type,
+          from_me: false,
+          sender_name: row.sender_name || row.contact_name,
+          sender_phone: row.sender_phone || row.contact_phone,
+        }, true);
+        const after = await query(`SELECT COUNT(*)::int AS count FROM sales_seo_leads WHERE conversation_id = $1`, [row.conversation_id]);
+        if (Number(after.rows[0]?.count || 0) > Number(before.rows[0]?.count || 0)) matched++;
+      } catch (error) {
+        errors.push(error.message);
+      }
+    }
+
+    res.json({ processed, matched, errors: errors.slice(0, 10), days });
+  } catch (error) {
+    console.error('Retroactive SEO import error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // ==========================================
 // TRACKERS CRUD

@@ -47,6 +47,7 @@ import ghostRoutes from './routes/ghost.js';
 import projectsRoutes from './routes/projects.js';
 import devWorkspaceRoutes from './routes/dev-workspace.js';
 import pushRoutes, { sendPushToOrgUsers } from './routes/push.js';
+import { detectSalesSeoLead, updateSalesSeoEvolution } from './lib/sales-seo-service.js';
 import taskBoardsRoutes from './routes/task-boards.js';
 import leadGleegoRoutes from './routes/lead-gleego.js';
 import globalAgentsRoutes from './routes/global-agents.js';
@@ -834,6 +835,18 @@ app.post('/api/meta/webhook', async (req, res) => {
               messageId,
             });
             console.log(`[Meta Webhook] Message saved: ${msgType} (as ${effectiveType}) from ${normalizedPhone} in conversation ${conversationId}`);
+
+            const seoMessage = {
+              content,
+              message_type: effectiveType,
+              from_me: false,
+              sender_name: contactName,
+              sender_phone: normalizedPhone,
+            };
+            detectSalesSeoLead(connection.id, conversationId, seoMessage, true).catch((err) => {
+              console.error('[Meta Webhook] Sales SEO detection error:', err.message);
+            });
+            updateSalesSeoEvolution(conversationId, seoMessage).catch(() => {});
 
             if (connection.organization_id) {
               (async () => {

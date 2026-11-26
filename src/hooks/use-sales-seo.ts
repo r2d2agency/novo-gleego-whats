@@ -67,6 +67,13 @@ export const useSalesSeo = () => {
     return api<SalesSeoLead[]>(`/api/sales-seo/leads?${searchParams.toString()}`);
   }, []);
 
+  const importRetroactive = useCallback(async (days: number = 7): Promise<{ processed: number; matched: number; errors: string[]; days: number }> => {
+    return api('/api/sales-seo/import-retroactive', {
+      method: 'POST',
+      body: { days },
+    });
+  }, []);
+
   const analyzeIA = useCallback(async (leadId: string): Promise<any> => {
     return api('/api/sales-seo/analyze-ia', {
       method: 'POST',
@@ -82,6 +89,7 @@ export const useSalesSeo = () => {
     deleteTracker,
     getAnalytics,
     getLeads,
+    importRetroactive,
     analyzeIA,
   };
 };
