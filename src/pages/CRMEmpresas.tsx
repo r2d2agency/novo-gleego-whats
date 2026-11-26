@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useCRMSegments } from "@/hooks/use-crm-config";
 import { CompanyDialog } from "@/components/crm/CompanyDialog";
 import { CompanyImportDialog } from "@/components/crm/CompanyImportDialog";
 import { useCRMCompanies, useCRMCompanyMutations, CRMCompany, useCRMFunnels } from "@/hooks/use-crm";
@@ -17,6 +19,10 @@ import { DealFormDialog } from "@/components/crm/DealFormDialog";
 
 export default function CRMEmpresas() {
   const [search, setSearch] = useState("");
+  const [segmentFilter, setSegmentFilter] = useState("all");
+  const [ownerFilter, setOwnerFilter] = useState("all");
+  const [stateFilter, setStateFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("name_asc");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<CRMCompany | null>(null);
@@ -26,18 +32,49 @@ export default function CRMEmpresas() {
   const { data: companies, isLoading } = useCRMCompanies();
   const { importCompanies, deleteCompany } = useCRMCompanyMutations();
   const { data: funnels } = useCRMFunnels();
+  const { data: segments = [] } = useCRMSegments();
 
-  // Client-side filtering instead of API call per keystroke
+  const owners = useMemo(() => {
+    const map = new Map<string, string>();
+    (companies || []).forEach((company) => {
+      if (company.owner_id && company.owner_name) map.set(company.owner_id, company.owner_name);
+    });
+    return Array.from(map, ([id, name]) => ({ id, name }));
+  }, [companies]);
+
+  const states = useMemo(() => {
+    const values = new Set((companies || []).map((company) => company.state?.trim()).filter(Boolean));
+    return Array.from(values).sort();
+  }, [companies]);
+
+  // Client-side filters + sorting
   const filteredCompanies = useMemo(() => {
-    if (!companies) return [];
-    if (!search.trim()) return companies;
-    const s = search.toLowerCase();
-    return companies.filter(c => 
-      c.name?.toLowerCase().includes(s) || 
-      c.cnpj?.toLowerCase().includes(s) || 
-      c.email?.toLowerCase().includes(s)
-    );
-  }, [companies, search]);
+    let list = [...(companies || [])];
+    const s = search.trim().toLowerCase();
+    if (s) {
+      list = list.filter(c =>
+        c.name?.toLowerCase().includes(s) ||
+        c.cnpj?.toLowerCase().includes(s) ||
+        c.email?.toLowerCase().includes(s) ||
+        c.phone?.toLowerCase().includes(s) ||
+        c.city?.toLowerCase().includes(s)
+      );
+    }
+    if (segmentFilter !== 'all') list = list.filter((c) => c.segment_id === segmentFilter);
+    if (ownerFilter !== 'all') list = list.filter((c) => c.owner_id === ownerFilter);
+    if (stateFilter !== 'all') list = list.filter((c) => c.state === stateFilter);
+
+    const collator = new Intl.Collator('pt-BR', { sensitivity: 'base' });
+    const sorters: Record<string, (a: CRMCompany, b: CRMCompany) => number> = {
+      name_asc: (a, b) => collator.compare(a.name || '', b.name || ''),
+      name_desc: (a, b) => collator.compare(b.name || '', a.name || ''),
+      created_desc: (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      created_asc: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      city_asc: (a, b) => collator.compare(a.city || '', b.city || ''),
+      deals_desc: (a, b) => Number(b.deals_count || 0) - Number(a.deals_count || 0),
+    };
+    return list.sort(sorters[sortBy] || sorters.name_asc);
+  }, [companies, search, segmentFilter, ownerFilter, stateFilter, sortBy]);
 
   const handleEdit = (company: CRMCompany) => {
     setEditingCompany(company);
@@ -118,15 +155,55 @@ export default function CRMEmpresas() {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar empresas..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
+        {/* Filters */}
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar empresas..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Select value={segmentFilter} onValueChange={setSegmentFilter}>
+            <SelectTrigger><SelectValue placeholder="Segmento" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os segmentos</SelectItem>
+              {segments.map((segment) => (
+                <SelectItem key={segment.id} value={segment.id}>{segment.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+            <SelectTrigger><SelectValue placeholder="Responsável" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os responsáveis</SelectItem>
+              {owners.map((owner) => (
+                <SelectItem key={owner.id} value={owner.id}>{owner.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={stateFilter} onValueChange={setStateFilter}>
+            <SelectTrigger><SelectValue placeholder="Estado" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os estados</SelectItem>
+              {states.map((state) => (
+                <SelectItem key={state} value={state}>{state}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger><SelectValue placeholder="Ordenar" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name_asc">Nome (A–Z)</SelectItem>
+              <SelectItem value="name_desc">Nome (Z–A)</SelectItem>
+              <SelectItem value="created_desc">Mais recentes</SelectItem>
+              <SelectItem value="created_asc">Mais antigas</SelectItem>
+              <SelectItem value="city_asc">Cidade (A–Z)</SelectItem>
+              <SelectItem value="deals_desc">Mais negociações</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Table */}
